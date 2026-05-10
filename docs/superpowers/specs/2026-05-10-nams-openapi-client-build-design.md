@@ -174,7 +174,9 @@ gemini extensions install https://github.com/neo4j-labs/nams-hooks --ref v0.1.0
 
 The exact Gemini hook events will be finalized during implementation against the current Gemini hook reference, but all hook commands must target compiled files in `dist/`.
 
-On `devel`, these Gemini files live under `templates/gemini/` with the other platform templates. `release:prepare` copies `templates/gemini/gemini-extension.json` to `gemini-extension.json` and `templates/gemini/hooks/hooks.json` to `hooks/hooks.json` in the `master` release tree because Gemini expects those paths at extension root.
+On `devel`, these Gemini files live under `templates/gemini/` with the other platform templates. `npm run dist` creates a Gemini-linkable extension tree in `dist/` by compiling TypeScript, copying `templates/gemini/gemini-extension.json` to `dist/gemini-extension.json`, and copying `templates/gemini/hooks/hooks.json` to `dist/hooks/hooks.json`. The future `master` release tree will use the same root layout because Gemini expects those paths at extension root.
+
+For now, `dist/` is Gemini-only. Claude and Codex templates remain source templates on `devel` and are not copied into the local Gemini distribution folder.
 
 ## Codex And Claude Distribution
 
@@ -199,7 +201,8 @@ Build targets:
 
 - `openapi:fetch`: fetch `https://memory.neo4jlabs.com/openapi.json` and write `docs/nams-openapi.json`
 - `openapi:generate`: read `docs/nams-openapi.json` and write `src/generated/nams-client.ts`
-- `build`: compile TypeScript to `dist/`
+- `build`: compile TypeScript to `.build/tsc` for local tests
+- `dist`: create a clean Gemini-linkable extension tree in `dist/`; compiled runtime lives under `dist/dist/`, and Gemini root files live at `dist/gemini-extension.json` and `dist/hooks/hooks.json`
 - `test:contract`: run contract tests against generated code and the pinned spec
 - `package:check`: run generation, fail on stale generated output, build, and test
 - `release:prepare`: create a release tree for `master`

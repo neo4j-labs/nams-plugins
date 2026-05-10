@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const cliPath = path.join(repoRoot, "dist", "cli.js");
+const cliPath = path.join(repoRoot, ".build", "tsc", "cli.js");
 
 function runCli(harness, payload, cwd) {
   return new Promise((resolve, reject) => {

@@ -7,12 +7,14 @@
     "nams-hooks": "./dist/cli.js"
   },
   "files": [
+    "dist/",
     "templates/",
     "docs/nams-openapi.json",
     "README.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "rm -rf .build/tsc && tsc -p tsconfig.json --outDir .build/tsc",
+    "dist": "rm -rf .build && tsc -p tsconfig.json --outDir .build/tsc && node scripts/build-dist.mjs",
     "test": "node --test test/*.test.js",
     "check": "npm run build && npm test"
   },
