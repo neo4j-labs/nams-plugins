@@ -62,6 +62,10 @@ docs/
   nams-skill.md
   superpowers/specs/
 templates/
+  gemini/
+    gemini-extension.json
+    hooks/
+      hooks.json
 package.json
 tsconfig.json
 ```
@@ -169,6 +173,8 @@ gemini extensions install https://github.com/neo4j-labs/nams-hooks --ref v0.1.0
 ```
 
 The exact Gemini hook events will be finalized during implementation against the current Gemini hook reference, but all hook commands must target compiled files in `dist/`.
+
+On `devel`, these Gemini files live under `templates/gemini/` with the other platform templates. `release:prepare` copies `templates/gemini/gemini-extension.json` to `gemini-extension.json` and `templates/gemini/hooks/hooks.json` to `hooks/hooks.json` in the `master` release tree because Gemini expects those paths at extension root.
 
 ## Codex And Claude Distribution
 

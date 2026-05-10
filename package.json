@@ -7,10 +7,7 @@
     "nams-hooks": "./dist/cli.js"
   },
   "files": [
-    "dist/",
-    "hooks/",
     "templates/",
-    "gemini-extension.json",
     "docs/nams-openapi.json",
     "README.md"
   ],

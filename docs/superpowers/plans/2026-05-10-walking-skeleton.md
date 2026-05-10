@@ -66,18 +66,18 @@ Run `npm run build` and `npm test`. Expected: pass.
 ### Task 3: Platform Session-Start Templates
 
 **Files:**
-- Create: `gemini-extension.json`
-- Create: `hooks/hooks.json`
+- Create: `templates/gemini/gemini-extension.json`
+- Create: `templates/gemini/hooks/hooks.json`
 - Create: `templates/claude/settings.local.json`
 - Create: `templates/codex/hooks.json`
 
 - [x] **Step 1: Add Gemini extension metadata**
 
-Create `gemini-extension.json` with extension name, version, description, and a sensitive `NAMS_API_KEY` setting.
+Create `templates/gemini/gemini-extension.json` with extension name, version, description, and a sensitive `NAMS_API_KEY` setting.
 
 - [x] **Step 2: Add Gemini SessionStart hook**
 
-Create `hooks/hooks.json` with a `SessionStart` command hook that runs `node ${extensionPath}/dist/cli.js run gemini --event SessionStart`.
+Create `templates/gemini/hooks/hooks.json` with a `SessionStart` command hook that runs `node ${extensionPath}/dist/cli.js run gemini --event SessionStart`.
 
 - [x] **Step 3: Add Claude SessionStart template**
 
