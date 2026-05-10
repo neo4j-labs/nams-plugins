@@ -46,9 +46,9 @@ Use a single shared Node.js runtime with thin per-harness project hook configura
 Generated hook configs call the same entry point and declare the hook event explicitly:
 
 ```bash
-node .nams/runtime/nams-hooks.mjs run claude --event SessionStart
-node .nams/runtime/nams-hooks.mjs run codex --event SessionStart
-node .nams/runtime/nams-hooks.mjs run gemini --event SessionStart
+nams-hooks run claude --event SessionStart
+nams-hooks run codex --event SessionStart
+nams-hooks run gemini --event SessionStart
 ```
 
 The CLI entry point is a gateway. It parses the platform and typed event from arguments, reads hook JSON from `stdin` as an opaque object, resolves a platform adapter through a static registry, and calls the interface method for that event. The CLI must not interpret platform-specific payload fields such as session IDs, transcript paths, or event-name property variants. Those subtleties belong inside the platform adapter implementations.
@@ -59,8 +59,6 @@ This approach avoids per-harness logic drift while still respecting each platfor
 
 ```text
 nams-hooks/
-  bin/
-    nams-hooks.mjs
   src/
     cli.ts
     interfaces.ts
@@ -92,8 +90,6 @@ target-project/
   .nams/
     .env
     .env.example
-    runtime/
-      nams-hooks.mjs
     state/
       sessions/
         claude/
@@ -291,12 +287,11 @@ Installer errors are stricter. The installer should refuse unsafe overwrites and
 
 ## Installer Behavior
 
-`node install.mjs --harness claude,gemini,codex` installs into the current project by default.
+`nams-hooks install --harness claude,gemini,codex` installs into the current project by default.
 
 The installer:
 
-- creates `.nams/runtime/`, `.nams/state/`, and `.nams/logs/`
-- copies or references `bin/nams-hooks.mjs`
+- creates `.nams/state/` and `.nams/logs/`
 - creates `.nams/.env.example`
 - ensures `.nams/.env`, `.nams/state/`, and `.nams/logs/` are gitignored
 - writes or merges harness hook configs
@@ -362,7 +357,7 @@ Installer tests:
 
 Manual validation:
 
-- run `node bin/nams-hooks.mjs doctor`
+- run `nams-hooks doctor`
 - install into a throwaway macOS project
 - start each harness and send a prompt
 - confirm one NAMS conversation is created
