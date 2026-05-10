@@ -17,15 +17,15 @@
 - Create: `tsconfig.json`
 - Create: `.gitignore`
 
-- [ ] **Step 1: Create package metadata and scripts**
+- [x] **Step 1: Create package metadata and scripts**
 
 Create `package.json` with `build`, `test`, and `check` scripts. `build` runs `tsc`; `test` runs compiled test files with `node --test`; `check` runs build then test.
 
-- [ ] **Step 2: Create TypeScript config**
+- [x] **Step 2: Create TypeScript config**
 
 Create `tsconfig.json` that emits ESM JavaScript from `src/` and `test/` into `dist/`, with strict checking and no runtime dependencies.
 
-- [ ] **Step 3: Ignore generated local files**
+- [x] **Step 3: Ignore generated local files**
 
 Create `.gitignore` for `node_modules/`, `.nams/`, transient logs, and TypeScript build info.
 
@@ -35,7 +35,7 @@ Create `.gitignore` for `node_modules/`, `.nams/`, transient logs, and TypeScrip
 - Create: `test/cli-session-start.test.js`
 - Create: `src/cli.ts`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 Create a JavaScript test that runs `dist/cli.js run gemini` in a temporary project directory, sends JSON on stdin, and asserts:
 
@@ -43,11 +43,11 @@ Create a JavaScript test that runs `dist/cli.js run gemini` in a temporary proje
 - `.nams/logs/gemini-session-start.jsonl` exists
 - the log entry includes `harness: "gemini"` and the original payload
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run `npm run build` and `npm test`. Expected: failure because `src/cli.ts` does not exist yet.
 
-- [ ] **Step 3: Implement minimal CLI**
+- [x] **Step 3: Implement minimal CLI**
 
 Implement `src/cli.ts` with:
 
@@ -57,7 +57,7 @@ Implement `src/cli.ts` with:
 - JSONL append to `.nams/logs/<harness>-session-start.jsonl`
 - stdout JSON of `{ "continue": true, "suppressOutput": true }`
 
-- [ ] **Step 4: Verify green**
+- [x] **Step 4: Verify green**
 
 Run `npm run build` and `npm test`. Expected: pass.
 
@@ -69,19 +69,19 @@ Run `npm run build` and `npm test`. Expected: pass.
 - Create: `templates/claude/settings.local.json`
 - Create: `templates/codex/hooks.json`
 
-- [ ] **Step 1: Add Gemini extension metadata**
+- [x] **Step 1: Add Gemini extension metadata**
 
 Create `gemini-extension.json` with extension name, version, description, and a sensitive `NAMS_API_KEY` setting.
 
-- [ ] **Step 2: Add Gemini SessionStart hook**
+- [x] **Step 2: Add Gemini SessionStart hook**
 
 Create `hooks/hooks.json` with a `SessionStart` command hook that runs `node ${extensionPath}/dist/cli.js run gemini`.
 
-- [ ] **Step 3: Add Claude SessionStart template**
+- [x] **Step 3: Add Claude SessionStart template**
 
 Create `templates/claude/settings.local.json` with a `SessionStart` command hook that runs `nams-hooks run claude`.
 
-- [ ] **Step 4: Add Codex SessionStart template**
+- [x] **Step 4: Add Codex SessionStart template**
 
 Create `templates/codex/hooks.json` with a `SessionStart` command hook that runs `nams-hooks run codex`.
 
@@ -91,18 +91,18 @@ Create `templates/codex/hooks.json` with a `SessionStart` command hook that runs
 - Modify: generated `dist/` files from `npm run build`
 - Commit all scaffold files
 
-- [ ] **Step 1: Install dev dependency**
+- [x] **Step 1: Install dev dependency**
 
 Run `npm install` to install TypeScript and create `package-lock.json`.
 
-- [ ] **Step 2: Run verification**
+- [x] **Step 2: Run verification**
 
 Run `npm run check`. Expected: TypeScript build succeeds and node tests pass.
 
-- [ ] **Step 3: Smoke test CLI manually**
+- [x] **Step 3: Smoke test CLI manually**
 
 Run `printf '{"session_id":"manual","hook_event_name":"SessionStart","cwd":"%s"}\n' "$PWD" | node dist/cli.js run gemini` and verify `.nams/logs/gemini-session-start.jsonl` receives a line.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 Commit with message `feat: scaffold hook runtime walking skeleton`.
