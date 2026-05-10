@@ -14,7 +14,7 @@ The hook runner owns deterministic memory persistence. Agents receive recalled c
 
 - Behavioral reference: `docs/nams-skill.md`
 - NAMS OpenAPI contract: `https://memory.neo4jlabs.com/openapi.json`
-- Local OpenAPI copy inspected from nearby NAMS repo: `services/nams-api/docs/swagger.json`
+- Local OpenAPI copy: `docs/nams-openapi.json`
 - Claude Code hooks reference: `https://code.claude.com/docs/en/hooks`
 - Gemini CLI hooks reference: `https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/writing-hooks.md`
 - Codex hooks behavior note: `https://github.com/openai/codex/issues/16486`
