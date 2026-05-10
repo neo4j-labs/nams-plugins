@@ -1,218 +1,50 @@
 # NAMS OpenAPI Client Build Design
 
 Date: 2026-05-10
-Status: Approved design
+Status: Approved design, amended after generator spikes
 Repository: nams-hooks
 
 ## Summary
 
-`nams-hooks` will be authored in TypeScript and released as plain JavaScript. A build-time OpenAPI workflow fetches the latest NAMS API contract, generates a small typed client for the endpoints used by the hook runtime, runs contract tests against the generated client, and produces an installable release artifact.
+`nams-hooks` uses a build-time OpenAPI workflow to fetch the latest NAMS API contract, generate a focused typed client for the endpoints used by hook runtime code, and run contract tests against that generated client.
 
-The hook runtime must never resolve OpenAPI, inspect schemas, or discover endpoints while an agent is running. Runtime code imports a generated JavaScript client from `dist/`.
+The hook runtime must never resolve OpenAPI, inspect schemas, or discover endpoints while an agent is running. Runtime code imports the compiled generated client from the package artifact.
+
+Distribution, branch model, platform installs, and release-package shape are owned by `docs/superpowers/specs/2026-05-10-nams-hooks-design.md`. This document owns only the OpenAPI fetch, generator, generated client contract, and contract-test design.
 
 ## Goals
 
 - Keep runtime deterministic and dependency-light.
 - Use TypeScript for maintainable source code and generated client types.
 - Generate a focused NAMS REST client from the pinned OpenAPI spec.
-- Commit generated source on the development branch.
-- Release compiled JavaScript on the distribution branch.
-- Support `gemini extensions install https://github.com/neo4j-labs/nams-hooks` without a user-side build step.
-- Keep Codex and Claude installation available through a released CLI package.
+- Commit generated TypeScript source on the development branch so API drift is visible in review.
+- Run contract tests that compare generated output to `docs/nams-openapi.json`.
+- Keep all OpenAPI parsing and endpoint validation in build-time scripts.
+- Produce generated client code with no runtime npm dependencies.
 
 ## Non-Goals
 
 - Runtime OpenAPI endpoint discovery.
 - Full SDK generation for every NAMS endpoint.
+- Generic API client output that exposes path-derived operation names to hook runtime code.
 - Heavyweight OpenAPI generators that introduce large generated runtimes.
-- User-side TypeScript compilation during Gemini extension install.
-- Hand-editing release artifacts on the distribution branch.
+- User-side TypeScript compilation before runtime can use the generated client.
+- Branch, release, and platform distribution policy. Those are described in the hooks design.
 
-## Research Notes
+## Source Inputs
 
-TypeScript is a valid fit because it emits JavaScript to an output directory. The published runtime can be plain JavaScript while TypeScript remains a build-time tool.
+- Hosted NAMS OpenAPI contract: `https://memory.neo4jlabs.com/openapi.json`
+- Pinned local copy: `docs/nams-openapi.json`
+- Custom generator spike: `spike-custom-nams-client`
+- Hey API spike: `spike-hey-api-nams-client`
 
-npm supports executable CLIs through `package.json#bin`, and package contents can be controlled through `package.json#files`. This fits Codex and Claude installation through a packaged CLI.
+The current NAMS contract is Swagger/OpenAPI 2 style: it uses `definitions`, body `parameters`, and no `operationId` values. Missing `operationId` values are the main reason the runtime should not consume generic path-derived SDK methods directly.
 
-Gemini CLI extensions can be installed from a GitHub URL or local path. Gemini copies the extension directory on install, and extension hooks live in `hooks/hooks.json`. Extension config supports `${extensionPath}`, which lets hooks call files bundled inside the installed extension directory. Therefore, the default GitHub branch used for Gemini install must already contain runnable JavaScript.
+## Baseline Decision
 
-## Branch Model
+Use the small custom NAMS generator as the baseline.
 
-Use a GitHub Pages-style branch split:
-
-- `devel`: source branch
-- `master`: generated release/distribution branch
-
-### `devel`
-
-The `devel` branch contains source and build inputs:
-
-```text
-src/
-  cli.ts
-  hook-runtime/
-  generated/
-    nams-client.ts
-  generator/
-    generate-nams-client.ts
-test/
-  contract/
-docs/
-  nams-openapi.json
-  nams-skill.md
-  superpowers/specs/
-templates/
-  gemini/
-    gemini-extension.json
-    hooks/
-      hooks.json
-package.json
-tsconfig.json
-```
-
-The generated TypeScript client, `src/generated/nams-client.ts`, is committed on `devel`. This makes API drift visible in normal code review.
-
-### `master`
-
-The `master` branch is release-only. It contains runnable artifacts:
-
-```text
-gemini-extension.json
-hooks/
-  hooks.json
-dist/
-bin/
-  cli.js
-  hook-runtime/
-  generated/
-    nams-client.js
-docs/
-  nams-openapi.json
-README.md
-package.json
-```
-
-No source edits happen directly on `master`. A release script replaces the branch contents from a validated build on `devel`.
-
-## Runtime Package Shape
-
-The released CLI exposes `nams-hooks` through `package.json#bin`:
-
-```json
-{
-  "bin": {
-    "nams-hooks": "./bin/cli.js"
-  }
-}
-```
-
-The CLI entry point supports typed hook event dispatch:
-
-```bash
-nams-hooks run gemini --event SessionStart
-nams-hooks run claude --event SessionStart
-nams-hooks run codex --event SessionStart
-nams-hooks install --harness claude,codex
-nams-hooks doctor
-```
-
-The compiled CLI is a gateway. It reads stdin as opaque JSON and does not interpret platform-specific fields. It validates the typed `--event`, resolves the platform adapter from a static registry, and dispatches to the interface method for that event. Platform adapters own JSON interpretation for Gemini, Claude, and Codex.
-
-Hook runtime modules import the compiled generated client:
-
-```js
-import { NamsClient } from "./generated/nams-client.js";
-```
-
-They do not import or read `docs/nams-openapi.json`.
-
-## Gemini Distribution
-
-Gemini users install from the release branch:
-
-```bash
-gemini extensions install https://github.com/neo4j-labs/nams-hooks
-```
-
-Pinned install:
-
-```bash
-gemini extensions install https://github.com/neo4j-labs/nams-hooks --ref v0.1.0
-```
-
-`gemini-extension.json` declares extension metadata and settings for NAMS configuration, including sensitive API-key configuration where supported:
-
-```json
-{
-  "name": "nams-hooks",
-  "version": "0.1.0",
-  "description": "Neo4j Agent Memory Service hooks for Gemini CLI",
-  "settings": [
-    {
-      "name": "NAMS API Key",
-      "description": "API key for Neo4j Agent Memory Service.",
-      "envVar": "NAMS_API_KEY",
-      "sensitive": true
-    }
-  ]
-}
-```
-
-`hooks/hooks.json` calls the compiled CLI using `${extensionPath}`:
-
-```json
-{
-  "hooks": {
-    "BeforeAgent": [
-      {
-        "command": "node",
-        "args": ["${extensionPath}/bin/cli.js", "run", "gemini", "--event", "SessionStart"]
-      }
-    ]
-  }
-}
-```
-
-The exact Gemini hook events will be finalized during implementation against the current Gemini hook reference, but all hook commands must target compiled files in `dist/`.
-
-On `devel`, these Gemini files live under `templates/gemini/` with the other platform templates. `npm run dist` creates a Gemini-linkable extension tree in `dist/` by compiling TypeScript, copying `templates/gemini/gemini-extension.json` to `dist/gemini-extension.json`, and copying `templates/gemini/hooks/hooks.json` to `dist/hooks/hooks.json`. The future `master` release tree will use the same root layout because Gemini expects those paths at extension root.
-
-For now, `dist/` is Gemini-only. Claude and Codex templates remain source templates on `devel` and are not copied into the local Gemini distribution folder.
-
-## Codex And Claude Distribution
-
-Codex and Claude use the CLI installer:
-
-```bash
-npm install -g @neo4j/nams-hooks
-nams-hooks install --harness codex,claude
-```
-
-For GitHub-based testing:
-
-```bash
-npm install -g github:neo4j-labs/nams-hooks#v0.1.0
-```
-
-The installer writes project-level hook configuration that calls the installed `nams-hooks` CLI, not source files.
-
-## OpenAPI Workflow
-
-Build targets:
-
-- `openapi:fetch`: fetch `https://memory.neo4jlabs.com/openapi.json` and write `docs/nams-openapi.json`
-- `openapi:generate`: read `docs/nams-openapi.json` and write `src/generated/nams-client.ts`
-- `build`: compile TypeScript to `.build/tsc` for local tests
-- `dist`: create a clean Gemini-linkable extension tree in `dist/`; compiled runtime lives under `dist/bin/`, and Gemini root files live at `dist/gemini-extension.json` and `dist/hooks/hooks.json`
-- `test:contract`: run contract tests against generated code and the pinned spec
-- `package:check`: run generation, fail on stale generated output, build, and test
-- `release:prepare`: create a release tree for `master`
-
-`openapi:fetch` is the only target that needs network access. Hook runtime and normal tests use the pinned local spec.
-
-## Custom Generator Scope
-
-The generator is intentionally small and NAMS-specific. It generates methods only for endpoints used by hooks:
+The spike generated one dependency-free file, `src/generated/nams-client.ts`, with 262 lines and stable NAMS-specific methods:
 
 - `createConversation`
 - `addMessage`
@@ -222,18 +54,182 @@ The generator is intentionally small and NAMS-specific. It generates methods onl
 - `searchEntities`
 - `recordReasoningStep`
 - `recordToolCall`
-- optional helper methods for entity details or traces if the runtime needs them later
+
+The generated runtime shape is the intended hook-facing API:
+
+```ts
+import { NamsClient } from "../src/generated/nams-client.js";
+
+const client = new NamsClient({
+  apiKey: "<NAMS_API_KEY>",
+  baseUrl: "https://memory.neo4jlabs.com",
+});
+
+const conversation = await client.createConversation({
+  userId: "local-user",
+  metadata: {
+    harness: "gemini",
+  },
+});
+
+await client.addMessage(conversation.id ?? "", {
+  role: "user",
+  content: "Remember that this project is testing NAMS hooks.",
+});
+```
+
+Hook runtime code should import this generated client or a thin runtime wrapper around it. Runtime code should not import OpenAPI documents, generator modules, or generic SDK path functions.
+
+## Alternative On Hold: Hey API
+
+Hey API was spiked with `@hey-api/openapi-ts@0.97.1` against `docs/nams-openapi.json`.
+
+Observed output:
+
+- 16 generated TypeScript files.
+- 3,962 generated lines.
+- No runtime imports from `@hey-api/*`; the fetch client runtime is bundled into generated files.
+- Generated SDK covers every endpoint in the spec, including auth and entity management endpoints not needed by hooks.
+- The generated output compiles with this repository's TypeScript settings.
+
+Because the Swagger file lacks `operationId`, Hey API generated path-derived method names such as:
+
+- `postV1Conversations`
+- `postV1ConversationsByIdMessages`
+- `postV1ConversationsByIdMessagesBulk`
+- `getV1ConversationsByIdContext`
+- `postV1EntitiesSearch`
+- `postV1ReasoningToolCalls`
+
+Sample usage from the spike:
+
+```ts
+import { createClient } from "../src/generated/hey-api/client/index.js";
+import {
+  postV1Conversations,
+  postV1ConversationsByIdMessages,
+} from "../src/generated/hey-api/sdk.gen.js";
+
+const client = createClient({
+  auth: "Bearer <NAMS_API_KEY>",
+  baseUrl: "https://memory.neo4jlabs.com",
+});
+
+const conversation = await postV1Conversations({
+  body: {
+    userId: "local-user",
+    metadata: {
+      harness: "gemini",
+    },
+  },
+  client,
+  throwOnError: true,
+});
+
+await postV1ConversationsByIdMessages({
+  body: {
+    role: "user",
+    content: "Remember that this project is testing NAMS hooks.",
+  },
+  client,
+  path: {
+    id: conversation.data.id ?? "",
+  },
+  throwOnError: true,
+});
+```
+
+Hey API remains a viable fallback if the NAMS surface grows enough that maintaining a focused generator becomes expensive. It is on hold for now because it generates more surface than the hook runtime needs and would still require a hand-authored facade to hide path-derived method names.
+
+## Repository Integration
+
+The development branch contains both the generator and generated source:
+
+```text
+scripts/
+  generate-nams-client.mjs
+src/
+  generated/
+    nams-client.ts
+test/
+  nams-client-generator.test.js
+docs/
+  nams-openapi.json
+```
+
+The generated TypeScript client is committed. This makes OpenAPI drift visible in code review and lets normal TypeScript compilation catch generated API changes before release artifacts are produced.
+
+## Build Targets
+
+- `openapi:fetch`: fetch `https://memory.neo4jlabs.com/openapi.json` and write `docs/nams-openapi.json`.
+- `openapi:generate`: read `docs/nams-openapi.json` and write `src/generated/nams-client.ts`.
+- `test:contract`: verify generated endpoint metadata, request shaping, and error behavior against the pinned spec.
+- `package:check`: run generation freshness checks, build, tests, and contract tests.
+
+`openapi:fetch` is the only target that needs network access. Hook runtime, normal tests, and contract tests use the pinned local spec.
+
+## Custom Generator Scope
+
+The generator is intentionally small and NAMS-specific. It generates methods only for endpoints used by hooks:
+
+- `createConversation`: `POST /v1/conversations`
+- `addMessage`: `POST /v1/conversations/{id}/messages`
+- `addMessagesBulk`: `POST /v1/conversations/{id}/messages/bulk`
+- `getConversationContext`: `GET /v1/conversations/{id}/context`
+- `searchConversationMessages`: `POST /v1/conversations/{id}/search`
+- `searchEntities`: `POST /v1/entities/search`
+- `recordReasoningStep`: `POST /v1/reasoning/steps`
+- `recordToolCall`: `POST /v1/reasoning/tool-calls`
 
 Each generated method includes:
 
+- stable method name chosen by `nams-hooks`
 - static HTTP method
 - static path template
-- typed request body
-- typed success response where schema information is available
-- normalized error handling
+- typed path parameters
+- typed request body when the endpoint has a body schema
+- typed success response when the spec provides a response schema
+- normalized error handling through `NamsClientError`
 - no runtime dependency on OpenAPI data
 
-The generated client uses Node built-ins only. It should prefer global `fetch` when the package requires a Node version where fetch is stable; otherwise it can use a tiny internal `node:https` transport. The Node version requirement will be set in `package.json#engines`.
+The generator validates the selected endpoint paths, HTTP methods, required path parameters, body schemas, and success response schemas before writing output. If an endpoint disappears or changes shape, generation fails.
+
+## Generated Client Runtime Contract
+
+The generated client exposes:
+
+```ts
+export interface NamsClientOptions {
+  baseUrl?: string;
+  apiKey: string;
+  fetch?: typeof fetch;
+}
+
+export class NamsClientError extends Error {
+  readonly status: number;
+  readonly body: unknown;
+}
+
+export class NamsClient {
+  createConversation(body?: CreateConversationRequest): Promise<CreateConversationResponse>;
+  addMessage(conversationId: string, body: AddMessageRequest): Promise<AddMessageResponse>;
+  addMessagesBulk(conversationId: string, body: AddMessagesBulkRequest): Promise<AddMessagesBatchResponse>;
+  getConversationContext(conversationId: string): Promise<ContextResponse>;
+  searchConversationMessages(conversationId: string, body: SearchMessagesRequest): Promise<SearchMessagesResponse>;
+  searchEntities(body: SearchEntitiesRequest): Promise<SearchEntitiesResponse>;
+  recordReasoningStep(body: RecordStepRequest): Promise<RecordReasoningStepResponse>;
+  recordToolCall(body: RecordToolCallRequest): Promise<RecordToolCallResponse>;
+}
+```
+
+Requests use:
+
+- `Authorization: Bearer <NAMS_API_KEY>`
+- `Accept: application/json`
+- `Content-Type: application/json` only when a request body is present
+- `NAMS_BASE_URL` from runtime configuration, defaulting to `https://memory.neo4jlabs.com`
+
+The generated client should prefer global `fetch`. The package engine remains responsible for selecting a Node version where `fetch` is available.
 
 ## Contract Tests
 
@@ -242,67 +238,36 @@ Contract tests compare the generated client against `docs/nams-openapi.json`.
 They must verify:
 
 - required endpoint paths exist in the spec
-- generated methods map to the expected HTTP method and path
-- request body fields include required fields for supported operations
-- generated response typing remains aligned with named schema references where available
-- generated client source does not reference `docs/nams-openapi.json`
+- generated endpoint metadata maps to expected HTTP method and path
+- path parameters required by generated methods exist as required string parameters
+- request body schemas exist for endpoints that require bodies
+- generated client source does not import or read `docs/nams-openapi.json`
 - mocked successful responses are parsed consistently
-- mocked error responses produce stable error objects
+- mocked error responses produce stable `NamsClientError` objects
+- `Authorization` and JSON headers are shaped correctly
 
 Contract tests should fail when:
 
 - an endpoint is removed or renamed
-- required request fields change
+- required path parameters change
+- required request body fields change
 - generated output is stale after `openapi:generate`
 - runtime code attempts OpenAPI inspection
 
-## Release Flow
-
-Manual or CI release flow:
-
-1. Work on `devel`.
-2. Run `npm run openapi:fetch`.
-3. Run `npm run openapi:generate`.
-4. Commit `docs/nams-openapi.json` and `src/generated/nams-client.ts` if they changed.
-5. Run `npm run package:check`.
-6. Run `npm run release:prepare`.
-7. Replace `master` contents with the release tree.
-8. Commit the release artifact on `master`.
-9. Tag the release commit, for example `v0.1.0`.
-
-Rules:
-
-- `master` is generated from `devel`; no hand edits.
-- Release tags are created from `master`.
-- Gemini installs default to `master`.
-- Codex and Claude npm releases are produced from the same validated artifact.
-
-## Impact On Earlier Hook Design
-
-The prior hook design remains valid with these updates:
-
-- The runtime entry point becomes `bin/cli.js` in release artifacts.
-- Installed project hook configs call `nams-hooks run <harness> --event <typed-event>` or the extension-local `bin/cli.js`.
-- `.nams/runtime/` is no longer required for package installs.
-- `.nams/.env`, `.nams/state/`, and `.nams/logs/` remain project-local runtime data.
-- NAMS REST calls go through the generated client instead of handwritten fetch helpers.
-- Runtime never reads OpenAPI.
-
 ## Open Risks
 
-- Maintaining `master` as generated output requires release discipline and clear automation.
-- Gemini extension settings support must be verified against the installed Gemini CLI version.
-- If Node versions bundled with agent platforms differ, the package may need either a conservative `engines.node` value or an internal HTTPS transport instead of global `fetch`.
-- GitHub install from `master` means any accidental unreleased commit to `master` becomes installable immediately; branch protections should require release automation.
+- The custom schema converter supports only the schema features needed by the selected NAMS endpoints. Expanding to broader NAMS API coverage may require generator work.
+- The current NAMS spec does not define `operationId`. If that changes, the custom method manifest should remain the hook-facing contract unless we deliberately redesign it.
+- Generated response types mirror optionality from the Swagger definitions. Runtime callers still need to handle absent IDs defensively.
+- If agent platforms ship Node versions without stable global `fetch`, the generated client may need a tiny internal `node:https` transport.
 
 ## Approval Record
 
-Approved decisions from brainstorming:
+Approved decisions from brainstorming and spikes:
 
 - Use TypeScript for source.
-- Release vanilla JavaScript.
+- Release vanilla JavaScript through the hooks distribution flow.
 - Generate a focused client with a small custom NAMS OpenAPI generator.
 - Commit generated client source.
 - Do not discover endpoints at runtime.
-- Use `devel` for source and `master` for release/distribution.
-- Make `master` directly installable by Gemini CLI extensions.
+- Keep Hey API on hold as a researched fallback.
