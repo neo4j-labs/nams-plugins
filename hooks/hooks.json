@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "name": "nams-session-start",
+            "description": "Log Gemini CLI session-start payload for the NAMS hook runtime walking skeleton.",
+            "command": "node \"${extensionPath}/dist/cli.js\" run gemini"
+          }
+        ]
+      }
+    ]
+  }
+}

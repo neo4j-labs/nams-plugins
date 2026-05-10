@@ -1,0 +1,30 @@
+{
+  "name": "@neo4j-labs/nams-hooks",
+  "version": "0.1.0",
+  "description": "Neo4j Agent Memory Service hooks for agent harnesses.",
+  "type": "module",
+  "bin": {
+    "nams-hooks": "./dist/cli.js"
+  },
+  "files": [
+    "dist/",
+    "hooks/",
+    "templates/",
+    "gemini-extension.json",
+    "docs/nams-openapi.json",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test test/*.test.js",
+    "check": "npm run build && npm test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.3"
+  },
+  "license": "Apache-2.0"
+}
