@@ -1,0 +1,2693 @@
+{
+  "basePath": "/",
+  "definitions": {
+    "handlers.APIKey": {
+      "properties": {
+        "createdAt": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "revokedAt": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.AddMessageResponse": {
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "conversationId": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.AddMessagesBatchResponse": {
+      "properties": {
+        "messages": {
+          "items": {
+            "$ref": "#/definitions/handlers.AddMessageResponse"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.ContextResponse": {
+      "properties": {
+        "observations": {
+          "items": {
+            "$ref": "#/definitions/handlers.Observation"
+          },
+          "type": "array"
+        },
+        "recentMessages": {
+          "items": {
+            "$ref": "#/definitions/handlers.Message"
+          },
+          "type": "array"
+        },
+        "reflections": {
+          "items": {
+            "$ref": "#/definitions/handlers.Reflection"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.Conversation": {
+      "properties": {
+        "createdAt": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "messageCount": {
+          "type": "integer"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.ConversationReasoningResponse": {
+      "properties": {
+        "conversationId": {
+          "type": "string"
+        },
+        "steps": {
+          "items": {
+            "$ref": "#/definitions/handlers.ReasoningStep"
+          },
+          "type": "array"
+        },
+        "toolCalls": {
+          "items": {
+            "$ref": "#/definitions/handlers.ToolCall"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.ConversationResponse": {
+      "properties": {
+        "createdAt": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        },
+        "workspaceId": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.ConversationsResponse": {
+      "properties": {
+        "conversations": {
+          "items": {
+            "$ref": "#/definitions/handlers.Conversation"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.CreateConversationResponse": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        },
+        "workspaceId": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.EntitiesResponse": {
+      "properties": {
+        "entities": {
+          "items": {
+            "$ref": "#/definitions/handlers.Entity"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.Entity": {
+      "properties": {
+        "confidence": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "score": {
+          "type": "number"
+        },
+        "sourceStage": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.EntityDetailsResponse": {
+      "properties": {
+        "confidence": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "relationships": {
+          "items": {
+            "$ref": "#/definitions/handlers.EntityRelationship"
+          },
+          "type": "array"
+        },
+        "sourceStage": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.EntityGraphResponse": {
+      "properties": {
+        "edges": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "nodes": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.EntityProvenanceResponse": {
+      "properties": {
+        "entityId": {
+          "type": "string"
+        },
+        "mentions": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.EntityReasoningProvenanceResponse": {
+      "properties": {
+        "entityId": {
+          "type": "string"
+        },
+        "steps": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.EntityRelationship": {
+      "properties": {
+        "relType": {
+          "type": "string"
+        },
+        "targetId": {
+          "type": "string"
+        },
+        "targetName": {
+          "type": "string"
+        },
+        "targetType": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.EntityResponse": {
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.ErrorResponse": {
+      "properties": {
+        "error": {
+          "example": "internal error",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.ExchangeAuth0Response": {
+      "properties": {
+        "workspaces": {
+          "items": {
+            "$ref": "#/definitions/handlers.WorkspaceAuthInfo"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.InfluencedEntity": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.ListAPIKeysResponse": {
+      "properties": {
+        "keys": {
+          "items": {
+            "$ref": "#/definitions/handlers.APIKey"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.MergeEntitiesResponse": {
+      "properties": {
+        "sourceId": {
+          "type": "string"
+        },
+        "status": {
+          "example": "merged",
+          "type": "string"
+        },
+        "targetId": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.Message": {
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "score": {
+          "type": "number"
+        },
+        "tokenCount": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.MessagesResponse": {
+      "properties": {
+        "messages": {
+          "items": {
+            "$ref": "#/definitions/handlers.Message"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.Observation": {
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "conversationId": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "sourceMsgIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.ObservationsResponse": {
+      "properties": {
+        "observations": {
+          "items": {
+            "$ref": "#/definitions/handlers.Observation"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.QueryResponse": {
+      "properties": {
+        "columns": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "rows": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "stats": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.ReasoningStep": {
+      "properties": {
+        "actionTaken": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "reasoning": {
+          "type": "string"
+        },
+        "result": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.ReasoningStepDetailsResponse": {
+      "properties": {
+        "actionTaken": {
+          "type": "string"
+        },
+        "conversationId": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "influencedEntities": {
+          "items": {
+            "$ref": "#/definitions/handlers.InfluencedEntity"
+          },
+          "type": "array"
+        },
+        "reasoning": {
+          "type": "string"
+        },
+        "result": {
+          "type": "string"
+        },
+        "toolCalls": {
+          "items": {
+            "$ref": "#/definitions/handlers.ToolCall"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.ReasoningStepsResponse": {
+      "properties": {
+        "steps": {
+          "items": {
+            "$ref": "#/definitions/handlers.ReasoningStep"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.RecordReasoningStepResponse": {
+      "properties": {
+        "actionTaken": {
+          "type": "string"
+        },
+        "conversationId": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "reasoning": {
+          "type": "string"
+        },
+        "result": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.RecordToolCallResponse": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "stepId": {
+          "type": "string"
+        },
+        "toolName": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.Reflection": {
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "conversationId": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "sourceObsIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "supersededById": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.ReflectionsResponse": {
+      "properties": {
+        "reflections": {
+          "items": {
+            "$ref": "#/definitions/handlers.Reflection"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.SearchEntitiesResponse": {
+      "properties": {
+        "entities": {
+          "items": {
+            "$ref": "#/definitions/handlers.Entity"
+          },
+          "type": "array"
+        },
+        "searchType": {
+          "example": "vector",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.SearchMessagesResponse": {
+      "properties": {
+        "messages": {
+          "items": {
+            "$ref": "#/definitions/handlers.Message"
+          },
+          "type": "array"
+        },
+        "searchType": {
+          "example": "vector",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.StatusResponse": {
+      "properties": {
+        "status": {
+          "example": "success",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.ToolCall": {
+      "properties": {
+        "createdAt": {
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "integer"
+        },
+        "id": {
+          "type": "string"
+        },
+        "input": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "stepId": {
+          "type": "string"
+        },
+        "toolName": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.UpdateSchemaResponse": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "updated": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.WorkspaceAuthInfo": {
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "workspace_id": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.addMessageRequest": {
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "content",
+        "role"
+      ],
+      "type": "object"
+    },
+    "handlers.addMessagesBulkRequest": {
+      "properties": {
+        "messages": {
+          "items": {
+            "$ref": "#/definitions/handlers.addMessageRequest"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "messages"
+      ],
+      "type": "object"
+    },
+    "handlers.createAPIKeyRequest": {
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "scopes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "workspace_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "workspace_id"
+      ],
+      "type": "object"
+    },
+    "handlers.createAPIKeyResponse": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.createConversationRequest": {
+      "properties": {
+        "metadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "userId": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.createEntityRequest": {
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ],
+      "type": "object"
+    },
+    "handlers.entityFeedbackRequest": {
+      "properties": {
+        "confirmed": {
+          "type": "boolean"
+        },
+        "userScore": {
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.mergeEntitiesRequest": {
+      "properties": {
+        "targetId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "targetId"
+      ],
+      "type": "object"
+    },
+    "handlers.oauthCallbackRequest": {
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "provider": {
+          "description": "\"github\" or \"google\"",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "provider"
+      ],
+      "type": "object"
+    },
+    "handlers.queryRequest": {
+      "properties": {
+        "cypher": {
+          "type": "string"
+        },
+        "params": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "cypher"
+      ],
+      "type": "object"
+    },
+    "handlers.recordStepRequest": {
+      "properties": {
+        "actionTaken": {
+          "type": "string"
+        },
+        "conversationId": {
+          "type": "string"
+        },
+        "reasoning": {
+          "type": "string"
+        },
+        "result": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "actionTaken",
+        "conversationId",
+        "reasoning"
+      ],
+      "type": "object"
+    },
+    "handlers.recordToolCallRequest": {
+      "properties": {
+        "durationMs": {
+          "type": "integer"
+        },
+        "input": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "stepId": {
+          "type": "string"
+        },
+        "toolName": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "input",
+        "toolName"
+      ],
+      "type": "object"
+    },
+    "handlers.refreshRequest": {
+      "properties": {
+        "refresh_token": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "refresh_token"
+      ],
+      "type": "object"
+    },
+    "handlers.refreshResponse": {
+      "properties": {
+        "refresh_token": {
+          "type": "string"
+        },
+        "token": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.revealAPIKeyResponse": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.searchEntitiesRequest": {
+      "properties": {
+        "limit": {
+          "type": "integer"
+        },
+        "query": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    },
+    "handlers.searchMessagesRequest": {
+      "properties": {
+        "limit": {
+          "type": "integer"
+        },
+        "query": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    },
+    "handlers.updateEntityRequest": {
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "host": "gaylord.development.neo4jsandbox.com",
+  "info": {
+    "contact": {
+      "name": "Neo4j DevRel",
+      "url": "https://github.com/neo4j-labs/project-gaylord"
+    },
+    "description": "API key (nams_...) used directly as Bearer token, or JWT from Auth0 exchange",
+    "license": {
+      "name": "Apache 2.0"
+    },
+    "title": "NAMS Memory API",
+    "version": "1.0"
+  },
+  "paths": {
+    "/.well-known/jwks.json": {
+      "get": {
+        "description": "**Auth service base URL:** `https://gaylord.development.neo4jsandbox.com`\n\nReturns the public RSA key(s) used to verify NAMS JWTs. Used by other services for token validation.",
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "JWKS format public key set",
+            "schema": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          }
+        },
+        "summary": "Get public keys (JWKS)",
+        "tags": [
+          "JWKS"
+        ]
+      }
+    },
+    "/v1/auth/api-keys": {
+      "get": {
+        "description": "**Auth service base URL:** `https://gaylord.development.neo4jsandbox.com`\n\nList all API keys for a workspace. Raw key values are never returned — only metadata (ID, label, created/revoked timestamps).",
+        "parameters": [
+          {
+            "description": "Workspace ID",
+            "in": "query",
+            "name": "workspace_id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns keys array with id, label, createdAt, revokedAt",
+            "schema": {
+              "$ref": "#/definitions/handlers.ListAPIKeysResponse"
+            }
+          },
+          "400": {
+            "description": "Missing workspace_id",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List API keys",
+        "tags": [
+          "Auth"
+        ]
+      },
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "description": "**Auth service base URL:** `https://gaylord.development.neo4jsandbox.com`\n\nGenerate a new API key for a workspace. The raw key is returned ONLY once — store it securely. It is bcrypt-hashed before storage and cannot be retrieved again. Scopes default to all if omitted.",
+        "parameters": [
+          {
+            "description": "Workspace ID, label, and optional scopes",
+            "in": "body",
+            "name": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/handlers.createAPIKeyRequest"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "201": {
+            "description": "Key ID, raw key (save this), and label",
+            "schema": {
+              "$ref": "#/definitions/handlers.createAPIKeyResponse"
+            }
+          },
+          "400": {
+            "description": "Missing required fields",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Create an API key",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/v1/auth/api-keys/{id}": {
+      "delete": {
+        "description": "**Auth service base URL:** `https://gaylord.development.neo4jsandbox.com`\n\nRevoke an API key by ID. The key is immediately invalidated — any active JWTs issued from it are blocklisted. This action is irreversible.",
+        "parameters": [
+          {
+            "description": "API key ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns status: revoked",
+            "schema": {
+              "$ref": "#/definitions/handlers.StatusResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Revoke an API key",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/v1/auth/api-keys/{id}/reveal": {
+      "get": {
+        "description": "**Auth service base URL:** `https://gaylord.development.neo4jsandbox.com`\n\nReturns the decrypted raw API key value for keys created with encrypted storage. Returns 410 if the key was revoked or predates encrypted storage.",
+        "parameters": [
+          {
+            "description": "API key ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "Workspace ID that owns the key",
+            "in": "query",
+            "name": "workspace_id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "Key ID and decrypted raw key",
+            "schema": {
+              "$ref": "#/definitions/handlers.revealAPIKeyResponse"
+            }
+          },
+          "400": {
+            "description": "Missing workspace_id",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "404": {
+            "description": "Key not found for this workspace",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "410": {
+            "description": "Key revoked or not revealable",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Reveal a stored API key",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/v1/auth/exchange": {
+      "post": {
+        "description": "**Auth service base URL:** `https://gaylord.development.neo4jsandbox.com`\n\nValidate an Auth0 Bearer token via JWKS and return per-workspace NAMS JWTs. Automatically provisions a default workspace for first-time users. Returns an array of {workspace_id, token} pairs — one per workspace the user belongs to.",
+        "parameters": [
+          {
+            "description": "Auth0 Bearer token",
+            "in": "header",
+            "name": "Authorization",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns workspaces array with workspace_id and token",
+            "schema": {
+              "$ref": "#/definitions/handlers.ExchangeAuth0Response"
+            }
+          },
+          "401": {
+            "description": "Invalid or missing token",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "501": {
+            "description": "Auth0 exchange not configured",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "summary": "Exchange Auth0 token for NAMS JWTs",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/v1/auth/oauth/callback": {
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "description": "**Auth service base URL:** `https://gaylord.development.neo4jsandbox.com`\n\nHandles OAuth2 authorization code flow. Exchanges the provider code for user info and returns a NAMS JWT. Currently returns 501 — implementation pending.",
+        "parameters": [
+          {
+            "description": "OAuth provider and authorization code",
+            "in": "body",
+            "name": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/handlers.oauthCallbackRequest"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "JWT token (when implemented)",
+            "schema": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          },
+          "501": {
+            "description": "Not implemented",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "summary": "OAuth2 callback (not yet implemented)",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/v1/auth/refresh": {
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "description": "**Auth service base URL:** `https://gaylord.development.neo4jsandbox.com`\n\nExchange a refresh token for a new access token and rotated refresh token.",
+        "parameters": [
+          {
+            "description": "Refresh token",
+            "in": "body",
+            "name": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/handlers.refreshRequest"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "New access and refresh tokens",
+            "schema": {
+              "$ref": "#/definitions/handlers.refreshResponse"
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "401": {
+            "description": "Invalid or expired refresh token",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "summary": "Refresh an access token",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/v1/conversations": {
+      "get": {
+        "description": "List all conversations for the workspace. Returns metadata only (no messages).",
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns conversations array",
+            "schema": {
+              "$ref": "#/definitions/handlers.ConversationsResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List conversations",
+        "tags": [
+          "Conversations"
+        ]
+      },
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "description": "Create a new conversation session. Returns the conversation ID used for all subsequent message, context, and search calls. Entity extraction runs asynchronously after messages are added.",
+        "parameters": [
+          {
+            "description": "Optional user ID and metadata",
+            "in": "body",
+            "name": "body",
+            "schema": {
+              "$ref": "#/definitions/handlers.createConversationRequest"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "201": {
+            "description": "Returns id, workspaceId, userId",
+            "schema": {
+              "$ref": "#/definitions/handlers.CreateConversationResponse"
+            }
+          },
+          "400": {
+            "description": "workspace_id required",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Create a conversation",
+        "tags": [
+          "Conversations"
+        ]
+      }
+    },
+    "/v1/conversations/{id}": {
+      "delete": {
+        "description": "Delete a conversation and all its messages.",
+        "parameters": [
+          {
+            "description": "Conversation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns status: deleted",
+            "schema": {
+              "$ref": "#/definitions/handlers.StatusResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Delete a conversation",
+        "tags": [
+          "Conversations"
+        ]
+      },
+      "get": {
+        "description": "Get conversation metadata by ID.",
+        "parameters": [
+          {
+            "description": "Conversation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns id, workspaceId, userId, createdAt, updatedAt",
+            "schema": {
+              "$ref": "#/definitions/handlers.ConversationResponse"
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get a conversation",
+        "tags": [
+          "Conversations"
+        ]
+      }
+    },
+    "/v1/conversations/{id}/context": {
+      "get": {
+        "description": "Get the structured context for an agent to build its prompt from. Returns three tiers: (1) reflections — highest-level compressed insights, (2) observations — mid-level summaries, (3) recentMessages — raw recent messages. Call this before constructing an agent's system prompt.",
+        "parameters": [
+          {
+            "description": "Conversation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns reflections, observations, recentMessages arrays",
+            "schema": {
+              "$ref": "#/definitions/handlers.ContextResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get three-tier context",
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
+    "/v1/conversations/{id}/messages": {
+      "get": {
+        "description": "List messages in a conversation, newest first. Use the limit parameter to control page size (default 50, max 200).",
+        "parameters": [
+          {
+            "description": "Conversation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "Max messages to return (1-200, default 50)",
+            "in": "query",
+            "name": "limit",
+            "type": "integer"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns messages array",
+            "schema": {
+              "$ref": "#/definitions/handlers.MessagesResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List messages",
+        "tags": [
+          "Messages"
+        ]
+      },
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "description": "Add a message to a conversation. Triggers asynchronous entity extraction via the memory worker. Role must be \"user\", \"assistant\", or \"system\".",
+        "parameters": [
+          {
+            "description": "Conversation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "Message role and content",
+            "in": "body",
+            "name": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/handlers.addMessageRequest"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "201": {
+            "description": "Returns id, conversationId, role, content",
+            "schema": {
+              "$ref": "#/definitions/handlers.AddMessageResponse"
+            }
+          },
+          "400": {
+            "description": "Invalid role or missing fields",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "404": {
+            "description": "Conversation not found",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Add a message",
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
+    "/v1/conversations/{id}/messages/bulk": {
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "description": "Add multiple messages to a conversation in a single request. Each message triggers async entity extraction independently. Maximum 100 messages per request.",
+        "parameters": [
+          {
+            "description": "Conversation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "Array of messages",
+            "in": "body",
+            "name": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/handlers.addMessagesBulkRequest"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "201": {
+            "description": "Returns messages array with IDs",
+            "schema": {
+              "$ref": "#/definitions/handlers.AddMessagesBatchResponse"
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Add messages in bulk",
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
+    "/v1/conversations/{id}/observations": {
+      "get": {
+        "description": "List compressed observations for a conversation. Observations are auto-generated summaries of message windows, created by the memory worker after sufficient messages accumulate.",
+        "parameters": [
+          {
+            "description": "Conversation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "Max observations to return (1-200, default 50)",
+            "in": "query",
+            "name": "limit",
+            "type": "integer"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns observations array",
+            "schema": {
+              "$ref": "#/definitions/handlers.ObservationsResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List observations",
+        "tags": [
+          "Observations"
+        ]
+      }
+    },
+    "/v1/conversations/{id}/reflections": {
+      "get": {
+        "description": "List reflections for a conversation. Reflections are higher-level insights synthesized from multiple observations. Each new reflection supersedes the previous.",
+        "parameters": [
+          {
+            "description": "Conversation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns reflections array",
+            "schema": {
+              "$ref": "#/definitions/handlers.ReflectionsResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List reflections",
+        "tags": [
+          "Observations"
+        ]
+      }
+    },
+    "/v1/conversations/{id}/search": {
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "description": "Search messages within a conversation by content. Uses vector similarity search when embeddings are available, falling back to text CONTAINS. Returns searchType field indicating which method was used.",
+        "parameters": [
+          {
+            "description": "Conversation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "Search query and optional limit",
+            "in": "body",
+            "name": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/handlers.searchMessagesRequest"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns messages array and searchType",
+            "schema": {
+              "$ref": "#/definitions/handlers.SearchMessagesResponse"
+            }
+          },
+          "400": {
+            "description": "Missing query",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Search messages",
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
+    "/v1/entities": {
+      "get": {
+        "description": "List all entities in the knowledge graph. Filter by type using the optional query parameter.",
+        "parameters": [
+          {
+            "description": "Filter by type: person, organization, location, concept, tool, custom",
+            "in": "query",
+            "name": "type",
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns entities array",
+            "schema": {
+              "$ref": "#/definitions/handlers.EntitiesResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List entities",
+        "tags": [
+          "Entities"
+        ]
+      },
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "description": "Create a new entity in the knowledge graph. Entities are automatically created during entity extraction, but can also be created manually.",
+        "parameters": [
+          {
+            "description": "Entity name, type, and optional description",
+            "in": "body",
+            "name": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/handlers.createEntityRequest"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "201": {
+            "description": "Returns id, name, type, description",
+            "schema": {
+              "$ref": "#/definitions/handlers.EntityResponse"
+            }
+          },
+          "400": {
+            "description": "Missing required fields",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Create an entity",
+        "tags": [
+          "Entities"
+        ]
+      }
+    },
+    "/v1/entities/graph": {
+      "get": {
+        "description": "Get the full entity graph with nodes and edges for visualization. Used by the Memory Browser in the dashboard.",
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns nodes and edges arrays",
+            "schema": {
+              "$ref": "#/definitions/handlers.EntityGraphResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get entity graph",
+        "tags": [
+          "Entities"
+        ]
+      }
+    },
+    "/v1/entities/search": {
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "description": "Search entities by name or description. Uses vector similarity search when embeddings are available, falling back to text CONTAINS. Returns searchType field indicating which method was used.",
+        "parameters": [
+          {
+            "description": "Search query with optional type filter and limit",
+            "in": "body",
+            "name": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/handlers.searchEntitiesRequest"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns entities array and searchType",
+            "schema": {
+              "$ref": "#/definitions/handlers.SearchEntitiesResponse"
+            }
+          },
+          "400": {
+            "description": "Missing query",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Search entities",
+        "tags": [
+          "Entities"
+        ]
+      }
+    },
+    "/v1/entities/{id}": {
+      "delete": {
+        "description": "Delete an entity and all its relationships from the knowledge graph.",
+        "parameters": [
+          {
+            "description": "Entity ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns status: deleted",
+            "schema": {
+              "$ref": "#/definitions/handlers.StatusResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Delete an entity",
+        "tags": [
+          "Entities"
+        ]
+      },
+      "get": {
+        "description": "Get entity details including all relationships (incoming and outgoing edges in the knowledge graph).",
+        "parameters": [
+          {
+            "description": "Entity ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns entity fields and relationships array",
+            "schema": {
+              "$ref": "#/definitions/handlers.EntityDetailsResponse"
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get an entity",
+        "tags": [
+          "Entities"
+        ]
+      },
+      "put": {
+        "consumes": [
+          "application/json"
+        ],
+        "description": "Update an entity's name or description.",
+        "parameters": [
+          {
+            "description": "Entity ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "Fields to update",
+            "in": "body",
+            "name": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/handlers.updateEntityRequest"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns status: updated",
+            "schema": {
+              "$ref": "#/definitions/handlers.StatusResponse"
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Update an entity",
+        "tags": [
+          "Entities"
+        ]
+      }
+    },
+    "/v1/entities/{id}/feedback": {
+      "put": {
+        "consumes": [
+          "application/json"
+        ],
+        "description": "Provide feedback on entity quality. userScore is a float 0-1 representing confidence. confirmed=true marks the entity as human-verified.",
+        "parameters": [
+          {
+            "description": "Entity ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "Score and/or confirmation",
+            "in": "body",
+            "name": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/handlers.entityFeedbackRequest"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns id, updated: true",
+            "schema": {
+              "$ref": "#/definitions/handlers.UpdateSchemaResponse"
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Score an entity",
+        "tags": [
+          "Entities"
+        ]
+      }
+    },
+    "/v1/entities/{id}/history": {
+      "get": {
+        "description": "Get cross-conversation history — all messages that mention this entity, across all conversations in the workspace.",
+        "parameters": [
+          {
+            "description": "Entity ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns entityId and mentions array",
+            "schema": {
+              "$ref": "#/definitions/handlers.EntityProvenanceResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get entity history",
+        "tags": [
+          "Entities"
+        ]
+      }
+    },
+    "/v1/entities/{id}/merge": {
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "description": "Merge the source entity into a target entity. All relationships are transferred to the target. A SAME_AS relationship is created for provenance. The source entity is not deleted but becomes inert.",
+        "parameters": [
+          {
+            "description": "Source entity ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "Target entity ID to merge into",
+            "in": "body",
+            "name": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/handlers.mergeEntitiesRequest"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns status: merged, sourceId, targetId",
+            "schema": {
+              "$ref": "#/definitions/handlers.MergeEntitiesResponse"
+            }
+          },
+          "400": {
+            "description": "Missing targetId",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Merge entities",
+        "tags": [
+          "Entities"
+        ]
+      }
+    },
+    "/v1/query": {
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "description": "Execute a read-only Cypher query directly against the tenant's graph database. Returns columns, rows, and query stats. Only read operations are permitted — write queries are rejected.",
+        "parameters": [
+          {
+            "description": "Cypher query string and optional params map",
+            "in": "body",
+            "name": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/handlers.queryRequest"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns columns, rows, stats",
+            "schema": {
+              "$ref": "#/definitions/handlers.QueryResponse"
+            }
+          },
+          "400": {
+            "description": "Invalid query or write operation attempted",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Execute a Cypher query",
+        "tags": [
+          "Query"
+        ]
+      }
+    },
+    "/v1/reasoning/explain/{stepId}": {
+      "get": {
+        "description": "Get a detailed explanation of a reasoning step including its tool calls and the entities it influenced.",
+        "parameters": [
+          {
+            "description": "Step ID",
+            "in": "path",
+            "name": "stepId",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns step details, toolCalls, and influencedEntities",
+            "schema": {
+              "$ref": "#/definitions/handlers.ReasoningStepDetailsResponse"
+            }
+          },
+          "404": {
+            "description": "Step not found",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Explain a reasoning step",
+        "tags": [
+          "Reasoning"
+        ]
+      }
+    },
+    "/v1/reasoning/provenance/{entityId}": {
+      "get": {
+        "description": "Get the reasoning chain that influenced the creation of an entity — which steps and tool calls contributed to it.",
+        "parameters": [
+          {
+            "description": "Entity ID",
+            "in": "path",
+            "name": "entityId",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns entityId and provenance chain",
+            "schema": {
+              "$ref": "#/definitions/handlers.EntityReasoningProvenanceResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get entity provenance",
+        "tags": [
+          "Reasoning"
+        ]
+      }
+    },
+    "/v1/reasoning/steps": {
+      "get": {
+        "description": "List reasoning steps for a conversation. The conversation_id query parameter is required.",
+        "parameters": [
+          {
+            "description": "Conversation ID",
+            "in": "query",
+            "name": "conversation_id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns steps array",
+            "schema": {
+              "$ref": "#/definitions/handlers.ReasoningStepsResponse"
+            }
+          },
+          "400": {
+            "description": "Missing conversation_id",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List reasoning steps",
+        "tags": [
+          "Reasoning"
+        ]
+      },
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "description": "Record a reasoning step taken by an agent. Captures the agent's thought process (reasoning), the action it decided to take (actionTaken), and optionally the result.",
+        "parameters": [
+          {
+            "description": "Step details",
+            "in": "body",
+            "name": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/handlers.recordStepRequest"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "201": {
+            "description": "Returns id, conversationId, reasoning, actionTaken, result",
+            "schema": {
+              "$ref": "#/definitions/handlers.RecordReasoningStepResponse"
+            }
+          },
+          "400": {
+            "description": "Missing required fields",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Record a reasoning step",
+        "tags": [
+          "Reasoning"
+        ]
+      }
+    },
+    "/v1/reasoning/tool-calls": {
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "description": "Record a tool invocation made by an agent during a reasoning step. Optionally link to a step via stepId. Status values: \"success\", \"error\", \"timeout\".",
+        "parameters": [
+          {
+            "description": "Tool call details",
+            "in": "body",
+            "name": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/handlers.recordToolCallRequest"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "201": {
+            "description": "Returns id, stepId, toolName, status",
+            "schema": {
+              "$ref": "#/definitions/handlers.RecordToolCallResponse"
+            }
+          },
+          "400": {
+            "description": "Missing required fields",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Record a tool call",
+        "tags": [
+          "Reasoning"
+        ]
+      }
+    },
+    "/v1/reasoning/trace/{conversationId}": {
+      "get": {
+        "description": "Get the full reasoning trace for a conversation — all steps and their tool calls, in order.",
+        "parameters": [
+          {
+            "description": "Conversation ID",
+            "in": "path",
+            "name": "conversationId",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns conversationId, steps with nested toolCalls",
+            "schema": {
+              "$ref": "#/definitions/handlers.ConversationReasoningResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get reasoning trace",
+        "tags": [
+          "Reasoning"
+        ]
+      }
+    }
+  },
+  "securityDefinitions": {
+    "BearerAuth": {
+      "description": "API key (nams_...) used directly as Bearer token, or JWT from Auth0 exchange",
+      "in": "header",
+      "name": "Authorization",
+      "type": "apiKey"
+    }
+  },
+  "swagger": "2.0",
+  "tags": [
+    {
+      "description": "Short-term memory: create conversation sessions and add messages. Entity extraction runs automatically after each message.",
+      "name": "Conversations"
+    },
+    {
+      "description": "Read and search messages within a conversation.",
+      "name": "Messages"
+    },
+    {
+      "description": "Auto-generated compressed summaries of conversation message windows.",
+      "name": "Observations"
+    },
+    {
+      "description": "Long-term memory: knowledge graph entities (people, orgs, locations, concepts, tools).",
+      "name": "Entities"
+    },
+    {
+      "description": "Reasoning memory: record and retrieve agent steps, tool calls, and decision traces.",
+      "name": "Reasoning"
+    },
+    {
+      "description": "Execute read-only Cypher queries directly against the tenant graph.",
+      "name": "Query"
+    },
+    {
+      "description": "Health and status endpoints.",
+      "name": "System"
+    },
+    {
+      "description": "Authentication — token exchange and API key management.",
+      "name": "Auth"
+    }
+  ]
+}
