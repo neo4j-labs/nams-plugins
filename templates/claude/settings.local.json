@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "nams-hooks run claude"
+            "command": "nams-hooks run claude --event SessionStart"
           }
         ]
       }

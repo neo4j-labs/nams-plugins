@@ -101,15 +101,17 @@ The released CLI exposes `nams-hooks` through `package.json#bin`:
 }
 ```
 
-The CLI entry point supports:
+The CLI entry point supports typed hook event dispatch:
 
 ```bash
-nams-hooks run gemini
-nams-hooks run claude
-nams-hooks run codex
+nams-hooks run gemini --event SessionStart
+nams-hooks run claude --event SessionStart
+nams-hooks run codex --event SessionStart
 nams-hooks install --harness claude,codex
 nams-hooks doctor
 ```
+
+`dist/cli.js` is a gateway. It reads stdin as opaque JSON and does not interpret platform-specific fields. It validates the typed `--event`, resolves the platform adapter from a static registry, and dispatches to the interface method for that event. Platform adapters own JSON interpretation for Gemini, Claude, and Codex.
 
 Hook runtime modules import the compiled generated client:
 
@@ -159,7 +161,7 @@ gemini extensions install https://github.com/neo4j-labs/nams-hooks --ref v0.1.0
     "BeforeAgent": [
       {
         "command": "node",
-        "args": ["${extensionPath}/dist/cli.js", "run", "gemini"]
+        "args": ["${extensionPath}/dist/cli.js", "run", "gemini", "--event", "SessionStart"]
       }
     ]
   }
@@ -270,7 +272,7 @@ Rules:
 The prior hook design remains valid with these updates:
 
 - The runtime entry point becomes `dist/cli.js` in release artifacts.
-- Installed project hook configs call `nams-hooks run <harness>` or the extension-local `dist/cli.js`.
+- Installed project hook configs call `nams-hooks run <harness> --event <typed-event>` or the extension-local `dist/cli.js`.
 - `.nams/runtime/` is no longer required for package installs.
 - `.nams/.env`, `.nams/state/`, and `.nams/logs/` remain project-local runtime data.
 - NAMS REST calls go through the generated client instead of handwritten fetch helpers.

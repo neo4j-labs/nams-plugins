@@ -1,83 +1,53 @@
 #!/usr/bin/env node
 
-import { mkdir, appendFile } from "node:fs/promises";
-import path from "node:path";
 import process from "node:process";
+import { isHookEvent, isPlatform, type HookEvent, type Platform } from "./interfaces.js";
+import { getPlatformAdapter } from "./platforms/index.js";
+import { readJsonPayload } from "./runtime/stdin.js";
 
-type Harness = "gemini" | "claude" | "codex";
-
-const harnesses = new Set<Harness>(["gemini", "claude", "codex"]);
+interface RunArgs {
+  platform: Platform;
+  event: HookEvent;
+}
 
 async function main(argv: string[]): Promise<number> {
-  const [command, harnessArg] = argv;
-  if (command !== "run" || !isHarness(harnessArg)) {
-    process.stderr.write("Usage: nams-hooks run <gemini|claude|codex>\n");
+  const args = parseRunArgs(argv);
+  if (args === null) {
+    process.stderr.write("Usage: nams-hooks run <gemini|claude|codex> --event <SessionStart>\n");
     return 1;
   }
 
-  const payload = await readJsonPayload();
-  await logSessionStart(harnessArg, payload);
-  process.stdout.write(`${JSON.stringify({ continue: true, suppressOutput: true })}\n`);
+  const rawPayload = await readJsonPayload();
+  const adapter = getPlatformAdapter(args.platform);
+  const result = await routeEvent(adapter, {
+    platform: args.platform,
+    event: args.event,
+    rawPayload,
+    processCwd: process.cwd(),
+  });
+  process.stdout.write(`${JSON.stringify(result.stdout)}\n`);
   return 0;
 }
 
-function isHarness(value: string | undefined): value is Harness {
-  return value !== undefined && harnesses.has(value as Harness);
-}
-
-async function readJsonPayload(): Promise<Record<string, unknown>> {
-  const input = await readStdin();
-  if (input.trim() === "") {
-    return {};
+function parseRunArgs(argv: string[]): RunArgs | null {
+  const [command, platformArg, eventFlag, eventArg] = argv;
+  if (command !== "run" || eventFlag !== "--event") {
+    return null;
   }
-
-  const parsed: unknown = JSON.parse(input);
-  if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
-    return parsed as Record<string, unknown>;
+  if (!isPlatform(platformArg) || !isHookEvent(eventArg)) {
+    return null;
   }
-
-  throw new Error("hook payload must be a JSON object");
+  return { platform: platformArg, event: eventArg };
 }
 
-async function readStdin(): Promise<string> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of process.stdin) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+async function routeEvent(
+  adapter: ReturnType<typeof getPlatformAdapter>,
+  invocation: Parameters<typeof adapter.startConversation>[0],
+) {
+  switch (invocation.event) {
+    case "SessionStart":
+      return adapter.startConversation(invocation);
   }
-  return Buffer.concat(chunks).toString("utf8");
-}
-
-async function logSessionStart(harness: Harness, payload: Record<string, unknown>): Promise<void> {
-  const event = getEventName(payload);
-  const cwd = getProjectDirectory(payload);
-  const logDir = path.join(cwd, ".nams", "logs");
-  const logPath = path.join(logDir, `${harness}-${toKebabCase(event)}.jsonl`);
-  const entry = {
-    timestamp: new Date().toISOString(),
-    harness,
-    event,
-    payload,
-  };
-
-  await mkdir(logDir, { recursive: true });
-  await appendFile(logPath, `${JSON.stringify(entry)}\n`, "utf8");
-}
-
-function getEventName(payload: Record<string, unknown>): string {
-  const value = payload.hook_event_name ?? payload.hookEventName ?? payload.event;
-  return typeof value === "string" && value.trim() !== "" ? value : "SessionStart";
-}
-
-function getProjectDirectory(payload: Record<string, unknown>): string {
-  return typeof payload.cwd === "string" && payload.cwd.trim() !== "" ? payload.cwd : process.cwd();
-}
-
-function toKebabCase(value: string): string {
-  return value
-    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
-    .replace(/[^a-zA-Z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .toLowerCase();
 }
 
 main(process.argv.slice(2))

@@ -43,15 +43,15 @@ The hook runner owns deterministic memory persistence. Agents receive recalled c
 
 Use a single shared Node.js runtime with thin per-harness project hook configurations.
 
-Generated hook configs call the same entry point:
+Generated hook configs call the same entry point and declare the hook event explicitly:
 
 ```bash
-node .nams/runtime/nams-hooks.mjs claude
-node .nams/runtime/nams-hooks.mjs codex
-node .nams/runtime/nams-hooks.mjs gemini
+node .nams/runtime/nams-hooks.mjs run claude --event SessionStart
+node .nams/runtime/nams-hooks.mjs run codex --event SessionStart
+node .nams/runtime/nams-hooks.mjs run gemini --event SessionStart
 ```
 
-The runtime reads hook JSON from `stdin`, detects the event from the payload when possible, and routes internally. Harness configuration should stay small and declarative.
+The CLI entry point is a gateway. It parses the platform and typed event from arguments, reads hook JSON from `stdin` as an opaque object, resolves a platform adapter through a static registry, and calls the interface method for that event. The CLI must not interpret platform-specific payload fields such as session IDs, transcript paths, or event-name property variants. Those subtleties belong inside the platform adapter implementations.
 
 This approach avoids per-harness logic drift while still respecting each platform's hook event names and JSON shapes.
 
@@ -61,6 +61,17 @@ This approach avoids per-harness logic drift while still respecting each platfor
 nams-hooks/
   bin/
     nams-hooks.mjs
+  src/
+    cli.ts
+    interfaces.ts
+    runtime/
+      stdin.ts
+      logging.ts
+    platforms/
+      index.ts
+      gemini.ts
+      claude.ts
+      codex.ts
   install.mjs
   templates/
     claude/
@@ -185,7 +196,10 @@ Entity persistence:
 Session start:
 
 - Load config.
-- Initialize local state if a stable session key is available.
+- CLI receives a typed `SessionStart` event from `--event SessionStart`.
+- CLI reads raw hook JSON without interpreting platform-specific fields.
+- CLI dispatches to `adapter.startConversation(invocation)` through the static platform registry.
+- The platform adapter initializes local state if a stable session key is available.
 - Optionally create the NAMS conversation early if configured.
 - Return harness-specific empty or context-safe JSON.
 
@@ -221,7 +235,7 @@ Claude Code:
 
 - Strong v1 support because hook inputs include `session_id`, `transcript_path`, `cwd`, and event-specific fields.
 - Use project-level `.claude/settings.local.json` by default so generated local commands and secrets do not need to be committed.
-- Use `UserPromptSubmit`, `PostToolUse`, and `Stop`.
+- Use `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `Stop`.
 
 Gemini CLI:
 
@@ -312,6 +326,32 @@ Fixture tests:
 - Claude: `SessionStart`, `UserPromptSubmit`, `PostToolUse`, `Stop`
 - Gemini: `SessionStart`, `BeforeAgent`, `AfterTool`, `AfterAgent`
 - Codex: `SessionStart`, `UserPromptSubmit`, `Stop`; tool hooks only when supported by the installed version
+
+## Gateway Interfaces
+
+The first shared interface is `startConversation`, driven by a typed hook event:
+
+```ts
+export const hookEvents = ["SessionStart"] as const;
+export type HookEvent = (typeof hookEvents)[number];
+
+export interface HookInvocation<E extends HookEvent = HookEvent> {
+  platform: Platform;
+  event: E;
+  rawPayload: Record<string, unknown>;
+  processCwd: string;
+}
+
+export interface HookResult {
+  stdout: Record<string, unknown>;
+}
+
+export interface PlatformAdapter {
+  startConversation(invocation: HookInvocation<"SessionStart">): Promise<HookResult>;
+}
+```
+
+The CLI validates `--event` against `hookEvents`, routes `SessionStart` to `startConversation`, and prints the returned `stdout`. As additional hook events are added, `hookEvents` and `PlatformAdapter` grow deliberately so TypeScript forces routing and adapter coverage.
 
 Installer tests:
 

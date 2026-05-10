@@ -11,6 +11,30 @@ const cliPath = path.join(repoRoot, "dist", "cli.js");
 
 function runCli(harness, payload, cwd) {
   return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [cliPath, "run", harness, "--event", "SessionStart"], {
+      cwd,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      resolve({ code, stdout, stderr });
+    });
+    child.stdin.end(`${JSON.stringify(payload)}\n`);
+  });
+}
+
+function runCliWithoutEvent(harness, payload, cwd) {
+  return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [cliPath, "run", harness], {
       cwd,
       stdio: ["pipe", "pipe", "pipe"],
@@ -60,3 +84,11 @@ for (const harness of ["gemini", "claude", "codex"]) {
     assert.deepEqual(entry.payload, payload);
   });
 }
+
+test("requires explicit typed hook event", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-hooks-"));
+  const result = await runCliWithoutEvent("gemini", { cwd: projectDir }, projectDir);
+
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /--event <SessionStart>/);
+});

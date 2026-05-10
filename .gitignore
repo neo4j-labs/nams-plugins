@@ -2,4 +2,3 @@ node_modules/
 .nams/
 *.log
 *.tsbuildinfo
-dist/
