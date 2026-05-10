@@ -81,6 +81,7 @@ gemini-extension.json
 hooks/
   hooks.json
 dist/
+bin/
   cli.js
   hook-runtime/
   generated/
@@ -100,7 +101,7 @@ The released CLI exposes `nams-hooks` through `package.json#bin`:
 ```json
 {
   "bin": {
-    "nams-hooks": "./dist/cli.js"
+    "nams-hooks": "./bin/cli.js"
   }
 }
 ```
@@ -115,7 +116,7 @@ nams-hooks install --harness claude,codex
 nams-hooks doctor
 ```
 
-`dist/cli.js` is a gateway. It reads stdin as opaque JSON and does not interpret platform-specific fields. It validates the typed `--event`, resolves the platform adapter from a static registry, and dispatches to the interface method for that event. Platform adapters own JSON interpretation for Gemini, Claude, and Codex.
+The compiled CLI is a gateway. It reads stdin as opaque JSON and does not interpret platform-specific fields. It validates the typed `--event`, resolves the platform adapter from a static registry, and dispatches to the interface method for that event. Platform adapters own JSON interpretation for Gemini, Claude, and Codex.
 
 Hook runtime modules import the compiled generated client:
 
@@ -165,7 +166,7 @@ gemini extensions install https://github.com/neo4j-labs/nams-hooks --ref v0.1.0
     "BeforeAgent": [
       {
         "command": "node",
-        "args": ["${extensionPath}/dist/cli.js", "run", "gemini", "--event", "SessionStart"]
+        "args": ["${extensionPath}/bin/cli.js", "run", "gemini", "--event", "SessionStart"]
       }
     ]
   }
@@ -202,7 +203,7 @@ Build targets:
 - `openapi:fetch`: fetch `https://memory.neo4jlabs.com/openapi.json` and write `docs/nams-openapi.json`
 - `openapi:generate`: read `docs/nams-openapi.json` and write `src/generated/nams-client.ts`
 - `build`: compile TypeScript to `.build/tsc` for local tests
-- `dist`: create a clean Gemini-linkable extension tree in `dist/`; compiled runtime lives under `dist/dist/`, and Gemini root files live at `dist/gemini-extension.json` and `dist/hooks/hooks.json`
+- `dist`: create a clean Gemini-linkable extension tree in `dist/`; compiled runtime lives under `dist/bin/`, and Gemini root files live at `dist/gemini-extension.json` and `dist/hooks/hooks.json`
 - `test:contract`: run contract tests against generated code and the pinned spec
 - `package:check`: run generation, fail on stale generated output, build, and test
 - `release:prepare`: create a release tree for `master`
@@ -280,8 +281,8 @@ Rules:
 
 The prior hook design remains valid with these updates:
 
-- The runtime entry point becomes `dist/cli.js` in release artifacts.
-- Installed project hook configs call `nams-hooks run <harness> --event <typed-event>` or the extension-local `dist/cli.js`.
+- The runtime entry point becomes `bin/cli.js` in release artifacts.
+- Installed project hook configs call `nams-hooks run <harness> --event <typed-event>` or the extension-local `bin/cli.js`.
 - `.nams/runtime/` is no longer required for package installs.
 - `.nams/.env`, `.nams/state/`, and `.nams/logs/` remain project-local runtime data.
 - NAMS REST calls go through the generated client instead of handwritten fetch helpers.

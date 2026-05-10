@@ -12,7 +12,7 @@ async function main() {
   await rm(distDir, { recursive: true, force: true });
   await mkdir(distDir, { recursive: true });
 
-  await cp(path.join(compileDir), path.join(distDir, "dist"), { recursive: true });
+  await cp(path.join(compileDir), path.join(distDir, "bin"), { recursive: true });
   await cp(path.join(root, "templates", "gemini", "gemini-extension.json"), path.join(distDir, "gemini-extension.json"));
   await cp(path.join(root, "templates", "gemini", "hooks"), path.join(distDir, "hooks"), { recursive: true });
   await cp(path.join(root, "docs", "nams-openapi.json"), path.join(distDir, "docs", "nams-openapi.json"));
@@ -26,7 +26,9 @@ async function writeReleasePackageJson() {
     version: source.version,
     description: source.description,
     type: source.type,
-    bin: source.bin,
+    bin: {
+      "nams-hooks": "./bin/cli.js",
+    },
     engines: source.engines,
     license: source.license,
   };
