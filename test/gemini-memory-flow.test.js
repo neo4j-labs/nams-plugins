@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -171,6 +171,243 @@ test("allows Gemini BeforeAgent when NAMS returns an error", async () => {
     });
 
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("stores Gemini AfterAgent prompt_response as an assistant message", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
+  try {
+    const requests = [];
+    const mockFetch = async (url, init) => {
+      requests.push({ url, init });
+      if (url === "https://memory.example.test/v1/conversations") {
+        return jsonResponse({ id: "conversation-1" }, 201);
+      }
+      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
+        return jsonResponse({});
+      }
+      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
+        return jsonResponse({ id: "message-1" }, 201);
+      }
+      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
+    };
+
+    const { GeminiAdapter } = await import(geminiUrl);
+    const adapter = new GeminiAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: mockFetch,
+    });
+
+    await adapter.beforeAgent({
+      platform: "gemini",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "Say hello.",
+      },
+    });
+
+    const result = await adapter.afterAgent({
+      platform: "gemini",
+      event: "AfterAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt_response: "Hello!",
+      },
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    const messageRequests = requests.filter(
+      (request) =>
+        request.init.method === "POST" &&
+        request.url === "https://memory.example.test/v1/conversations/conversation-1/messages",
+    );
+    assert.deepEqual(JSON.parse(messageRequests.at(-1).init.body), {
+      role: "assistant",
+      content: "Hello!",
+    });
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("stores Gemini AfterAgent assistant message from transcript when prompt_response is missing", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
+  try {
+    const transcriptPath = path.join(projectDir, "gemini-transcript.jsonl");
+    await writeFile(
+      transcriptPath,
+      [
+        JSON.stringify({ sessionId: "session-1" }),
+        JSON.stringify({ id: "assistant-1", type: "gemini", content: "Fallback response" }),
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const requests = [];
+    const mockFetch = async (url, init) => {
+      requests.push({ url, init });
+      if (url === "https://memory.example.test/v1/conversations") {
+        return jsonResponse({ id: "conversation-1" }, 201);
+      }
+      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
+        return jsonResponse({});
+      }
+      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
+        return jsonResponse({ id: "message-1" }, 201);
+      }
+      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
+    };
+
+    const { GeminiAdapter } = await import(geminiUrl);
+    const adapter = new GeminiAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: mockFetch,
+    });
+
+    await adapter.beforeAgent({
+      platform: "gemini",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "Use transcript fallback.",
+      },
+    });
+
+    const result = await adapter.afterAgent({
+      platform: "gemini",
+      event: "AfterAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        transcript_path: transcriptPath,
+      },
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    const messageRequests = requests.filter(
+      (request) =>
+        request.init.method === "POST" &&
+        request.url === "https://memory.example.test/v1/conversations/conversation-1/messages",
+    );
+    assert.deepEqual(JSON.parse(messageRequests.at(-1).init.body), {
+      role: "assistant",
+      content: "Fallback response",
+    });
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("does not duplicate prompt_response assistant messages during later transcript fallback", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
+  try {
+    const transcriptPath = path.join(projectDir, "gemini-transcript.jsonl");
+    await writeFile(
+      transcriptPath,
+      [
+        JSON.stringify({ sessionId: "session-1" }),
+        JSON.stringify({ id: "assistant-a", type: "gemini", content: "A" }),
+        JSON.stringify({ id: "assistant-b", type: "gemini", content: "B" }),
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const requests = [];
+    const mockFetch = async (url, init) => {
+      requests.push({ url, init });
+      if (url === "https://memory.example.test/v1/conversations") {
+        return jsonResponse({ id: "conversation-1" }, 201);
+      }
+      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
+        return jsonResponse({});
+      }
+      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
+        return jsonResponse({ id: "message-1" }, 201);
+      }
+      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
+    };
+
+    const { GeminiAdapter } = await import(geminiUrl);
+    const adapter = new GeminiAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: mockFetch,
+    });
+
+    await adapter.beforeAgent({
+      platform: "gemini",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "Create a conversation.",
+      },
+    });
+    await adapter.afterAgent({
+      platform: "gemini",
+      event: "AfterAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt_response: "A",
+      },
+    });
+    await adapter.afterAgent({
+      platform: "gemini",
+      event: "AfterAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt_response: "B",
+      },
+    });
+
+    await adapter.afterAgent({
+      platform: "gemini",
+      event: "AfterAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        transcript_path: transcriptPath,
+      },
+    });
+
+    const assistantMessageBodies = requests
+      .filter(
+        (request) =>
+          request.init.method === "POST" &&
+          request.url === "https://memory.example.test/v1/conversations/conversation-1/messages",
+      )
+      .map((request) => JSON.parse(request.init.body))
+      .filter((body) => body.role === "assistant");
+    assert.deepEqual(assistantMessageBodies, [
+      { role: "assistant", content: "A" },
+      { role: "assistant", content: "B" },
+    ]);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }

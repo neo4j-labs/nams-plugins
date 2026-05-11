@@ -13,6 +13,7 @@ export interface SessionState {
   lastMemorySearchAt?: string;
   lastUserMessageHash?: string;
   lastAssistantMessageHash?: string;
+  seenAssistantMessageHashes: string[];
   seenTranscriptEntryIds: string[];
   seenReasoningStepHashes: string[];
   seenToolCallIds: string[];
@@ -65,6 +66,7 @@ export function createInitialSessionState(input: ResolveSessionKeyInput, now = n
     sessionKey,
     projectDirectory: input.projectDirectory,
     createdAt: now.toISOString(),
+    seenAssistantMessageHashes: [],
     seenTranscriptEntryIds: [],
     seenReasoningStepHashes: [],
     seenToolCallIds: [],
