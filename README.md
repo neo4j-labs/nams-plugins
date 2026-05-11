@@ -68,6 +68,16 @@ npm run dist
 gemini extensions link ./dist
 ```
 
+### Runtime Logs
+
+Gemini writes local JSONL diagnostics under the project `.nams/logs/` directory. Events for one Gemini session are kept in a single file named like:
+
+```text
+.nams/logs/session-2026-05-11T15-40-1b11dfee.jsonl
+```
+
+User prompt fields are kept in these logs for debugging. Secrets, headers, tokens, request/response bodies, assistant responses, and tool outputs remain redacted.
+
 ## Development
 
 `nams-hooks` follows a strict "no runtime dependencies" rule. All platform-specific logic should be contained within its respective adapter in `src/platforms/`.

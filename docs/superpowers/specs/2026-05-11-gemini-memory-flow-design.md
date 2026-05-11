@@ -144,6 +144,18 @@ State shape:
 
 `conversationId` is absent until the first `BeforeAgent` prompt creates the NAMS conversation.
 
+### Session Logging
+
+Gemini observability logs are session-scoped. All hook events and diagnostics for the same Gemini session append to one JSONL file:
+
+```text
+.nams/logs/session-2026-05-11T15-40-1b11dfee.jsonl
+```
+
+The timestamp segment comes from local session state `createdAt`, so later hooks reuse the same log file. The suffix is a short stable session-key part; cwd fallback sessions use a short hash rather than a long project path. If a platform cannot resolve session metadata, logging may fall back to the older event-scoped filename, but Gemini should use session-scoped logs whenever it has local state.
+
+Platform logs preserve user prompt fields (`prompt`, `user_prompt`, `userPrompt`) to support local debugging. Redaction remains active for API keys, authorization headers, tokens, passwords, request/response bodies, assistant responses, tool outputs/results, and generic content fields. Diagnostic logs must not include raw exception text from failed NAMS calls.
+
 ### NAMS Memory Service
 
 The memory service is a thin wrapper around `NamsClient`. It should expose hook-safe operations:

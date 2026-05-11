@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -80,7 +80,10 @@ for (const harness of ["gemini", "claude", "codex"]) {
         suppressOutput: true,
       });
 
-      const logPath = path.join(projectDir, ".nams", "logs", `${harness}-session-start.jsonl`);
+      const logPath =
+        harness === "gemini"
+          ? await singleSessionLogPath(projectDir)
+          : path.join(projectDir, ".nams", "logs", `${harness}-session-start.jsonl`);
       const lines = (await readFile(logPath, "utf8")).trim().split("\n");
       assert.equal(lines.length, 1);
       const entry = JSON.parse(lines[0]);
@@ -116,7 +119,7 @@ test("writes fallback logs under child process cwd when payload omits cwd", asyn
     const result = await runCli("gemini", payload, projectDir);
 
     assert.equal(result.code, 0, result.stderr);
-    const logPath = path.join(projectDir, ".nams", "logs", "gemini-session-start.jsonl");
+    const logPath = await singleSessionLogPath(projectDir);
     const entry = JSON.parse((await readFile(logPath, "utf8")).trim());
     assert.deepEqual(entry.payload, payload);
   } finally {
@@ -142,4 +145,11 @@ for (const event of ["BeforeAgent", "AfterAgent", "AfterTool"]) {
       await rm(projectDir, { recursive: true, force: true });
     }
   });
+}
+
+async function singleSessionLogPath(projectDir) {
+  const logDir = path.join(projectDir, ".nams", "logs");
+  const logFiles = (await readdir(logDir)).filter((fileName) => /^session-.*\.jsonl$/.test(fileName));
+  assert.equal(logFiles.length, 1, `expected one session log file, got ${logFiles.join(", ")}`);
+  return path.join(logDir, logFiles[0]);
 }
