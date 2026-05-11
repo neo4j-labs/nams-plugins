@@ -29,7 +29,7 @@ export class GeminiAdapter implements PlatformAdapter {
       projectDirectory: payloadInfo.projectDirectory,
     });
     const state = (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
-    await appendSanitizedPlatformLog(invocation, payloadInfo.projectDirectory, state);
+    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
     await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
 
     return { stdout: { continue: true, suppressOutput: true } };
@@ -44,7 +44,7 @@ export class GeminiAdapter implements PlatformAdapter {
     });
     const state =
       (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
-    await appendSanitizedPlatformLog(invocation, payloadInfo.projectDirectory, state);
+    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
 
     if (payloadInfo.prompt === undefined) {
       await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
@@ -107,7 +107,7 @@ export class GeminiAdapter implements PlatformAdapter {
     });
     const state =
       (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
-    await appendSanitizedPlatformLog(invocation, payloadInfo.projectDirectory, state);
+    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
     state.seenAssistantMessageHashes ??= [];
     state.seenTranscriptEntryIds ??= [];
     state.seenReasoningStepHashes ??= [];
@@ -164,7 +164,7 @@ export class GeminiAdapter implements PlatformAdapter {
     });
     const state =
       (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
-    await appendSanitizedPlatformLog(invocation, payloadInfo.projectDirectory, state);
+    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
     state.seenToolCallIds ??= [];
 
     if (state.conversationId === undefined) {
@@ -348,7 +348,7 @@ async function appendNamsRequestLog(
   });
 }
 
-async function appendSanitizedPlatformLog(
+async function appendRawPlatformLog(
   invocation: HookInvocation,
   projectDirectory: string,
   state: SessionState,
@@ -358,7 +358,7 @@ async function appendSanitizedPlatformLog(
       platform: invocation.platform,
       event: invocation.event,
       kind: "hook.event",
-      payload: sanitizeGeminiLogPayload(invocation.rawPayload),
+      payload: invocation.rawPayload,
       projectDirectory,
       sessionCreatedAt: state.createdAt,
       sessionKey: state.sessionKey,
@@ -366,74 +366,6 @@ async function appendSanitizedPlatformLog(
   } catch {
     // Gemini hooks must not fail because observability writes failed.
   }
-}
-
-const geminiSensitiveLogFieldNames = new Set([
-  "authorization",
-  "content",
-  "functionresponse",
-  "headers",
-  "output",
-  "promptresponse",
-  "response",
-  "result",
-  "resultdisplay",
-  "tooloutput",
-]);
-
-const geminiVisiblePromptFieldNames = new Set(["prompt", "userprompt"]);
-
-function sanitizeGeminiLogPayload(payload: Record<string, unknown>): Record<string, unknown> {
-  const sanitized = redactGeminiSensitiveLogFields(payload);
-  return sanitized !== null && typeof sanitized === "object" && !Array.isArray(sanitized)
-    ? (sanitized as Record<string, unknown>)
-    : {};
-}
-
-function redactGeminiSensitiveLogFields(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(redactGeminiSensitiveLogFields);
-  }
-  if (value === null || typeof value !== "object") {
-    return value;
-  }
-
-  const sanitized: Record<string, unknown> = {};
-  for (const [key, nestedValue] of Object.entries(value)) {
-    if (isSensitiveGeminiLogField(key)) {
-      sanitized[key] = "[redacted]";
-      continue;
-    }
-    sanitized[key] = redactGeminiSensitiveLogFields(nestedValue);
-  }
-  return sanitized;
-}
-
-function isSensitiveGeminiLogField(value: string): boolean {
-  const normalized = normalizeGeminiLogFieldName(value);
-  if (geminiVisiblePromptFieldNames.has(normalized)) {
-    return false;
-  }
-  return (
-    geminiSensitiveLogFieldNames.has(normalized) ||
-    normalized.includes("apikey") ||
-    normalized.includes("authorization") ||
-    normalized.includes("body") ||
-    normalized.includes("content") ||
-    normalized.includes("functionresponse") ||
-    normalized.includes("header") ||
-    normalized.includes("output") ||
-    normalized.includes("password") ||
-    normalized.includes("response") ||
-    normalized.includes("result") ||
-    normalized.includes("resultdisplay") ||
-    normalized.includes("secret") ||
-    normalized.includes("token")
-  );
-}
-
-function normalizeGeminiLogFieldName(value: string): string {
-  return value.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
 }
 
 async function appendGeminiDiagnosticLog(entry: {

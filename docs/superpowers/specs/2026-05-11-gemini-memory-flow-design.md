@@ -163,7 +163,7 @@ Every JSONL record includes a `kind`. Raw hook payload observations use `kind: "
 - `ok`: boolean request outcome
 - `durationMs`: elapsed request time in milliseconds
 
-Platform logs preserve user prompt fields (`prompt`, `user_prompt`, `userPrompt`) to support local debugging. Redaction remains active for API keys, authorization headers, tokens, passwords, request/response bodies, assistant responses, tool outputs/results, and generic content fields. NAMS request logs must not include headers, request bodies, response bodies, full concrete URLs, or raw exception text.
+Hook payload logs preserve the raw platform payload to support local debugging. NAMS request logs remain shape-limited and must not include headers, request bodies, response bodies, full concrete URLs, or raw exception text.
 
 ### NAMS Memory Service
 
@@ -287,7 +287,7 @@ Hooks are non-blocking by default.
 
 If `NAMS_API_KEY` is missing:
 
-- log a sanitized diagnostic under `.nams/logs/`
+- log a fixed diagnostic under `.nams/logs/`
 - return normal allow output
 - do not print secrets or raw config values
 

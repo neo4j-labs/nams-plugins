@@ -446,7 +446,7 @@ test("Gemini session log keeps hook events together and includes user prompt fie
   }
 });
 
-test("Gemini AfterAgent platform log redacts raw assistant response fields", async () => {
+test("Gemini AfterAgent platform log keeps raw assistant response fields", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
     const { GeminiAdapter } = await import(geminiUrl);
@@ -469,20 +469,16 @@ test("Gemini AfterAgent platform log redacts raw assistant response fields", asy
     const { log } = await readSingleSessionLog(projectDir);
     assert.match(log, /session-1/);
     assert.match(log, new RegExp(escapeRegExp(projectDir)));
-    assert.match(log, /"prompt_response":"\[redacted\]"/);
-    assert.match(log, /"promptResponse":"\[redacted\]"/);
-    assert.match(log, /"response":"\[redacted\]"/);
-    assert.match(log, /"content":"\[redacted\]"/);
-    assert.doesNotMatch(
-      log,
-      /raw assistant response secret|raw camel response secret|raw response secret|raw content secret/,
-    );
+    assert.match(log, /"prompt_response":"raw assistant response secret"/);
+    assert.match(log, /"promptResponse":"raw camel response secret"/);
+    assert.match(log, /"response":"raw response secret"/);
+    assert.match(log, /"content":"raw content secret"/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
 });
 
-test("Gemini AfterTool platform log redacts raw tool output fields", async () => {
+test("Gemini AfterTool platform log keeps raw tool output fields", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
     const { GeminiAdapter } = await import(geminiUrl);
@@ -514,21 +510,19 @@ test("Gemini AfterTool platform log redacts raw tool output fields", async () =>
     const { log } = await readSingleSessionLog(projectDir);
     assert.match(log, /read_file/);
     assert.match(log, /metadata/);
-    assert.match(log, /"tool_output":"\[redacted\]"/);
-    assert.match(log, /"output":"\[redacted\]"/);
-    assert.match(log, /"result":"\[redacted\]"/);
-    assert.match(log, /"resultDisplay":"\[redacted\]"/);
-    assert.match(log, /"functionResponse":"\[redacted\]"/);
-    assert.doesNotMatch(
-      log,
-      /raw tool output secret|raw output secret|raw result secret|raw display secret|raw function response secret|nested output secret|nested result secret/,
-    );
+    assert.match(log, /"tool_output":"raw tool output secret"/);
+    assert.match(log, /"output":"raw output secret"/);
+    assert.match(log, /"result":"raw result secret"/);
+    assert.match(log, /"resultDisplay":"raw display secret"/);
+    assert.match(log, /"functionResponse":\{"output":"raw function response secret"\}/);
+    assert.match(log, /"output":"nested output secret"/);
+    assert.match(log, /"result":"nested result secret"/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
 });
 
-test("Gemini platform log redacts nested secret, header, and body fields", async () => {
+test("Gemini platform log keeps nested secret, header, and body fields", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
     const { GeminiAdapter } = await import(geminiUrl);
@@ -576,33 +570,30 @@ test("Gemini platform log redacts nested secret, header, and body fields", async
     const { log } = await readSingleSessionLog(projectDir);
     assert.match(log, /session-1/);
     assert.match(log, /"prompt":"raw prompt secret"/);
-    assert.match(log, /"Authorization":"\[redacted\]"/);
-    assert.match(log, /"headers":"\[redacted\]"/);
-    assert.match(log, /"apiKey":"\[redacted\]"/);
-    assert.match(log, /"api_key":"\[redacted\]"/);
-    assert.match(log, /"secret":"\[redacted\]"/);
-    assert.match(log, /"body":"\[redacted\]"/);
-    assert.match(log, /"NAMS_API_KEY":"\[redacted\]"/);
-    assert.match(log, /"access_token":"\[redacted\]"/);
-    assert.match(log, /"refreshToken":"\[redacted\]"/);
-    assert.match(log, /"bearerToken":"\[redacted\]"/);
-    assert.match(log, /"client_secret":"\[redacted\]"/);
-    assert.match(log, /"x-api-key":"\[redacted\]"/);
-    assert.match(log, /"password":"\[redacted\]"/);
-    assert.match(log, /"request_body":"\[redacted\]"/);
-    assert.match(log, /"requestBody":"\[redacted\]"/);
-    assert.match(log, /"response_body":"\[redacted\]"/);
-    assert.match(log, /"responseBody":"\[redacted\]"/);
-    assert.match(log, /"tool_result":"\[redacted\]"/);
-    assert.match(log, /"toolResult":"\[redacted\]"/);
-    assert.match(log, /"assistant_response":"\[redacted\]"/);
-    assert.match(log, /"assistantResponse":"\[redacted\]"/);
-    assert.match(log, /"model_output":"\[redacted\]"/);
-    assert.match(log, /"tool_response":"\[redacted\]"/);
-    assert.doesNotMatch(
-      log,
-      /Bearer header secret|Bearer nested header secret|nested token secret|camel api secret|snake api secret|plain secret value|body content secret|nams api key secret|access token secret|refresh token secret|bearer token secret|client secret value|x api key secret|password secret|request body secret|camel request body secret|response body secret|camel response body secret|tool result secret|camel tool result secret|assistant response secret|camel assistant response secret|model output secret|tool response secret/,
-    );
+    assert.match(log, /"Authorization":"Bearer header secret"/);
+    assert.match(log, /"authorization":"Bearer nested header secret"/);
+    assert.match(log, /"token":"nested token secret"/);
+    assert.match(log, /"apiKey":"camel api secret"/);
+    assert.match(log, /"api_key":"snake api secret"/);
+    assert.match(log, /"secret":"plain secret value"/);
+    assert.match(log, /"body":\{"content":"body content secret"\}/);
+    assert.match(log, /"NAMS_API_KEY":"nams api key secret"/);
+    assert.match(log, /"access_token":"access token secret"/);
+    assert.match(log, /"refreshToken":"refresh token secret"/);
+    assert.match(log, /"bearerToken":"bearer token secret"/);
+    assert.match(log, /"client_secret":"client secret value"/);
+    assert.match(log, /"x-api-key":"x api key secret"/);
+    assert.match(log, /"password":"password secret"/);
+    assert.match(log, /"request_body":"request body secret"/);
+    assert.match(log, /"requestBody":"camel request body secret"/);
+    assert.match(log, /"response_body":"response body secret"/);
+    assert.match(log, /"responseBody":"camel response body secret"/);
+    assert.match(log, /"tool_result":"tool result secret"/);
+    assert.match(log, /"toolResult":"camel tool result secret"/);
+    assert.match(log, /"assistant_response":"assistant response secret"/);
+    assert.match(log, /"assistantResponse":"camel assistant response secret"/);
+    assert.match(log, /"model_output":"model output secret"/);
+    assert.match(log, /"tool_response":"tool response secret"/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }

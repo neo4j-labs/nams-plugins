@@ -41,7 +41,7 @@ The runtime must not fetch OpenAPI specs, inspect schemas, or discover endpoints
 - Keep secrets and local state under `.nams/`. Never print API keys to stdout, stderr, logs, or test output.
 - Gemini observability logs are session-scoped under `.nams/logs/session-<created-at>-<session-part>.jsonl`. Keep hook events and diagnostics for one session together.
 - All log records include `kind`. Hook payload logs use `hook.event`; NAMS REST metadata logs use `nams.request`.
-- Gemini debug logs keep user prompt fields visible, but must continue redacting secrets, headers, tokens, request/response bodies, assistant responses, tool outputs, and generic content fields.
+- Gemini hook event logs keep the raw platform payload for local debugging. Do not transform hook payload logs unless the task explicitly asks for it.
 
 ## Configuration And State
 
