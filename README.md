@@ -32,7 +32,7 @@ It ensures deterministic memory persistence and context recall across different 
 
 ### Prerequisites
 
-- Node.js (v18+)
+- Node.js (v20+)
 - A NAMS API Key
 
 ### Installation
@@ -60,6 +60,9 @@ npm test
 # Run build and tests
 npm run check
 
+# Regenerate the OpenAPI client and run OpenAPI client tests
+npm run openapi:test
+
 # Generate distribution artifacts and link for Gemini CLI
 npm run dist
 gemini extensions link ./dist
@@ -70,4 +73,3 @@ gemini extensions link ./dist
 `nams-hooks` follows a strict "no runtime dependencies" rule. All platform-specific logic should be contained within its respective adapter in `src/platforms/`.
 
 For more details on the design, see `docs/superpowers/specs/2026-05-10-nams-hooks-design.md`.
-
