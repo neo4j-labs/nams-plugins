@@ -112,7 +112,7 @@ export type GeminiTranscriptEntry =
 - Modify: `package-lock.json`
 - Create: `test/architecture.test.js`
 
-- [ ] **Step 1: Install ArchUnitTS as a dev dependency**
+- [x] **Step 1: Install ArchUnitTS as a dev dependency**
 
 Run:
 
@@ -126,7 +126,7 @@ Expected:
 - `package-lock.json` is updated.
 - No runtime dependency is added.
 
-- [ ] **Step 2: Write architecture tests**
+- [x] **Step 2: Write architecture tests**
 
 Create `test/architecture.test.js`:
 
@@ -185,7 +185,7 @@ test("only the platform registry imports all concrete adapters", async () => {
 });
 ```
 
-- [ ] **Step 3: Run architecture tests**
+- [x] **Step 3: Run architecture tests**
 
 Run:
 
@@ -198,7 +198,7 @@ Expected:
 - Passes on current architecture.
 - If ArchUnitTS does not support `check()` in this test runner version, adjust only `assertNoViolations()` to the documented framework-neutral API and keep all rule bodies unchanged.
 
-- [ ] **Step 4: Run full check**
+- [x] **Step 4: Run full check**
 
 Run:
 
@@ -211,7 +211,7 @@ Expected:
 - TypeScript build passes.
 - Existing tests plus `test/architecture.test.js` pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add package.json package-lock.json test/architecture.test.js
@@ -232,7 +232,7 @@ git commit -m "test: add architecture guards" -m "Co-authored-by: Codex <codex@o
 - Modify: `templates/gemini/hooks/hooks.json`
 - Modify: `test/cli-session-start.test.js`
 
-- [ ] **Step 1: Add failing routing tests**
+- [x] **Step 1: Add failing routing tests**
 
 Append to `test/cli-session-start.test.js`:
 
@@ -279,7 +279,7 @@ for (const event of ["BeforeAgent", "AfterAgent", "AfterTool"]) {
 }
 ```
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run:
 
@@ -291,7 +291,7 @@ Expected:
 
 - Fails because `BeforeAgent`, `AfterAgent`, and `AfterTool` are not accepted typed hook events.
 
-- [ ] **Step 3: Extend hook interfaces**
+- [x] **Step 3: Extend hook interfaces**
 
 Change `src/interfaces.ts` so the event and adapter contracts are:
 
@@ -307,7 +307,7 @@ export interface PlatformAdapter {
 }
 ```
 
-- [ ] **Step 4: Route new events through the CLI**
+- [x] **Step 4: Route new events through the CLI**
 
 Change `src/cli.ts` routing to:
 
@@ -341,7 +341,7 @@ Update the usage string to:
 process.stderr.write("Usage: nams-hooks run <gemini|claude|codex> --event <SessionStart|BeforeAgent|AfterAgent|AfterTool>\n");
 ```
 
-- [ ] **Step 5: Add Gemini adapter methods with allow-only behavior**
+- [x] **Step 5: Add Gemini adapter methods with allow-only behavior**
 
 In `src/platforms/gemini.ts`, add methods:
 
@@ -379,7 +379,7 @@ In `src/platforms/gemini.ts`, add methods:
 
 Keep Claude and Codex unchanged except for TypeScript compatibility with optional adapter methods.
 
-- [ ] **Step 6: Update Gemini hook template**
+- [x] **Step 6: Update Gemini hook template**
 
 Change `templates/gemini/hooks/hooks.json` so `hooks` includes:
 
@@ -442,7 +442,7 @@ Change `templates/gemini/hooks/hooks.json` so `hooks` includes:
 
 Preserve the top-level `{ "hooks": ... }` wrapper.
 
-- [ ] **Step 7: Verify green**
+- [x] **Step 7: Verify green**
 
 Run:
 
@@ -455,7 +455,7 @@ Expected:
 - Build passes.
 - All tests pass.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/interfaces.ts src/cli.ts src/platforms/gemini.ts src/platforms/claude.ts src/platforms/codex.ts templates/gemini/hooks/hooks.json test/cli-session-start.test.js
@@ -471,7 +471,7 @@ git commit -m "feat: route gemini memory hook events" -m "Co-authored-by: Codex 
 - Create: `src/runtime/config.ts`
 - Create: `test/runtime-config.test.js`
 
-- [ ] **Step 1: Write failing config tests**
+- [x] **Step 1: Write failing config tests**
 
 Create `test/runtime-config.test.js`:
 
@@ -542,7 +542,7 @@ test("missing NAMS_API_KEY returns null config", async () => {
 });
 ```
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run:
 
@@ -554,7 +554,7 @@ Expected:
 
 - Fails because `.build/tsc/runtime/config.js` does not exist.
 
-- [ ] **Step 3: Implement config loader**
+- [x] **Step 3: Implement config loader**
 
 Create `src/runtime/config.ts`:
 
@@ -624,7 +624,7 @@ function stripQuotes(value: string): string {
 }
 ```
 
-- [ ] **Step 4: Verify green**
+- [x] **Step 4: Verify green**
 
 Run:
 
@@ -636,7 +636,7 @@ Expected:
 
 - All config tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/runtime/config.ts test/runtime-config.test.js
@@ -653,7 +653,7 @@ git commit -m "feat: load nams runtime config" -m "Co-authored-by: Codex <codex@
 - Create: `src/runtime/session-state.ts`
 - Create: `test/session-state.test.js`
 
-- [ ] **Step 1: Write failing state tests**
+- [x] **Step 1: Write failing state tests**
 
 Create `test/session-state.test.js`:
 
@@ -706,7 +706,7 @@ test("persists session state under .nams/state/sessions", async () => {
 });
 ```
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run:
 
@@ -718,7 +718,7 @@ Expected:
 
 - Fails because session-state module does not exist.
 
-- [ ] **Step 3: Implement hashing helper**
+- [x] **Step 3: Implement hashing helper**
 
 Create `src/runtime/hashing.ts`:
 
@@ -748,7 +748,7 @@ function sortJson(value: unknown): unknown {
 }
 ```
 
-- [ ] **Step 4: Implement session state store**
+- [x] **Step 4: Implement session state store**
 
 Create `src/runtime/session-state.ts`:
 
@@ -835,7 +835,7 @@ function safeFileName(value: string): string {
 }
 ```
 
-- [ ] **Step 5: Verify green**
+- [x] **Step 5: Verify green**
 
 Run:
 
@@ -847,7 +847,7 @@ Expected:
 
 - All state tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/runtime/hashing.ts src/runtime/session-state.ts test/session-state.test.js
@@ -865,7 +865,7 @@ git commit -m "feat: persist hook session state" -m "Co-authored-by: Codex <code
 - Create: `test/gemini-payload.test.js`
 - Create: `test/gemini-transcript.test.js`
 
-- [ ] **Step 1: Write failing Gemini payload parser tests**
+- [x] **Step 1: Write failing Gemini payload parser tests**
 
 Create `test/gemini-payload.test.js`:
 
@@ -908,7 +908,7 @@ test("falls back to process cwd when Gemini cwd is absent", async () => {
 });
 ```
 
-- [ ] **Step 2: Write failing transcript parser tests**
+- [x] **Step 2: Write failing transcript parser tests**
 
 Create `test/gemini-transcript.test.js`:
 
@@ -969,7 +969,7 @@ test("reads Gemini transcript messages, thoughts, and tool metadata", async () =
 });
 ```
 
-- [ ] **Step 3: Verify red**
+- [x] **Step 3: Verify red**
 
 Run:
 
@@ -981,7 +981,7 @@ Expected:
 
 - Fails because the parser modules do not exist.
 
-- [ ] **Step 4: Implement payload parser**
+- [x] **Step 4: Implement payload parser**
 
 Create `src/platforms/gemini-payload.ts`:
 
@@ -1023,7 +1023,7 @@ function firstString(...values: unknown[]): string | undefined {
 }
 ```
 
-- [ ] **Step 5: Implement transcript reader**
+- [x] **Step 5: Implement transcript reader**
 
 Create `src/platforms/gemini-transcript.ts`:
 
@@ -1144,7 +1144,7 @@ function idAndTimestamp(raw: Record<string, unknown>): { id?: string; timestamp?
 }
 ```
 
-- [ ] **Step 6: Verify green**
+- [x] **Step 6: Verify green**
 
 Run:
 
@@ -1156,7 +1156,7 @@ Expected:
 
 - Payload and transcript parser tests pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/platforms/gemini-payload.ts src/platforms/gemini-transcript.ts test/gemini-payload.test.js test/gemini-transcript.test.js
@@ -1172,7 +1172,7 @@ git commit -m "feat: parse gemini hook payloads and transcripts" -m "Co-authored
 - Create: `src/runtime/memory-service.ts`
 - Create: `test/memory-service.test.js`
 
-- [ ] **Step 1: Write failing memory service tests**
+- [x] **Step 1: Write failing memory service tests**
 
 Create `test/memory-service.test.js`:
 
@@ -1243,7 +1243,7 @@ test("sanitizes tool input and omits tool output", async () => {
 });
 ```
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run:
 
@@ -1255,7 +1255,7 @@ Expected:
 
 - Fails because memory-service module does not exist.
 
-- [ ] **Step 3: Implement memory service**
+- [x] **Step 3: Implement memory service**
 
 Create `src/runtime/memory-service.ts`:
 
@@ -1372,7 +1372,7 @@ function serializeToolInput(input: unknown): string {
 }
 ```
 
-- [ ] **Step 4: Verify green**
+- [x] **Step 4: Verify green**
 
 Run:
 
@@ -1384,7 +1384,7 @@ Expected:
 
 - Memory service tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/runtime/memory-service.ts test/memory-service.test.js
@@ -1400,7 +1400,7 @@ git commit -m "feat: add nams memory service" -m "Co-authored-by: Codex <codex@o
 - Modify: `src/platforms/gemini.ts`
 - Create: `test/gemini-memory-flow.test.js`
 
-- [ ] **Step 1: Write failing SessionStart test**
+- [x] **Step 1: Write failing SessionStart test**
 
 Create `test/gemini-memory-flow.test.js` with this first test and helper:
 
@@ -1442,7 +1442,7 @@ test("Gemini SessionStart creates local state without NAMS conversation", async 
 });
 ```
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run:
 
@@ -1454,7 +1454,7 @@ Expected:
 
 - Fails because `SessionStart` only writes logs and does not create session state.
 
-- [ ] **Step 3: Implement SessionStart state initialization**
+- [x] **Step 3: Implement SessionStart state initialization**
 
 Modify `src/platforms/gemini.ts`:
 
@@ -1482,7 +1482,7 @@ Keep return value unchanged:
 return { stdout: { continue: true, suppressOutput: true } };
 ```
 
-- [ ] **Step 4: Verify green**
+- [x] **Step 4: Verify green**
 
 Run:
 
@@ -1494,7 +1494,7 @@ Expected:
 
 - SessionStart flow test passes.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/platforms/gemini.ts test/gemini-memory-flow.test.js
@@ -1510,7 +1510,7 @@ git commit -m "feat: initialize gemini session state" -m "Co-authored-by: Codex 
 - Modify: `src/platforms/gemini.ts`
 - Modify: `test/gemini-memory-flow.test.js`
 
-- [ ] **Step 1: Add failing BeforeAgent integration test**
+- [x] **Step 1: Add failing BeforeAgent integration test**
 
 Append to `test/gemini-memory-flow.test.js`:
 
@@ -1556,7 +1556,7 @@ test("Gemini BeforeAgent creates conversation, recalls memory, stores prompt, an
 });
 ```
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run:
 
@@ -1568,7 +1568,7 @@ Expected:
 
 - Fails because `GeminiAdapter` does not accept injected `env` and `fetch`, and `beforeAgent` does not call NAMS.
 
-- [ ] **Step 3: Add GeminiAdapter dependency injection**
+- [x] **Step 3: Add GeminiAdapter dependency injection**
 
 In `src/platforms/gemini.ts`, add:
 
@@ -1586,7 +1586,7 @@ export class GeminiAdapter implements PlatformAdapter {
 
 Use `this.options.env` when loading config and `this.options.fetch` when creating the memory service.
 
-- [ ] **Step 4: Implement BeforeAgent flow**
+- [x] **Step 4: Implement BeforeAgent flow**
 
 In `src/platforms/gemini.ts`, implement `beforeAgent` with this control flow:
 
@@ -1640,7 +1640,7 @@ function messageHash(platform: string, sessionKey: string, role: string, content
 
 `resolveGeminiState` should load existing state or create a new one using `createInitialSessionState`.
 
-- [ ] **Step 5: Verify green**
+- [x] **Step 5: Verify green**
 
 Run:
 
@@ -1652,7 +1652,7 @@ Expected:
 
 - SessionStart and BeforeAgent tests pass.
 
-- [ ] **Step 6: Add duplicate user prompt assertion**
+- [x] **Step 6: Add duplicate user prompt assertion**
 
 Append a test that calls `beforeAgent` twice with the same prompt and asserts only one `addMessage` request with role `user` is made:
 
@@ -1692,7 +1692,7 @@ test("Gemini BeforeAgent suppresses duplicate user prompt writes", async () => {
 });
 ```
 
-- [ ] **Step 7: Verify duplicate suppression**
+- [x] **Step 7: Verify duplicate suppression**
 
 Run:
 
@@ -1704,7 +1704,7 @@ Expected:
 
 - All Gemini memory-flow tests pass.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/platforms/gemini.ts test/gemini-memory-flow.test.js
@@ -1720,7 +1720,7 @@ git commit -m "feat: persist gemini user prompts" -m "Co-authored-by: Codex <cod
 - Modify: `src/platforms/gemini.ts`
 - Modify: `test/gemini-memory-flow.test.js`
 
-- [ ] **Step 1: Add failing prompt_response test**
+- [x] **Step 1: Add failing prompt_response test**
 
 Append to `test/gemini-memory-flow.test.js`:
 
@@ -1764,7 +1764,7 @@ test("Gemini AfterAgent stores prompt_response as assistant message", async () =
 });
 ```
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run:
 
@@ -1776,7 +1776,7 @@ Expected:
 
 - Fails because `afterAgent` does not persist assistant responses.
 
-- [ ] **Step 3: Implement prompt_response persistence**
+- [x] **Step 3: Implement prompt_response persistence**
 
 In `src/platforms/gemini.ts`, implement `afterAgent`:
 
@@ -1805,7 +1805,7 @@ await saveSessionState(info.projectDirectory, invocation.platform, state.session
 return { stdout: { continue: true, suppressOutput: true } };
 ```
 
-- [ ] **Step 4: Add failing transcript fallback test**
+- [x] **Step 4: Add failing transcript fallback test**
 
 Append:
 
@@ -1861,7 +1861,7 @@ test("Gemini AfterAgent falls back to unseen transcript assistant entries", asyn
 
 Add `writeFile` to the imports in `test/gemini-memory-flow.test.js`.
 
-- [ ] **Step 5: Implement transcript assistant fallback**
+- [x] **Step 5: Implement transcript assistant fallback**
 
 In `afterAgent`, after the `prompt_response` branch, add:
 
@@ -1887,7 +1887,7 @@ if ((response === undefined || response.trim() === "") && info.transcriptPath !=
 }
 ```
 
-- [ ] **Step 6: Verify green**
+- [x] **Step 6: Verify green**
 
 Run:
 
@@ -1899,7 +1899,7 @@ Expected:
 
 - Assistant response and transcript fallback tests pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/platforms/gemini.ts test/gemini-memory-flow.test.js
@@ -1915,7 +1915,7 @@ git commit -m "feat: persist gemini assistant responses" -m "Co-authored-by: Cod
 - Modify: `src/platforms/gemini.ts`
 - Modify: `test/gemini-memory-flow.test.js`
 
-- [ ] **Step 1: Add failing transcript thoughts and toolCalls test**
+- [x] **Step 1: Add failing transcript thoughts and toolCalls test**
 
 Append to `test/gemini-memory-flow.test.js`:
 
@@ -2002,7 +2002,7 @@ test("Gemini transcript thoughts and toolCalls become reasoning and tool metadat
 });
 ```
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run:
 
@@ -2014,7 +2014,7 @@ Expected:
 
 - Fails because `afterAgent` does not process transcript thoughts or tool calls.
 
-- [ ] **Step 3: Implement reasoning and tool metadata processing**
+- [x] **Step 3: Implement reasoning and tool metadata processing**
 
 In `src/platforms/gemini.ts`, add helper logic used by `afterAgent` when `transcriptPath` is present:
 
@@ -2072,7 +2072,7 @@ async function processTraceEntries(input: {
 
 Call this helper after transcript entries are read. Guard it with `state.conversationId !== undefined`.
 
-- [ ] **Step 4: Verify green**
+- [x] **Step 4: Verify green**
 
 Run:
 
@@ -2084,7 +2084,7 @@ Expected:
 
 - Reasoning and tool metadata tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/platforms/gemini.ts test/gemini-memory-flow.test.js
@@ -2100,7 +2100,7 @@ git commit -m "feat: record gemini reasoning and tool metadata" -m "Co-authored-
 - Modify: `src/platforms/gemini.ts`
 - Modify: `test/gemini-memory-flow.test.js`
 
-- [ ] **Step 1: Add failing missing API key test**
+- [x] **Step 1: Add failing missing API key test**
 
 Append:
 
@@ -2129,7 +2129,7 @@ test("Gemini BeforeAgent continues when NAMS_API_KEY is missing", async () => {
 });
 ```
 
-- [ ] **Step 2: Add failing NAMS request failure test**
+- [x] **Step 2: Add failing NAMS request failure test**
 
 Append:
 
@@ -2161,7 +2161,7 @@ test("Gemini BeforeAgent continues when NAMS request fails", async () => {
 });
 ```
 
-- [ ] **Step 3: Verify red**
+- [x] **Step 3: Verify red**
 
 Run:
 
@@ -2173,7 +2173,7 @@ Expected:
 
 - One or both new tests fail because logging paths or catch behavior are incomplete.
 
-- [ ] **Step 4: Implement hook-safe error handling**
+- [x] **Step 4: Implement hook-safe error handling**
 
 Wrap NAMS work in `beforeAgent`, `afterAgent`, and `afterTool` with:
 
@@ -2203,7 +2203,7 @@ payload: { message: "NAMS_API_KEY missing" }
 
 Do not include raw request bodies, API keys, Authorization headers, or full config objects in logs.
 
-- [ ] **Step 5: Verify green**
+- [x] **Step 5: Verify green**
 
 Run:
 
@@ -2215,7 +2215,7 @@ Expected:
 
 - Error path tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/platforms/gemini.ts test/gemini-memory-flow.test.js
@@ -2231,7 +2231,7 @@ git commit -m "fix: keep gemini hooks non-blocking" -m "Co-authored-by: Codex <c
 - Modify if needed: `scripts/build-dist.mjs`
 - Modify if needed: `templates/gemini/hooks/hooks.json`
 
-- [ ] **Step 1: Run package verification**
+- [x] **Step 1: Run package verification**
 
 Run:
 
@@ -2247,7 +2247,7 @@ Expected:
 - `npm run dist` passes.
 - `npm run dist:check` passes.
 
-- [ ] **Step 2: Inspect generated Gemini hook template in dist**
+- [x] **Step 2: Inspect generated Gemini hook template in dist**
 
 Run:
 
@@ -2260,7 +2260,7 @@ Expected:
 - Contains `SessionStart`, `BeforeAgent`, `AfterAgent`, and `AfterTool`.
 - Each command invokes `node "${extensionPath}/bin/cli.js" run gemini --event <EventName>`.
 
-- [ ] **Step 3: Commit any distribution-template fixes**
+- [x] **Step 3: Commit any distribution-template fixes**
 
 If Step 1 or Step 2 required source fixes, commit those source fixes:
 
@@ -2271,7 +2271,7 @@ git commit -m "fix: include gemini memory hooks in dist" -m "Co-authored-by: Cod
 
 If no source fixes were needed, do not create an empty commit.
 
-- [ ] **Step 4: Final status check**
+- [x] **Step 4: Final status check**
 
 Run:
 

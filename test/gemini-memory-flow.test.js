@@ -230,6 +230,58 @@ test("allows Gemini BeforeAgent when NAMS returns an error", async () => {
   }
 });
 
+test("Gemini BeforeAgent returns recalled context when user message persistence fails", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
+  try {
+    const requests = [];
+    const { GeminiAdapter } = await import(geminiUrl);
+    const adapter = new GeminiAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: async (url, init) => {
+        requests.push({ url, init });
+        if (url === "https://memory.example.test/v1/conversations") {
+          return jsonResponse({ id: "conversation-1" }, 201);
+        }
+        if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
+          return jsonResponse({
+            observations: [{ content: "User wants concise updates." }],
+          });
+        }
+        if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
+          return jsonResponse({ error: "message write unavailable" }, 503);
+        }
+        return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
+      },
+    });
+
+    const result = await adapter.beforeAgent({
+      platform: "gemini",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "Hello",
+      },
+    });
+
+    assert.equal(result.stdout.continue, true);
+    assert.equal(result.stdout.suppressOutput, true);
+    assert.match(result.stdout.additionalContext, /User wants concise updates\./);
+    assert.equal(
+      requests.filter(
+        (request) => request.url === "https://memory.example.test/v1/conversations/conversation-1/messages",
+      ).length,
+      1,
+    );
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("Gemini BeforeAgent continues when NAMS_API_KEY is missing", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {

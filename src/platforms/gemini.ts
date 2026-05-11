@@ -92,7 +92,7 @@ export class GeminiAdapter implements PlatformAdapter {
     } catch {
       await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory);
       await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
-      return allowOutput();
+      return allowOutput(additionalContext);
     }
 
     await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
