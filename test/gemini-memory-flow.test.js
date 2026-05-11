@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -95,6 +95,60 @@ test("creates Gemini conversation, recalls memory, and stores first BeforeAgent 
   }
 });
 
+test("stores Gemini BeforeAgent user prompt when recall fails", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
+  try {
+    const requests = [];
+    const prompt = "Persist this even if recall is unavailable.";
+    const mockFetch = async (url, init) => {
+      requests.push({ url, init });
+      if (url === "https://memory.example.test/v1/conversations") {
+        return jsonResponse({ id: "conversation-1" }, 201);
+      }
+      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
+        return jsonResponse({ error: "context unavailable" }, 503);
+      }
+      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
+        return jsonResponse({ id: "message-1" }, 201);
+      }
+      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
+    };
+
+    const { GeminiAdapter } = await import(geminiUrl);
+    const adapter = new GeminiAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: mockFetch,
+    });
+
+    const result = await adapter.beforeAgent({
+      platform: "gemini",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt,
+      },
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    const messageRequest = requests.find(
+      (request) =>
+        request.init.method === "POST" &&
+        request.url === "https://memory.example.test/v1/conversations/conversation-1/messages",
+    );
+    assert.deepEqual(JSON.parse(messageRequest.init.body), {
+      role: "user",
+      content: prompt,
+    });
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("does not store duplicate Gemini BeforeAgent user prompt twice", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
@@ -171,6 +225,343 @@ test("allows Gemini BeforeAgent when NAMS returns an error", async () => {
     });
 
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Gemini BeforeAgent continues when NAMS_API_KEY is missing", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
+  try {
+    const { GeminiAdapter } = await import(geminiUrl);
+    const adapter = new GeminiAdapter({ env: {} });
+
+    const result = await adapter.beforeAgent({
+      platform: "gemini",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "Hello",
+      },
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    const logPath = path.join(projectDir, ".nams", "logs", "gemini-beforeagent.jsonl");
+    const log = await readFile(logPath, "utf8");
+    assert.match(log, /NAMS_API_KEY missing/);
+    assert.doesNotMatch(log, /Bearer|key/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Gemini BeforeAgent continues when NAMS request fails", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
+  try {
+    const { GeminiAdapter } = await import(geminiUrl);
+    const adapter = new GeminiAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: async () => jsonResponse({ error: "service unavailable" }, 503),
+    });
+
+    const result = await adapter.beforeAgent({
+      platform: "gemini",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "Hello",
+      },
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    const logPath = path.join(projectDir, ".nams", "logs", "gemini-beforeagent.jsonl");
+    const log = await readFile(logPath, "utf8");
+    assert.match(log, /NAMS request failed/);
+    assert.doesNotMatch(log, /Bearer|key/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Gemini NAMS failure diagnostics do not include arbitrary error text", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
+  try {
+    const { GeminiAdapter } = await import(geminiUrl);
+    const adapter = new GeminiAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: async () => {
+        throw new Error(
+          'Authorization: Bearer secret NAMS_API_KEY {"body":"content secret","prompt":"do not log me"}',
+        );
+      },
+    });
+
+    const result = await adapter.beforeAgent({
+      platform: "gemini",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "Hello",
+      },
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    const logPath = path.join(projectDir, ".nams", "logs", "gemini-beforeagent.jsonl");
+    const log = await readFile(logPath, "utf8");
+    assert.match(log, /NAMS request failed/);
+    assert.doesNotMatch(log, /Authorization|Bearer|NAMS_API_KEY|content secret|do not log me/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Gemini BeforeAgent platform log redacts raw prompt fields", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
+  try {
+    const { GeminiAdapter } = await import(geminiUrl);
+    const adapter = new GeminiAdapter({ env: {} });
+
+    await adapter.beforeAgent({
+      platform: "gemini",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "raw prompt secret",
+        user_prompt: "raw snake prompt secret",
+        userPrompt: "raw camel prompt secret",
+      },
+    });
+
+    const logPath = path.join(projectDir, ".nams", "logs", "gemini-before-agent.jsonl");
+    const log = await readFile(logPath, "utf8");
+    assert.match(log, /session-1/);
+    assert.match(log, new RegExp(escapeRegExp(projectDir)));
+    assert.match(log, /"prompt":"\[redacted\]"/);
+    assert.match(log, /"user_prompt":"\[redacted\]"/);
+    assert.match(log, /"userPrompt":"\[redacted\]"/);
+    assert.doesNotMatch(log, /raw prompt secret|raw snake prompt secret|raw camel prompt secret/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Gemini AfterAgent platform log redacts raw assistant response fields", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
+  try {
+    const { GeminiAdapter } = await import(geminiUrl);
+    const adapter = new GeminiAdapter();
+
+    await adapter.afterAgent({
+      platform: "gemini",
+      event: "AfterAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt_response: "raw assistant response secret",
+        promptResponse: "raw camel response secret",
+        response: "raw response secret",
+        content: "raw content secret",
+      },
+    });
+
+    const logPath = path.join(projectDir, ".nams", "logs", "gemini-after-agent.jsonl");
+    const log = await readFile(logPath, "utf8");
+    assert.match(log, /session-1/);
+    assert.match(log, new RegExp(escapeRegExp(projectDir)));
+    assert.match(log, /"prompt_response":"\[redacted\]"/);
+    assert.match(log, /"promptResponse":"\[redacted\]"/);
+    assert.match(log, /"response":"\[redacted\]"/);
+    assert.match(log, /"content":"\[redacted\]"/);
+    assert.doesNotMatch(
+      log,
+      /raw assistant response secret|raw camel response secret|raw response secret|raw content secret/,
+    );
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Gemini AfterTool platform log redacts raw tool output fields", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
+  try {
+    const { GeminiAdapter } = await import(geminiUrl);
+    const adapter = new GeminiAdapter();
+
+    const result = await adapter.afterTool({
+      platform: "gemini",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        tool_name: "read_file",
+        tool_input: { path: "notes.md" },
+        tool_output: "raw tool output secret",
+        output: "raw output secret",
+        result: "raw result secret",
+        resultDisplay: "raw display secret",
+        functionResponse: { output: "raw function response secret" },
+        nested: {
+          args: { keep: "metadata" },
+          output: "nested output secret",
+          result: "nested result secret",
+        },
+      },
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    const logPath = path.join(projectDir, ".nams", "logs", "gemini-after-tool.jsonl");
+    const log = await readFile(logPath, "utf8");
+    assert.match(log, /read_file/);
+    assert.match(log, /metadata/);
+    assert.match(log, /"tool_output":"\[redacted\]"/);
+    assert.match(log, /"output":"\[redacted\]"/);
+    assert.match(log, /"result":"\[redacted\]"/);
+    assert.match(log, /"resultDisplay":"\[redacted\]"/);
+    assert.match(log, /"functionResponse":"\[redacted\]"/);
+    assert.doesNotMatch(
+      log,
+      /raw tool output secret|raw output secret|raw result secret|raw display secret|raw function response secret|nested output secret|nested result secret/,
+    );
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Gemini platform log redacts nested secret, header, and body fields", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
+  try {
+    const { GeminiAdapter } = await import(geminiUrl);
+    const adapter = new GeminiAdapter({ env: {} });
+
+    await adapter.beforeAgent({
+      platform: "gemini",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "raw prompt secret",
+        request: {
+          Authorization: "Bearer header secret",
+          headers: {
+            authorization: "Bearer nested header secret",
+            token: "nested token secret",
+          },
+          apiKey: "camel api secret",
+          api_key: "snake api secret",
+          secret: "plain secret value",
+          body: { content: "body content secret" },
+          NAMS_API_KEY: "nams api key secret",
+          access_token: "access token secret",
+          refreshToken: "refresh token secret",
+          bearerToken: "bearer token secret",
+          client_secret: "client secret value",
+          "x-api-key": "x api key secret",
+          password: "password secret",
+          request_body: "request body secret",
+          requestBody: "camel request body secret",
+          response_body: "response body secret",
+          responseBody: "camel response body secret",
+          tool_result: "tool result secret",
+          toolResult: "camel tool result secret",
+          assistant_response: "assistant response secret",
+          assistantResponse: "camel assistant response secret",
+          model_output: "model output secret",
+          tool_response: "tool response secret",
+        },
+      },
+    });
+
+    const logPath = path.join(projectDir, ".nams", "logs", "gemini-before-agent.jsonl");
+    const log = await readFile(logPath, "utf8");
+    assert.match(log, /session-1/);
+    assert.match(log, /"Authorization":"\[redacted\]"/);
+    assert.match(log, /"headers":"\[redacted\]"/);
+    assert.match(log, /"apiKey":"\[redacted\]"/);
+    assert.match(log, /"api_key":"\[redacted\]"/);
+    assert.match(log, /"secret":"\[redacted\]"/);
+    assert.match(log, /"body":"\[redacted\]"/);
+    assert.match(log, /"NAMS_API_KEY":"\[redacted\]"/);
+    assert.match(log, /"access_token":"\[redacted\]"/);
+    assert.match(log, /"refreshToken":"\[redacted\]"/);
+    assert.match(log, /"bearerToken":"\[redacted\]"/);
+    assert.match(log, /"client_secret":"\[redacted\]"/);
+    assert.match(log, /"x-api-key":"\[redacted\]"/);
+    assert.match(log, /"password":"\[redacted\]"/);
+    assert.match(log, /"request_body":"\[redacted\]"/);
+    assert.match(log, /"requestBody":"\[redacted\]"/);
+    assert.match(log, /"response_body":"\[redacted\]"/);
+    assert.match(log, /"responseBody":"\[redacted\]"/);
+    assert.match(log, /"tool_result":"\[redacted\]"/);
+    assert.match(log, /"toolResult":"\[redacted\]"/);
+    assert.match(log, /"assistant_response":"\[redacted\]"/);
+    assert.match(log, /"assistantResponse":"\[redacted\]"/);
+    assert.match(log, /"model_output":"\[redacted\]"/);
+    assert.match(log, /"tool_response":"\[redacted\]"/);
+    assert.doesNotMatch(
+      log,
+      /Bearer header secret|Bearer nested header secret|nested token secret|camel api secret|snake api secret|plain secret value|body content secret|raw prompt secret|nams api key secret|access token secret|refresh token secret|bearer token secret|client secret value|x api key secret|password secret|request body secret|camel request body secret|response body secret|camel response body secret|tool result secret|camel tool result secret|assistant response secret|camel assistant response secret|model output secret|tool response secret/,
+    );
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Gemini hooks continue when observability log writes fail", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
+  try {
+    await mkdir(path.join(projectDir, ".nams"), { recursive: true });
+    await writeFile(path.join(projectDir, ".nams", "logs"), "not a directory", "utf8");
+
+    const { GeminiAdapter } = await import(geminiUrl);
+    const adapter = new GeminiAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: async () => jsonResponse({ error: "service unavailable" }, 503),
+    });
+
+    const beforeAgentResult = await adapter.beforeAgent({
+      platform: "gemini",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "Hello",
+      },
+    });
+    const afterToolResult = await adapter.afterTool({
+      platform: "gemini",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        tool_name: "read_file",
+        result: "raw result secret",
+      },
+    });
+
+    assert.deepEqual(beforeAgentResult.stdout, { continue: true, suppressOutput: true });
+    assert.deepEqual(afterToolResult.stdout, { continue: true, suppressOutput: true });
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -1062,4 +1453,8 @@ test("deduplicates repeated parent transcript tool id despite changed status and
 
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), { status });
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
