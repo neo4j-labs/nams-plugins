@@ -91,7 +91,24 @@ function resolveEndpoint(openapi, endpoint) {
   }
 
   const pathParameters = (operation.parameters ?? []).filter((parameter) => parameter.in === "path");
-  for (const pathArg of endpoint.pathArgs ?? []) {
+  const pathArgs = endpoint.pathArgs ?? [];
+  const placeholderNames = pathPlaceholders(endpoint.path);
+  const pathArgNames = pathArgs.map((pathArg) => pathArg.parameterName);
+  const missingPathArgs = placeholderNames.filter((placeholderName) => !pathArgNames.includes(placeholderName));
+  const extraPathArgs = pathArgNames.filter((pathArgName) => !placeholderNames.includes(pathArgName));
+  if (missingPathArgs.length > 0 || extraPathArgs.length > 0) {
+    throw new Error(
+      [
+        `Path arguments for ${endpoint.methodName} must match placeholders in ${endpoint.path}.`,
+        missingPathArgs.length > 0 ? `missing pathArgs for ${missingPathArgs.join(", ")}` : undefined,
+        extraPathArgs.length > 0 ? `extra pathArgs for ${extraPathArgs.join(", ")}` : undefined,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
+  }
+
+  for (const pathArg of pathArgs) {
     const parameter = pathParameters.find((candidate) => candidate.name === pathArg.parameterName);
     if (parameter === undefined || parameter.required !== true || parameter.type !== "string") {
       throw new Error(`Missing required string path parameter ${pathArg.parameterName} on ${endpoint.path}`);
@@ -119,6 +136,10 @@ function resolveEndpoint(openapi, endpoint) {
     responseRef,
     responseType: typeNameForDefinition(responseRef),
   };
+}
+
+function pathPlaceholders(endpointPath) {
+  return [...endpointPath.matchAll(/\{([^}]+)\}/g)].map((match) => match[1]);
 }
 
 function collectReferencedDefinitions(resolved, allDefinitions) {

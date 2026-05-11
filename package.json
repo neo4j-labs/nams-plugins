@@ -20,7 +20,8 @@
     "openapi:generate": "node scripts/generate-nams-client.mjs",
     "openapi:check": "node scripts/generate-nams-client.mjs --check",
     "test:contract": "npm run build && node --test test/nams-client-generator.test.js",
-    "package:check": "npm run openapi:check && npm run check && npm run dist"
+    "dist:check": "node scripts/check-dist.mjs",
+    "package:check": "npm run openapi:check && npm run check && npm run dist && npm run dist:check"
   },
   "engines": {
     "node": ">=20"
