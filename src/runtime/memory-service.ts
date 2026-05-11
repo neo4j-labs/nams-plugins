@@ -1,0 +1,156 @@
+import { NamsClient, type ContextResponse } from "../generated/nams-client.js";
+import type { NamsRuntimeConfig } from "./config.js";
+
+export interface NamsMemoryServiceOptions extends NamsRuntimeConfig {
+  fetch?: typeof fetch;
+}
+
+export interface CreateConversationInput {
+  harness: string;
+  projectDirectory: string;
+}
+
+export interface ReasoningStepInput {
+  conversationId: string;
+  reasoning: string;
+  actionTaken: string;
+  result?: string;
+}
+
+export interface ToolCallInput {
+  stepId?: string;
+  toolName: string;
+  input: unknown;
+  status?: string;
+  durationMs?: number;
+}
+
+const toolOutputFieldNames = new Set(["functionResponse", "result", "resultDisplay"]);
+
+export class NamsMemoryService {
+  private readonly client: NamsClient;
+
+  constructor(options: NamsMemoryServiceOptions) {
+    this.client = new NamsClient({
+      apiKey: options.apiKey,
+      ...(options.baseUrl !== undefined ? { baseUrl: options.baseUrl } : {}),
+      ...(options.fetch !== undefined ? { fetch: options.fetch } : {}),
+    });
+  }
+
+  async createConversation(input: CreateConversationInput): Promise<string> {
+    const response = await this.client.createConversation({
+      metadata: {
+        harness: input.harness,
+        projectDirectory: input.projectDirectory,
+      },
+    });
+    if (response.id === undefined || response.id.trim() === "") {
+      throw new Error("NAMS conversation response did not include id");
+    }
+    return response.id;
+  }
+
+  async recall(conversationId: string): Promise<string> {
+    const context = await this.client.getConversationContext(conversationId);
+    return formatMemoryContext(context);
+  }
+
+  async searchEntities(query: string): Promise<string> {
+    const response = await this.client.searchEntities({ query, limit: 5 });
+    const observations = (response.entities ?? [])
+      .map((entity) => [entity.name, entity.description].filter(isNonBlankString).join(": "))
+      .filter(isNonBlankString)
+      .map((content) => ({ content }));
+    return formatMemoryContext({ observations });
+  }
+
+  async storeUserMessage(conversationId: string, content: string): Promise<void> {
+    await this.client.addMessage(conversationId, { role: "user", content });
+  }
+
+  async storeAssistantMessage(conversationId: string, content: string): Promise<void> {
+    await this.client.addMessage(conversationId, { role: "assistant", content });
+  }
+
+  async recordReasoningStep(input: ReasoningStepInput): Promise<string | undefined> {
+    const response = await this.client.recordReasoningStep(input);
+    return response.id;
+  }
+
+  async recordToolCall(input: ToolCallInput): Promise<void> {
+    await this.client.recordToolCall({
+      toolName: input.toolName,
+      input: serializeToolInput(input.input),
+      output: "",
+      ...(input.stepId !== undefined ? { stepId: input.stepId } : {}),
+      ...(input.status !== undefined ? { status: input.status } : {}),
+      ...(input.durationMs !== undefined ? { durationMs: input.durationMs } : {}),
+    });
+  }
+}
+
+export function formatMemoryContext(context: ContextResponse): string {
+  const lines = [
+    ...sectionLines(
+      "Reflections",
+      context.reflections?.map((entry) => entry.content),
+    ),
+    ...sectionLines(
+      "Observations",
+      context.observations?.map((entry) => entry.content),
+    ),
+    ...sectionLines(
+      "Recent messages",
+      context.recentMessages?.map((entry) => [entry.role, entry.content].filter(isNonBlankString).join(": ")),
+    ),
+  ];
+  if (lines.length === 0) {
+    return "";
+  }
+  return [
+    "Relevant memory context:",
+    ...lines.slice(0, 24),
+    "",
+    "Use this context silently when it is relevant. Do not narrate memory mechanics.",
+  ].join("\n");
+}
+
+export function serializeToolInput(input: unknown): string {
+  const serialized = JSON.stringify(removeToolOutputFields(input) ?? {});
+  if (serialized.length <= 4000) {
+    return serialized;
+  }
+  const suffix = "...[truncated]";
+  return `${serialized.slice(0, 4000 - suffix.length)}${suffix}`;
+}
+
+function sectionLines(label: string, values: Array<string | undefined> | undefined): string[] {
+  const presentValues = (values ?? []).filter(isNonBlankString);
+  if (presentValues.length === 0) {
+    return [];
+  }
+  return [`${label}:`, ...presentValues.map((value) => `- ${value}`)];
+}
+
+function removeToolOutputFields(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(removeToolOutputFields);
+  }
+  if (value === null || typeof value !== "object") {
+    return value;
+  }
+
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, nestedValue] of Object.entries(value)) {
+    if (toolOutputFieldNames.has(key)) {
+      continue;
+    }
+    sanitized[key] = removeToolOutputFields(nestedValue);
+  }
+  return sanitized;
+}
+
+function isNonBlankString(value: unknown): value is string {
+  return typeof value === "string" && value.trim() !== "";
+}
