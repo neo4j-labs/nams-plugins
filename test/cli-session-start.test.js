@@ -9,9 +9,9 @@ import { spawn } from "node:child_process";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cliPath = path.join(repoRoot, ".build", "tsc", "cli.js");
 
-function runCli(harness, payload, cwd) {
+function runCliWithEvent(harness, event, payload, cwd) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [cliPath, "run", harness, "--event", "SessionStart"], {
+    const child = spawn(process.execPath, [cliPath, "run", harness, "--event", event], {
       cwd,
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -31,6 +31,10 @@ function runCli(harness, payload, cwd) {
     });
     child.stdin.end(`${JSON.stringify(payload)}\n`);
   });
+}
+
+function runCli(harness, payload, cwd) {
+  return runCliWithEvent(harness, "SessionStart", payload, cwd);
 }
 
 function runCliWithoutEvent(harness, payload, cwd) {
@@ -95,7 +99,7 @@ test("requires explicit typed hook event", async () => {
     const result = await runCliWithoutEvent("gemini", { cwd: projectDir }, projectDir);
 
     assert.equal(result.code, 1);
-    assert.match(result.stderr, /--event <SessionStart>/);
+    assert.match(result.stderr, /--event <SessionStart\|BeforeAgent\|AfterAgent\|AfterTool>/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -119,3 +123,23 @@ test("writes fallback logs under child process cwd when payload omits cwd", asyn
     await rm(projectDir, { recursive: true, force: true });
   }
 });
+
+for (const event of ["BeforeAgent", "AfterAgent", "AfterTool"]) {
+  test(`routes gemini ${event} hook event`, async () => {
+    const projectDir = await mkdtemp(path.join(tmpdir(), "nams-hooks-"));
+    try {
+      const payload = {
+        session_id: `gemini-${event}`,
+        hook_event_name: "WrongEventNameMustNotMatter",
+        cwd: projectDir,
+      };
+
+      const result = await runCliWithEvent("gemini", event, payload, projectDir);
+
+      assert.equal(result.code, 0, result.stderr);
+      assert.equal(JSON.parse(result.stdout).continue, true);
+    } finally {
+      await rm(projectDir, { recursive: true, force: true });
+    }
+  });
+}

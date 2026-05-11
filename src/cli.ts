@@ -1,7 +1,15 @@
 #!/usr/bin/env node
 
 import process from "node:process";
-import { isHookEvent, isPlatform, type HookEvent, type Platform } from "./interfaces.js";
+import {
+  isHookEvent,
+  isPlatform,
+  type HookEvent,
+  type HookInvocation,
+  type HookResult,
+  type Platform,
+  type PlatformAdapter,
+} from "./interfaces.js";
 import { getPlatformAdapter } from "./platforms/index.js";
 import { readJsonPayload } from "./runtime/stdin.js";
 
@@ -13,7 +21,7 @@ interface RunArgs {
 async function main(argv: string[]): Promise<number> {
   const args = parseRunArgs(argv);
   if (args === null) {
-    process.stderr.write("Usage: nams-hooks run <gemini|claude|codex> --event <SessionStart>\n");
+    process.stderr.write("Usage: nams-hooks run <gemini|claude|codex> --event <SessionStart|BeforeAgent|AfterAgent|AfterTool>\n");
     return 1;
   }
 
@@ -41,13 +49,23 @@ function parseRunArgs(argv: string[]): RunArgs | null {
 }
 
 async function routeEvent(
-  adapter: ReturnType<typeof getPlatformAdapter>,
-  invocation: Parameters<typeof adapter.startConversation>[0],
-) {
+  adapter: PlatformAdapter,
+  invocation: HookInvocation,
+): Promise<HookResult> {
   switch (invocation.event) {
     case "SessionStart":
-      return adapter.startConversation(invocation);
+      return adapter.startConversation({ ...invocation, event: "SessionStart" });
+    case "BeforeAgent":
+      return adapter.beforeAgent?.({ ...invocation, event: "BeforeAgent" }) ?? allowHook();
+    case "AfterAgent":
+      return adapter.afterAgent?.({ ...invocation, event: "AfterAgent" }) ?? allowHook();
+    case "AfterTool":
+      return adapter.afterTool?.({ ...invocation, event: "AfterTool" }) ?? allowHook();
   }
+}
+
+function allowHook(): HookResult {
+  return { stdout: { continue: true, suppressOutput: true } };
 }
 
 main(process.argv.slice(2))
