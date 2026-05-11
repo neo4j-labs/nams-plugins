@@ -76,7 +76,7 @@ Gemini writes local JSONL diagnostics under the project `.nams/logs/` directory.
 .nams/logs/session-2026-05-11T15-40-1b11dfee.jsonl
 ```
 
-Hook payload entries use `kind: "hook.event"` and keep the raw hook payload for local debugging. NAMS REST metadata entries use `kind: "nams.request"` and include operation, method, endpoint path template, status, outcome, and duration.
+Hook payload entries use `kind: "hook.event"` and keep the raw hook payload for local debugging. NAMS HTTP entries use `kind: "nams.request"` and include operation metadata plus logged request and response details. Request headers omit `Authorization`; request and response bodies are kept for debugging.
 
 ## Development
 

@@ -114,7 +114,25 @@ test("creates Gemini conversation, recalls memory, and stores first BeforeAgent 
     for (const entry of requestEntries) {
       assert.equal(typeof entry.payload.durationMs, "number");
     }
-    assert.doesNotMatch(JSON.stringify(requestEntries), /Authorization|Bearer|fixture-driven tests/);
+    assert.deepEqual(requestEntries[0].payload.request.body, {
+      metadata: {
+        harness: "gemini",
+        projectDirectory: projectDir,
+      },
+    });
+    assert.deepEqual(requestEntries[0].payload.response.body, { id: "conversation-1" });
+    assert.equal(requestEntries[1].payload.request.url, "https://memory.example.test/v1/conversations/conversation-1/context");
+    assert.equal(requestEntries[1].payload.request.body, undefined);
+    assert.deepEqual(requestEntries[1].payload.response.body, {
+      observations: [{ content: "User prefers fixture-driven tests." }],
+    });
+    assert.deepEqual(requestEntries[2].payload.request.body, {
+      role: "user",
+      content: prompt,
+    });
+    assert.deepEqual(requestEntries[2].payload.response.body, { id: "message-1" });
+    assert.match(JSON.stringify(requestEntries), /fixture-driven tests/);
+    assert.doesNotMatch(JSON.stringify(requestEntries), /Authorization|Bearer|key/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }

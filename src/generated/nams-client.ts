@@ -17,6 +17,23 @@ export interface NamsRequestEvent {
   status?: number;
   ok: boolean;
   durationMs: number;
+  request: NamsHttpLogRequest;
+  response?: NamsHttpLogResponse;
+}
+
+export interface NamsHttpLogRequest {
+  method: HttpMethod;
+  url: string;
+  path: string;
+  headers: Record<string, string>;
+  body?: unknown;
+}
+
+export interface NamsHttpLogResponse {
+  status: number;
+  ok: boolean;
+  headers: Record<string, string>;
+  body: unknown;
 }
 
 export class NamsClientError extends Error {
@@ -233,6 +250,13 @@ export class NamsClient {
       headers["Content-Type"] = "application/json";
       init.body = JSON.stringify(body);
     }
+    const requestLog: NamsHttpLogRequest = {
+      method: httpMethod,
+      url,
+      path: pathTemplate,
+      headers: headersForLog(headers),
+      ...(body !== undefined ? { body } : {}),
+    };
 
     const startedAt = Date.now();
     let response: Response;
@@ -245,9 +269,11 @@ export class NamsClient {
         path: pathTemplate,
         ok: false,
         durationMs: elapsedMs(startedAt),
+        request: requestLog,
       });
       throw error;
     }
+    const responseBody = await readResponseBody(response);
     await this.emitRequestEvent({
       operation,
       method: httpMethod,
@@ -255,8 +281,14 @@ export class NamsClient {
       status: response.status,
       ok: response.ok,
       durationMs: elapsedMs(startedAt),
+      request: requestLog,
+      response: {
+        status: response.status,
+        ok: response.ok,
+        headers: responseHeadersForLog(response.headers),
+        body: responseBody,
+      },
     });
-    const responseBody = await readResponseBody(response);
     if (!response.ok) {
       const message = extractErrorMessage(responseBody) ?? `NAMS request failed with status ${response.status}`;
       throw new NamsClientError(message, response.status, responseBody);
@@ -278,6 +310,25 @@ export class NamsClient {
 
 function elapsedMs(startedAt: number): number {
   return Math.max(0, Date.now() - startedAt);
+}
+
+function headersForLog(headers: Record<string, string>): Record<string, string> {
+  const loggedHeaders: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() === "authorization") {
+      continue;
+    }
+    loggedHeaders[key] = value;
+  }
+  return loggedHeaders;
+}
+
+function responseHeadersForLog(headers: Headers): Record<string, string> {
+  const loggedHeaders: Record<string, string> = {};
+  headers.forEach((value, key) => {
+    loggedHeaders[key] = value;
+  });
+  return loggedHeaders;
 }
 
 function formatPath(pathTemplate: string, pathParams: Record<string, string> = {}): string {

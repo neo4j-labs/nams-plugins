@@ -213,6 +213,23 @@ export interface NamsRequestEvent {
   status?: number;
   ok: boolean;
   durationMs: number;
+  request: NamsHttpLogRequest;
+  response?: NamsHttpLogResponse;
+}
+
+export interface NamsHttpLogRequest {
+  method: HttpMethod;
+  url: string;
+  path: string;
+  headers: Record<string, string>;
+  body?: unknown;
+}
+
+export interface NamsHttpLogResponse {
+  status: number;
+  ok: boolean;
+  headers: Record<string, string>;
+  body: unknown;
 }
 
 export class NamsClientError extends Error {
@@ -241,7 +258,7 @@ Requests use:
 
 The generated client should prefer global `fetch`. The package engine remains responsible for selecting a Node version where `fetch` is available.
 
-Each generated request method passes its stable operation name into the shared request helper. The optional `onRequest` callback receives sanitized request metadata for observability. It must not receive headers, request bodies, response bodies, full concrete URLs, or raw error messages. Callback failures are ignored so observability cannot block hook execution. NAMS request observability remains always-on at the runtime layer for now; there is no `NAMS_LOG_LEVEL` gate in this iteration.
+Each generated request method passes its stable operation name into the shared request helper. The optional `onRequest` callback receives request and response details for observability. Request headers omit `Authorization` so API keys are not logged. Request bodies, response headers, response bodies, and concrete request URLs are included for debugging. Network failures include the request details but no raw exception text. Callback failures are ignored so observability cannot block hook execution. NAMS request observability remains always-on at the runtime layer for now; `NAMS_LOG_LEVEL` is tracked as follow-up work.
 
 ## Contract Tests
 
@@ -257,7 +274,9 @@ They must verify:
 - mocked successful responses are parsed consistently
 - mocked error responses produce stable `NamsClientError` objects
 - `Authorization` and JSON headers are shaped correctly
-- `onRequest` receives sanitized operation metadata on success, HTTP errors, and network failures
+- `onRequest` receives request and response details on success and HTTP errors
+- `onRequest` receives request details without raw exception text on network failures
+- `onRequest` omits `Authorization` from logged request headers
 
 Contract tests should fail when:
 
