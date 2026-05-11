@@ -90,6 +90,31 @@ test("creates Gemini conversation, recalls memory, and stores first BeforeAgent 
       role: "user",
       content: prompt,
     });
+
+    const { lines } = await readSingleSessionLog(projectDir);
+    assert.equal(lines[0].kind, "hook.event");
+    const requestEntries = lines.filter((entry) => entry.kind === "nams.request");
+    assert.deepEqual(
+      requestEntries.map((entry) => entry.payload.operation),
+      ["createConversation", "getConversationContext", "addMessage"],
+    );
+    assert.deepEqual(
+      requestEntries.map((entry) => ({
+        method: entry.payload.method,
+        path: entry.payload.path,
+        status: entry.payload.status,
+        ok: entry.payload.ok,
+      })),
+      [
+        { method: "POST", path: "/v1/conversations", status: 201, ok: true },
+        { method: "GET", path: "/v1/conversations/{id}/context", status: 200, ok: true },
+        { method: "POST", path: "/v1/conversations/{id}/messages", status: 201, ok: true },
+      ],
+    );
+    for (const entry of requestEntries) {
+      assert.equal(typeof entry.payload.durationMs, "number");
+    }
+    assert.doesNotMatch(JSON.stringify(requestEntries), /Authorization|Bearer|fixture-driven tests/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -409,6 +434,7 @@ test("Gemini session log keeps hook events together and includes user prompt fie
     assert.ok(lines.length >= 3);
     assert.match(log, /session-1/);
     assert.match(log, new RegExp(escapeRegExp(projectDir)));
+    assert.equal(lines[0].kind, "hook.event");
     assert.match(log, /"event":"SessionStart"/);
     assert.match(log, /"event":"BeforeAgent"/);
     assert.match(log, /NAMS_API_KEY missing/);

@@ -6,6 +6,7 @@ import { sha256 } from "./hashing.js";
 export interface PlatformLogEntry {
   platform: Platform;
   event: HookEvent;
+  kind?: string;
   payload: Record<string, unknown>;
   projectDirectory: string;
   sessionCreatedAt?: string;
@@ -19,6 +20,7 @@ export async function appendPlatformLog(entry: PlatformLogEntry): Promise<void> 
     timestamp: new Date().toISOString(),
     harness: entry.platform,
     event: entry.event,
+    kind: entry.kind ?? "hook.event",
     payload: entry.payload,
   };
 

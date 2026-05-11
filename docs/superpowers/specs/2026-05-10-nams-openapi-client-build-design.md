@@ -203,6 +203,16 @@ export interface NamsClientOptions {
   baseUrl?: string;
   apiKey: string;
   fetch?: typeof fetch;
+  onRequest?: (event: NamsRequestEvent) => void | Promise<void>;
+}
+
+export interface NamsRequestEvent {
+  operation: string;
+  method: HttpMethod;
+  path: string;
+  status?: number;
+  ok: boolean;
+  durationMs: number;
 }
 
 export class NamsClientError extends Error {
@@ -231,6 +241,8 @@ Requests use:
 
 The generated client should prefer global `fetch`. The package engine remains responsible for selecting a Node version where `fetch` is available.
 
+Each generated request method passes its stable operation name into the shared request helper. The optional `onRequest` callback receives sanitized request metadata for observability. It must not receive headers, request bodies, response bodies, full concrete URLs, or raw error messages. Callback failures are ignored so observability cannot block hook execution. NAMS request observability remains always-on at the runtime layer for now; there is no `NAMS_LOG_LEVEL` gate in this iteration.
+
 ## Contract Tests
 
 Contract tests compare the generated client against `docs/nams-openapi.json`.
@@ -245,6 +257,7 @@ They must verify:
 - mocked successful responses are parsed consistently
 - mocked error responses produce stable `NamsClientError` objects
 - `Authorization` and JSON headers are shaped correctly
+- `onRequest` receives sanitized operation metadata on success, HTTP errors, and network failures
 
 Contract tests should fail when:
 

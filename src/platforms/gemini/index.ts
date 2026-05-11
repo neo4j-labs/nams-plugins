@@ -1,5 +1,6 @@
 import type { HookInvocation, HookResult, PlatformAdapter } from "../../interfaces.js";
-import { loadNamsConfig } from "../../runtime/config.js";
+import type { NamsRequestEvent } from "../../generated/nams-client.js";
+import { loadNamsConfig, type NamsRuntimeConfig } from "../../runtime/config.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
 import { appendPlatformLog } from "../../runtime/logging.js";
 import { NamsMemoryService } from "../../runtime/memory-service.js";
@@ -59,10 +60,7 @@ export class GeminiAdapter implements PlatformAdapter {
 
     let additionalContext: string | undefined;
     try {
-      const memory = new NamsMemoryService({
-        ...config,
-        ...(this.options.fetch !== undefined ? { fetch: this.options.fetch } : {}),
-      });
+      const memory = this.createMemoryService(config, invocation, payloadInfo.projectDirectory, state);
 
       let conversationId = state.conversationId;
       if (conversationId === undefined) {
@@ -130,10 +128,7 @@ export class GeminiAdapter implements PlatformAdapter {
     }
 
     try {
-      const memory = new NamsMemoryService({
-        ...config,
-        ...(this.options.fetch !== undefined ? { fetch: this.options.fetch } : {}),
-      });
+      const memory = this.createMemoryService(config, invocation, payloadInfo.projectDirectory, state);
       const response = payloadInfo.promptResponse?.trim();
       if (response !== undefined && response !== "") {
         const responseHash = sha256([invocation.platform, state.sessionKey, "assistant", response].join("\n"));
@@ -193,10 +188,7 @@ export class GeminiAdapter implements PlatformAdapter {
     try {
       const toolCallId = geminiAfterToolDedupeKey(state.sessionKey, toolPayload);
       if (!state.seenToolCallIds.includes(toolCallId)) {
-        const memory = new NamsMemoryService({
-          ...config,
-          ...(this.options.fetch !== undefined ? { fetch: this.options.fetch } : {}),
-        });
+        const memory = this.createMemoryService(config, invocation, payloadInfo.projectDirectory, state);
         await memory.recordToolCall({
           toolName: toolPayload.toolName,
           input: toolPayload.input,
@@ -213,6 +205,19 @@ export class GeminiAdapter implements PlatformAdapter {
 
     await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
     return allowOutput();
+  }
+
+  private createMemoryService(
+    config: NamsRuntimeConfig,
+    invocation: HookInvocation,
+    projectDirectory: string,
+    state: SessionState,
+  ): NamsMemoryService {
+    return new NamsMemoryService({
+      ...config,
+      ...(this.options.fetch !== undefined ? { fetch: this.options.fetch } : {}),
+      onRequest: (event) => appendNamsRequestLog(invocation, projectDirectory, state, event),
+    });
   }
 }
 
@@ -326,6 +331,23 @@ async function appendNamsFailureDiagnostic(
   });
 }
 
+async function appendNamsRequestLog(
+  invocation: HookInvocation,
+  projectDirectory: string,
+  state: SessionState,
+  payload: NamsRequestEvent,
+): Promise<void> {
+  await appendPlatformLog({
+    platform: invocation.platform,
+    event: invocation.event,
+    kind: "nams.request",
+    projectDirectory,
+    payload: { ...payload },
+    sessionCreatedAt: state.createdAt,
+    sessionKey: state.sessionKey,
+  });
+}
+
 async function appendSanitizedPlatformLog(
   invocation: HookInvocation,
   projectDirectory: string,
@@ -335,6 +357,7 @@ async function appendSanitizedPlatformLog(
     await appendPlatformLog({
       platform: invocation.platform,
       event: invocation.event,
+      kind: "hook.event",
       payload: sanitizeGeminiLogPayload(invocation.rawPayload),
       projectDirectory,
       sessionCreatedAt: state.createdAt,
@@ -424,6 +447,7 @@ async function appendGeminiDiagnosticLog(entry: {
     await appendPlatformLog({
       platform: entry.platform,
       event: entry.event,
+      kind: "diagnostic",
       projectDirectory: entry.projectDirectory,
       payload: entry.payload,
       sessionCreatedAt: entry.state.createdAt,

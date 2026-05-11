@@ -1,8 +1,9 @@
-import { NamsClient, type ContextResponse } from "../generated/nams-client.js";
+import { NamsClient, type ContextResponse, type NamsRequestEvent } from "../generated/nams-client.js";
 import type { NamsRuntimeConfig } from "./config.js";
 
 export interface NamsMemoryServiceOptions extends NamsRuntimeConfig {
   fetch?: typeof fetch;
+  onRequest?: (event: NamsRequestEvent) => void | Promise<void>;
 }
 
 export interface CreateConversationInput {
@@ -35,6 +36,7 @@ export class NamsMemoryService {
       apiKey: options.apiKey,
       ...(options.baseUrl !== undefined ? { baseUrl: options.baseUrl } : {}),
       ...(options.fetch !== undefined ? { fetch: options.fetch } : {}),
+      ...(options.onRequest !== undefined ? { onRequest: options.onRequest } : {}),
     });
   }
 

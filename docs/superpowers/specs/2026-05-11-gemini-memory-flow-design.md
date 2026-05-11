@@ -154,7 +154,16 @@ Gemini observability logs are session-scoped. All hook events and diagnostics fo
 
 The timestamp segment comes from local session state `createdAt`, so later hooks reuse the same log file. The suffix is a short stable session-key part; cwd fallback sessions use a short hash rather than a long project path. If a platform cannot resolve session metadata, logging may fall back to the older event-scoped filename, but Gemini should use session-scoped logs whenever it has local state.
 
-Platform logs preserve user prompt fields (`prompt`, `user_prompt`, `userPrompt`) to support local debugging. Redaction remains active for API keys, authorization headers, tokens, passwords, request/response bodies, assistant responses, tool outputs/results, and generic content fields. Diagnostic logs must not include raw exception text from failed NAMS calls.
+Every JSONL record includes a `kind`. Raw hook payload observations use `kind: "hook.event"`. NAMS REST request observations use `kind: "nams.request"` and include sanitized metadata only:
+
+- `operation`: generated client method name, such as `createConversation`
+- `method`: HTTP method
+- `path`: endpoint path template, not a concrete URL
+- `status`: HTTP status when a response was received
+- `ok`: boolean request outcome
+- `durationMs`: elapsed request time in milliseconds
+
+Platform logs preserve user prompt fields (`prompt`, `user_prompt`, `userPrompt`) to support local debugging. Redaction remains active for API keys, authorization headers, tokens, passwords, request/response bodies, assistant responses, tool outputs/results, and generic content fields. NAMS request logs must not include headers, request bodies, response bodies, full concrete URLs, or raw exception text.
 
 ### NAMS Memory Service
 

@@ -194,6 +194,86 @@ test("generated NAMS client sends bearer JSON requests", async () => {
   assert.equal(requests[0].init.body, JSON.stringify({ userId: "user-1" }));
 });
 
+test("generated NAMS client reports sanitized request metadata", async () => {
+  const { NamsClient } = await import(generatedClientUrl);
+  const events = [];
+  const client = new NamsClient({
+    apiKey: "test-key",
+    baseUrl: "https://memory.example.test",
+    onRequest: (event) => {
+      events.push(event);
+    },
+    fetch: async () =>
+      new Response(JSON.stringify({ id: "message-1" }), {
+        headers: { "Content-Type": "application/json" },
+        status: 201,
+      }),
+  });
+
+  await client.addMessage("conversation-1", { role: "user", content: "hello" });
+
+  assert.equal(events.length, 1);
+  assert.deepEqual(Object.keys(events[0]).sort(), ["durationMs", "method", "ok", "operation", "path", "status"]);
+  assert.equal(events[0].operation, "addMessage");
+  assert.equal(events[0].method, "POST");
+  assert.equal(events[0].path, "/v1/conversations/{id}/messages");
+  assert.equal(events[0].status, 201);
+  assert.equal(events[0].ok, true);
+  assert.equal(typeof events[0].durationMs, "number");
+});
+
+test("generated NAMS client reports failed request metadata before throwing", async () => {
+  const { NamsClient, NamsClientError } = await import(generatedClientUrl);
+  const events = [];
+  const client = new NamsClient({
+    apiKey: "test-key",
+    baseUrl: "https://memory.example.test",
+    onRequest: (event) => {
+      events.push(event);
+    },
+    fetch: async () =>
+      new Response(JSON.stringify({ error: "workspace_id required" }), {
+        headers: { "Content-Type": "application/json" },
+        status: 400,
+      }),
+  });
+
+  await assert.rejects(() => client.createConversation(), NamsClientError);
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0].operation, "createConversation");
+  assert.equal(events[0].method, "POST");
+  assert.equal(events[0].path, "/v1/conversations");
+  assert.equal(events[0].status, 400);
+  assert.equal(events[0].ok, false);
+  assert.equal(typeof events[0].durationMs, "number");
+});
+
+test("generated NAMS client reports network failure metadata before throwing", async () => {
+  const { NamsClient } = await import(generatedClientUrl);
+  const events = [];
+  const client = new NamsClient({
+    apiKey: "test-key",
+    baseUrl: "https://memory.example.test",
+    onRequest: (event) => {
+      events.push(event);
+    },
+    fetch: async () => {
+      throw new Error("socket closed with Authorization: Bearer secret");
+    },
+  });
+
+  await assert.rejects(() => client.getConversationContext("conversation-1"), /socket closed/);
+
+  assert.equal(events.length, 1);
+  assert.deepEqual(Object.keys(events[0]).sort(), ["durationMs", "method", "ok", "operation", "path"]);
+  assert.equal(events[0].operation, "getConversationContext");
+  assert.equal(events[0].method, "GET");
+  assert.equal(events[0].path, "/v1/conversations/{id}/context");
+  assert.equal(events[0].ok, false);
+  assert.equal(typeof events[0].durationMs, "number");
+});
+
 test("generated NAMS client encodes path parameters", async () => {
   const { NamsClient } = await import(generatedClientUrl);
   const requests = [];

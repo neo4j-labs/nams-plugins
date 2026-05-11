@@ -7,6 +7,16 @@ export interface NamsClientOptions {
   baseUrl?: string;
   apiKey: string;
   fetch?: typeof fetch;
+  onRequest?: (event: NamsRequestEvent) => void | Promise<void>;
+}
+
+export interface NamsRequestEvent {
+  operation: string;
+  method: HttpMethod;
+  path: string;
+  status?: number;
+  ok: boolean;
+  durationMs: number;
 }
 
 export class NamsClientError extends Error {
@@ -162,49 +172,52 @@ export class NamsClient {
   private readonly baseUrl: string;
   private readonly apiKey: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly onRequest?: (event: NamsRequestEvent) => void | Promise<void>;
 
   constructor(options: NamsClientOptions) {
     this.baseUrl = (options.baseUrl ?? "https://memory.neo4jlabs.com").replace(/\/+$/, "");
     this.apiKey = options.apiKey;
     this.fetchImpl = options.fetch ?? globalThis.fetch;
+    this.onRequest = options.onRequest;
     if (this.fetchImpl === undefined) {
       throw new Error("NamsClient requires a fetch implementation");
     }
   }
 
   async createConversation(body?: CreateConversationRequest): Promise<CreateConversationResponse> {
-    return this.request<CreateConversationResponse>("POST", "/v1/conversations", undefined, body);
+    return this.request<CreateConversationResponse>("createConversation", "POST", "/v1/conversations", undefined, body);
   }
 
   async addMessage(conversationId: string, body: AddMessageRequest): Promise<AddMessageResponse> {
-    return this.request<AddMessageResponse>("POST", "/v1/conversations/{id}/messages", { id: conversationId }, body);
+    return this.request<AddMessageResponse>("addMessage", "POST", "/v1/conversations/{id}/messages", { id: conversationId }, body);
   }
 
   async addMessagesBulk(conversationId: string, body: AddMessagesBulkRequest): Promise<AddMessagesBatchResponse> {
-    return this.request<AddMessagesBatchResponse>("POST", "/v1/conversations/{id}/messages/bulk", { id: conversationId }, body);
+    return this.request<AddMessagesBatchResponse>("addMessagesBulk", "POST", "/v1/conversations/{id}/messages/bulk", { id: conversationId }, body);
   }
 
   async getConversationContext(conversationId: string): Promise<ContextResponse> {
-    return this.request<ContextResponse>("GET", "/v1/conversations/{id}/context", { id: conversationId }, undefined);
+    return this.request<ContextResponse>("getConversationContext", "GET", "/v1/conversations/{id}/context", { id: conversationId }, undefined);
   }
 
   async searchConversationMessages(conversationId: string, body: SearchMessagesRequest): Promise<SearchMessagesResponse> {
-    return this.request<SearchMessagesResponse>("POST", "/v1/conversations/{id}/search", { id: conversationId }, body);
+    return this.request<SearchMessagesResponse>("searchConversationMessages", "POST", "/v1/conversations/{id}/search", { id: conversationId }, body);
   }
 
   async searchEntities(body: SearchEntitiesRequest): Promise<SearchEntitiesResponse> {
-    return this.request<SearchEntitiesResponse>("POST", "/v1/entities/search", undefined, body);
+    return this.request<SearchEntitiesResponse>("searchEntities", "POST", "/v1/entities/search", undefined, body);
   }
 
   async recordReasoningStep(body: RecordStepRequest): Promise<RecordReasoningStepResponse> {
-    return this.request<RecordReasoningStepResponse>("POST", "/v1/reasoning/steps", undefined, body);
+    return this.request<RecordReasoningStepResponse>("recordReasoningStep", "POST", "/v1/reasoning/steps", undefined, body);
   }
 
   async recordToolCall(body: RecordToolCallRequest): Promise<RecordToolCallResponse> {
-    return this.request<RecordToolCallResponse>("POST", "/v1/reasoning/tool-calls", undefined, body);
+    return this.request<RecordToolCallResponse>("recordToolCall", "POST", "/v1/reasoning/tool-calls", undefined, body);
   }
 
   private async request<TResponse>(
+    operation: string,
     httpMethod: HttpMethod,
     pathTemplate: string,
     pathParams?: Record<string, string>,
@@ -221,7 +234,28 @@ export class NamsClient {
       init.body = JSON.stringify(body);
     }
 
-    const response = await this.fetchImpl(url, init);
+    const startedAt = Date.now();
+    let response: Response;
+    try {
+      response = await this.fetchImpl(url, init);
+    } catch (error) {
+      await this.emitRequestEvent({
+        operation,
+        method: httpMethod,
+        path: pathTemplate,
+        ok: false,
+        durationMs: elapsedMs(startedAt),
+      });
+      throw error;
+    }
+    await this.emitRequestEvent({
+      operation,
+      method: httpMethod,
+      path: pathTemplate,
+      status: response.status,
+      ok: response.ok,
+      durationMs: elapsedMs(startedAt),
+    });
     const responseBody = await readResponseBody(response);
     if (!response.ok) {
       const message = extractErrorMessage(responseBody) ?? `NAMS request failed with status ${response.status}`;
@@ -229,6 +263,21 @@ export class NamsClient {
     }
     return responseBody as TResponse;
   }
+
+  private async emitRequestEvent(event: NamsRequestEvent): Promise<void> {
+    if (this.onRequest === undefined) {
+      return;
+    }
+    try {
+      await this.onRequest(event);
+    } catch {
+      // Observability callbacks must not block NAMS requests.
+    }
+  }
+}
+
+function elapsedMs(startedAt: number): number {
+  return Math.max(0, Date.now() - startedAt);
 }
 
 function formatPath(pathTemplate: string, pathParams: Record<string, string> = {}): string {
