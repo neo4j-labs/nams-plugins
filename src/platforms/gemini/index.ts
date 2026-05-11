@@ -166,6 +166,8 @@ export class GeminiAdapter implements PlatformAdapter {
       (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
     await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
     state.seenToolCallIds ??= [];
+    state.seenReasoningStepHashes ??= [];
+    state.reasoningStepIdsByHash ??= {};
 
     if (state.conversationId === undefined) {
       await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
@@ -186,12 +188,32 @@ export class GeminiAdapter implements PlatformAdapter {
     }
 
     try {
-      const toolCallId = geminiAfterToolDedupeKey(state.sessionKey, toolPayload);
+      const toolCallId = geminiToolCallDedupeKey(state.sessionKey, toolPayload.toolName, toolPayload.input);
       if (!state.seenToolCallIds.includes(toolCallId)) {
         const memory = this.createMemoryService(config, invocation, payloadInfo.projectDirectory, state);
+        const reasoningStep = {
+          conversationId: state.conversationId,
+          reasoning: `Gemini invoked ${toolPayload.toolName} with the provided tool input.`,
+          actionTaken: `Ran ${toolPayload.toolName}`,
+          ...(toolPayload.outputSummary !== undefined ? { result: toolPayload.outputSummary } : {}),
+        };
+        const reasoningStepHash = stableJsonHash({
+          sessionKey: state.sessionKey,
+          ...reasoningStep,
+        });
+        let stepId: string | undefined = state.reasoningStepIdsByHash[reasoningStepHash];
+        if (!state.seenReasoningStepHashes.includes(reasoningStepHash)) {
+          stepId = await memory.recordReasoningStep(reasoningStep);
+          state.seenReasoningStepHashes.push(reasoningStepHash);
+          if (stepId !== undefined) {
+            state.reasoningStepIdsByHash[reasoningStepHash] = stepId;
+          }
+        }
         await memory.recordToolCall({
+          ...(stepId !== undefined ? { stepId } : {}),
           toolName: toolPayload.toolName,
           input: toolPayload.input,
+          ...(toolPayload.output !== undefined ? { output: toolPayload.output } : {}),
           ...(toolPayload.status !== undefined ? { status: toolPayload.status } : {}),
           ...(toolPayload.durationMs !== undefined ? { durationMs: toolPayload.durationMs } : {}),
         });
@@ -235,35 +257,36 @@ interface GeminiAfterToolPayload {
   id?: string;
   toolName?: string;
   input: unknown;
+  output?: string;
+  outputSummary?: string;
   status?: string;
   durationMs?: number;
 }
 
 function parseGeminiAfterToolPayload(payload: Record<string, unknown>): GeminiAfterToolPayload {
+  const toolResponse = firstRecord(payload.tool_response, payload.toolResponse);
   return {
     ...optionalString("id", firstString(payload.tool_call_id, payload.toolCallId, payload.id)),
     ...optionalString("toolName", firstString(payload.tool_name, payload.toolName, payload.name, payload.displayName)),
     input: firstDefined(payload.tool_input, payload.toolInput, payload.input, payload.args, payload.arguments) ?? payload,
+    ...optionalString(
+      "output",
+      firstString(toolResponse?.llmContent, toolResponse?.output, payload.llmContent, payload.output, payload.result),
+    ),
+    ...optionalString(
+      "outputSummary",
+      firstString(toolResponse?.returnDisplay, payload.returnDisplay, toolResponse?.display, toolResponse?.summary),
+    ),
     ...optionalString("status", firstString(payload.status)),
     ...optionalNumber("durationMs", firstNumber(payload.duration_ms, payload.durationMs)),
   };
 }
 
-function geminiAfterToolDedupeKey(sessionKey: string, payload: GeminiAfterToolPayload): string {
-  if (payload.id !== undefined) {
-    return stableJsonHash({
-      sessionKey,
-      source: "afterTool",
-      id: payload.id,
-    });
-  }
-
+function geminiToolCallDedupeKey(sessionKey: string, toolName: string, input: unknown): string {
   return stableJsonHash({
     sessionKey,
-    source: "afterTool",
-    toolName: payload.toolName,
-    input: payload.input,
-    status: payload.status,
+    toolName,
+    input,
   });
 }
 
@@ -293,6 +316,15 @@ function firstNumber(...values: unknown[]): number | undefined {
 
 function firstDefined(...values: unknown[]): unknown {
   return values.find((value) => value !== undefined);
+}
+
+function firstRecord(...values: unknown[]): Record<string, unknown> | undefined {
+  for (const value of values) {
+    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+      return value as Record<string, unknown>;
+    }
+  }
+  return undefined;
 }
 
 function optionalString<K extends string>(key: K, value: string | undefined): { [P in K]?: string } {
@@ -451,10 +483,9 @@ async function recordTraceFromTranscript(
 
       const reasoningStepHash = stableJsonHash({
         sessionKey: state.sessionKey,
-        id: entry.id,
-        subject: entry.subject,
-        description: entry.description,
-        timestamp: entry.timestamp,
+        conversationId,
+        actionTaken: entry.subject.trim(),
+        reasoning: entry.description.trim(),
       });
       if (state.seenReasoningStepHashes.includes(reasoningStepHash)) {
         addCurrentParentStepId(currentParentStepIds, state.reasoningStepIdsByHash[reasoningStepHash]);
@@ -481,7 +512,7 @@ async function recordTraceFromTranscript(
         currentParentStepIds = [];
       }
 
-      const toolCallId = transcriptToolCallDedupeKey(state.sessionKey, entry);
+      const toolCallId = geminiToolCallDedupeKey(state.sessionKey, entry.name, entry.args);
       if (state.seenToolCallIds.includes(toolCallId)) {
         continue;
       }
@@ -509,30 +540,6 @@ function transcriptParentKey(
   return stableJsonHash({
     parentTranscriptEntryId: entry.parentTranscriptEntryId,
     parentTranscriptEntryIndex: entry.parentTranscriptEntryIndex,
-  });
-}
-
-function transcriptToolCallDedupeKey(
-  sessionKey: string,
-  entry: Extract<GeminiTranscriptEntry, { kind: "toolCall" }>,
-): string {
-  if (entry.id !== undefined) {
-    return stableJsonHash({
-      sessionKey,
-      parentTranscriptEntryId: entry.parentTranscriptEntryId,
-      parentTranscriptEntryIndex: entry.parentTranscriptEntryIndex,
-      id: entry.id,
-    });
-  }
-
-  return stableJsonHash({
-    sessionKey,
-    parentTranscriptEntryId: entry.parentTranscriptEntryId,
-    parentTranscriptEntryIndex: entry.parentTranscriptEntryIndex,
-    name: entry.name,
-    args: entry.args,
-    status: entry.status,
-    timestamp: entry.timestamp,
   });
 }
 

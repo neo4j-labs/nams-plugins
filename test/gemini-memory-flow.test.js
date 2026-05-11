@@ -661,7 +661,7 @@ test("Gemini hooks continue when observability log writes fail", async () => {
   }
 });
 
-test("records Gemini AfterTool payload as sanitized tool metadata", async () => {
+test("records Gemini AfterTool payload as a reasoning step with tool output", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
     const requests = [];
@@ -675,6 +675,9 @@ test("records Gemini AfterTool payload as sanitized tool metadata", async () => 
       }
       if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
         return jsonResponse({ id: "message-1" }, 201);
+      }
+      if (url === "https://memory.example.test/v1/reasoning/steps") {
+        return jsonResponse({ id: "step-after-tool-1" }, 201);
       }
       if (url === "https://memory.example.test/v1/reasoning/tool-calls") {
         return jsonResponse({ id: "tool-call-1" }, 201);
@@ -714,13 +717,29 @@ test("records Gemini AfterTool payload as sanitized tool metadata", async () => 
         tool_input: { path: "notes.md", keep: "metadata" },
         status: "success",
         duration_ms: 42,
-        output: "raw output secret",
-        result: "raw result secret",
-        responseBody: "raw response body secret",
+        tool_response: {
+          llmContent: "raw tool output text",
+          returnDisplay: "Tool returned a display summary.",
+        },
       },
     });
 
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    const reasoningBodies = requests
+      .filter(
+        (request) =>
+          request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/steps",
+      )
+      .map((request) => JSON.parse(request.init.body));
+    assert.deepEqual(reasoningBodies, [
+      {
+        conversationId: "conversation-1",
+        reasoning: "Gemini invoked read_file with the provided tool input.",
+        actionTaken: "Ran read_file",
+        result: "Tool returned a display summary.",
+      },
+    ]);
+
     const toolBodies = requests
       .filter(
         (request) =>
@@ -729,13 +748,14 @@ test("records Gemini AfterTool payload as sanitized tool metadata", async () => 
       .map((request) => JSON.parse(request.init.body));
     assert.equal(toolBodies.length, 1);
     assert.equal(toolBodies[0].toolName, "read_file");
+    assert.equal(toolBodies[0].stepId, "step-after-tool-1");
     assert.equal(toolBodies[0].status, "success");
     assert.equal(toolBodies[0].durationMs, 42);
-    assert.equal(toolBodies[0].output, "");
+    assert.equal(toolBodies[0].output, "raw tool output text");
     assert.match(toolBodies[0].input, /"path":"notes.md"/);
     assert.match(toolBodies[0].input, /"keep":"metadata"/);
-    assert.doesNotMatch(toolBodies[0].input, /raw output secret|raw result secret|raw response body secret/);
-    assert.doesNotMatch(toolBodies[0].input, /"output"|"result"|"responseBody"/);
+    assert.doesNotMatch(toolBodies[0].input, /raw tool output text|Tool returned a display summary/);
+    assert.doesNotMatch(toolBodies[0].input, /"tool_response"|"llmContent"|"returnDisplay"/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -755,6 +775,9 @@ test("does not duplicate Gemini AfterTool metadata for the same tool call id", a
       }
       if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
         return jsonResponse({ id: "message-1" }, 201);
+      }
+      if (url === "https://memory.example.test/v1/reasoning/steps") {
+        return jsonResponse({ id: "step-after-tool-1" }, 201);
       }
       if (url === "https://memory.example.test/v1/reasoning/tool-calls") {
         return jsonResponse({ id: "tool-call-1" }, 201);
@@ -804,6 +827,108 @@ test("does not duplicate Gemini AfterTool metadata for the same tool call id", a
         request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/tool-calls",
     );
     assert.equal(toolRequests.length, 1);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("does not duplicate AfterTool when transcript later contains the same tool call", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
+  try {
+    const transcriptPath = path.join(projectDir, "gemini-transcript.jsonl");
+    await writeFile(
+      transcriptPath,
+      [
+        JSON.stringify({ sessionId: "session-1" }),
+        JSON.stringify({
+          id: "gemini-1",
+          type: "gemini",
+          content: "",
+          toolCalls: [
+            {
+              id: "google_web_search_1",
+              name: "google_web_search",
+              args: { query: "nams" },
+              status: "success",
+              timestamp: "2026-05-11T09:30:02.000Z",
+            },
+          ],
+        }),
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const requests = [];
+    const mockFetch = async (url, init) => {
+      requests.push({ url, init });
+      if (url === "https://memory.example.test/v1/conversations") {
+        return jsonResponse({ id: "conversation-1" }, 201);
+      }
+      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
+        return jsonResponse({});
+      }
+      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
+        return jsonResponse({ id: "message-1" }, 201);
+      }
+      if (url === "https://memory.example.test/v1/reasoning/steps") {
+        return jsonResponse({ id: "step-after-tool-1" }, 201);
+      }
+      if (url === "https://memory.example.test/v1/reasoning/tool-calls") {
+        return jsonResponse({ id: "tool-call-1" }, 201);
+      }
+      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
+    };
+
+    const { GeminiAdapter } = await import(geminiUrl);
+    const adapter = new GeminiAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: mockFetch,
+    });
+
+    await adapter.beforeAgent({
+      platform: "gemini",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "Search once.",
+      },
+    });
+    await adapter.afterTool({
+      platform: "gemini",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        tool_name: "google_web_search",
+        tool_input: { query: "nams" },
+        status: "success",
+        tool_response: { llmContent: "search result text" },
+      },
+    });
+    await adapter.afterAgent({
+      platform: "gemini",
+      event: "AfterAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        transcript_path: transcriptPath,
+      },
+    });
+
+    const toolRequests = requests.filter(
+      (request) =>
+        request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/tool-calls",
+    );
+    assert.equal(toolRequests.length, 1);
+    assert.equal(JSON.parse(toolRequests[0].init.body).stepId, "step-after-tool-1");
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -1040,6 +1165,115 @@ test("does not duplicate prompt_response assistant messages during later transcr
     assert.deepEqual(assistantMessageBodies, [
       { role: "assistant", content: "A" },
       { role: "assistant", content: "B" },
+    ]);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("deduplicates repeated Gemini transcript thoughts by reasoning body", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
+  try {
+    const transcriptPath = path.join(projectDir, "gemini-transcript.jsonl");
+    await writeFile(
+      transcriptPath,
+      [
+        JSON.stringify({ sessionId: "session-1" }),
+        JSON.stringify({
+          id: "gemini-1",
+          type: "gemini",
+          content: "",
+          thoughts: [
+            {
+              subject: "Researching",
+              description: "Searching official guidance",
+              timestamp: "2026-05-11T09:30:00.000Z",
+            },
+            {
+              subject: "Researching",
+              description: "Searching official guidance",
+              timestamp: "2026-05-11T09:30:01.000Z",
+            },
+          ],
+        }),
+        JSON.stringify({
+          id: "gemini-2",
+          type: "gemini",
+          content: "",
+          thoughts: [
+            {
+              subject: "Researching",
+              description: "Searching official guidance",
+              timestamp: "2026-05-11T09:30:02.000Z",
+            },
+          ],
+        }),
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const requests = [];
+    const mockFetch = async (url, init) => {
+      requests.push({ url, init });
+      if (url === "https://memory.example.test/v1/conversations") {
+        return jsonResponse({ id: "conversation-1" }, 201);
+      }
+      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
+        return jsonResponse({});
+      }
+      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
+        return jsonResponse({ id: "message-1" }, 201);
+      }
+      if (url === "https://memory.example.test/v1/reasoning/steps") {
+        return jsonResponse({ id: "step-1" }, 201);
+      }
+      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
+    };
+
+    const { GeminiAdapter } = await import(geminiUrl);
+    const adapter = new GeminiAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: mockFetch,
+    });
+
+    await adapter.beforeAgent({
+      platform: "gemini",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "Find current official guidance.",
+      },
+    });
+
+    await adapter.afterAgent({
+      platform: "gemini",
+      event: "AfterAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        transcript_path: transcriptPath,
+      },
+    });
+
+    const reasoningBodies = requests
+      .filter(
+        (request) =>
+          request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/steps",
+      )
+      .map((request) => JSON.parse(request.init.body));
+    assert.deepEqual(reasoningBodies, [
+      {
+        conversationId: "conversation-1",
+        reasoning: "Searching official guidance",
+        actionTaken: "Researching",
+      },
     ]);
   } finally {
     await rm(projectDir, { recursive: true, force: true });

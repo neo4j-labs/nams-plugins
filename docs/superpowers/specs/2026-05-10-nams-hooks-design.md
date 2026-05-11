@@ -27,7 +27,7 @@ The hook runner owns deterministic memory persistence. Agents receive recalled c
 - Use plain Node.js built-in modules only. No npm dependencies.
 - Persist standard user and assistant messages as the primary memory stream.
 - Recall memory before agent responses and inject concise context plus a short operating instruction.
-- Store tool-call metadata without storing tool output.
+- Store tool-call metadata and exposed tool output when the harness provides it cleanly.
 - Keep secrets and state local to `.nams/`.
 
 ## Non-Goals For v1
@@ -262,7 +262,7 @@ Tool metadata:
   - `stepId`: optional, from local state when available
   - `toolName`
   - `input`: sanitized and capped serialized tool input
-  - `output`: empty string
+  - `output`: exposed tool output when available, otherwise empty string
   - `status`
   - `durationMs`
 - Client method: `recordToolCall`
@@ -300,8 +300,8 @@ User prompt submit or before-agent:
 Tool completion:
 
 - Record tool metadata when the harness exposes a post-tool event.
-- Persist `toolName`, sanitized `input`, optional `stepId`, status, and duration.
-- Do not persist actual output.
+- Persist `toolName`, sanitized `input`, exposed `output`, optional `stepId`, status, and duration.
+- Create a safe operational reasoning step first when the harness exposes a tool event but does not expose a parent reasoning step.
 
 Assistant complete or stop:
 
@@ -460,7 +460,7 @@ Manual validation:
 - confirm one NAMS conversation is created
 - confirm user messages persist
 - confirm assistant messages persist where exposed
-- run a tool call and confirm metadata persists without output
+- run a tool call and confirm metadata, exposed output, and deterministic step linkage persist
 - restart or resume a harness and confirm conversation reuse when the harness session ID matches
 
 ## Open Risks
@@ -485,7 +485,7 @@ Approved decisions from brainstorming:
 - Deterministic REST writes from hook runner, not MCP-driven writes.
 - Persist user messages and assistant responses as the core memory stream.
 - Store assistant responses in v1 where harnesses expose them cleanly.
-- Store tool-call metadata without actual output.
+- Store tool-call metadata with exposed output when available.
 - Rely on NAMS async entity extraction from stored messages.
 - Use TypeScript for source and release vanilla JavaScript.
 - Use a custom generated `NamsClient` for REST calls.

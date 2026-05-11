@@ -22,6 +22,7 @@ export interface ToolCallInput {
   stepId?: string;
   toolName: string;
   input: unknown;
+  output?: string;
   status?: string;
   durationMs?: number;
 }
@@ -84,7 +85,7 @@ export class NamsMemoryService {
     await this.client.recordToolCall({
       toolName: input.toolName,
       input: serializeToolInput(input.input),
-      output: "",
+      output: input.output ?? "",
       ...(input.stepId !== undefined ? { stepId: input.stepId } : {}),
       ...(input.status !== undefined ? { status: input.status } : {}),
       ...(input.durationMs !== undefined ? { durationMs: input.durationMs } : {}),

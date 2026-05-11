@@ -49,7 +49,7 @@ test("formatMemoryContext formats memories for Gemini additionalContext", async 
   assert.equal(formatMemoryContext({}), "");
 });
 
-test("recordToolCall serializes sanitized capped input and omits tool output", async () => {
+test("recordToolCall serializes sanitized capped input and sends explicit tool output", async () => {
   const requests = [];
   const { NamsMemoryService } = await import(serviceUrl);
   const service = new NamsMemoryService({
@@ -79,6 +79,7 @@ test("recordToolCall serializes sanitized capped input and omits tool output", a
       resultDisplay: "rendered result",
       long: "x".repeat(5000),
     },
+    output: "search result text",
     status: "success",
     durationMs: 123,
   });
@@ -88,7 +89,7 @@ test("recordToolCall serializes sanitized capped input and omits tool output", a
   assert.equal(body.stepId, "step-1");
   assert.equal(body.status, "success");
   assert.equal(body.durationMs, 123);
-  assert.equal(body.output, "");
+  assert.equal(body.output, "search result text");
   assert.equal(body.input.length, 4000);
   assert.match(body.input, /\.\.\.\[truncated\]$/);
   assert.match(body.input, /"query":"autonomo spain"/);

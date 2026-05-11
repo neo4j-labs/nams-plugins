@@ -37,7 +37,7 @@ Gemini hook payloads are the primary source for current-turn data. The Gemini tr
 
 - Eager conversation creation during `SessionStart`.
 - Direct entity creation from hooks.
-- Persisting private or unexposed hidden reasoning, token counts, or raw tool output.
+- Persisting private or unexposed hidden reasoning, token counts, or tool output that Gemini did not expose cleanly through hook payloads.
 - Live NAMS or live Gemini CLI testing as a Phase 1 completion gate.
 - `NAMS_USER_ID` or `NAMS_CONTEXT_LIMIT` configuration in Phase 1.
 
@@ -66,11 +66,12 @@ The runtime maps each exposed thought summary to a reasoning step:
 - `actionTaken`: thought `subject`
 - `result`: absent unless Gemini exposes a clear, safe result summary
 
-Phase 2 also records tool metadata from both Gemini `AfterTool` hook payloads and transcript `toolCalls[]`. The runtime records metadata only:
+Phase 2 also records tool traces from both Gemini `AfterTool` hook payloads and transcript `toolCalls[]`. The runtime records:
 
 - tool name
 - sanitized and capped input
 - optional step id
+- exposed tool output when Gemini provides it cleanly
 - status
 - duration when available
 
@@ -241,11 +242,11 @@ The injected context should be concise and should instruct Gemini to use the con
 
 ### AfterTool
 
-Phase 2 records sanitized tool metadata only. It must not persist raw tool output. When Gemini exposes both reasoning thoughts and tool calls in the same transcript turn, the runtime may attach the tool call to the nearest stored reasoning step. If the relationship is unclear, the tool call is recorded without a step id.
+Phase 2 records `AfterTool` as an operational reasoning step plus a linked tool call. The step is a safe summary such as "Gemini invoked <tool> with the provided tool input"; it is not hidden chain-of-thought. When Gemini exposes `tool_response.llmContent`, the runtime stores that value as the tool-call `output`, with `tool_response.returnDisplay` used as the reasoning-step result summary when present.
 
 ### Reasoning Step Capture
 
-Phase 2 processes exposed transcript `thoughts` during transcript fallback or explicit trace-processing hooks. Each thought is deduplicated by transcript entry id, thought timestamp, subject, and description. Stored reasoning step ids may be retained in local state so later tool metadata can be associated when the relationship is clear.
+Phase 2 processes exposed transcript `thoughts` during transcript fallback or explicit trace-processing hooks. Each thought is deduplicated by normalized reasoning body: current conversation, subject/action, and description/reasoning. Transcript ids and timestamps are supporting metadata, not part of the duplicate key. Stored reasoning step ids may be retained in local state so later tool metadata can be associated when the relationship is clear.
 
 ### Tool Call Capture
 
@@ -258,9 +259,9 @@ Transcript tool calls map to NAMS tool-call records:
 - `status`: `toolCall.status`
 - `durationMs`: omitted unless Gemini exposes enough timing data for a reliable duration
 - `stepId`: nearest stored reasoning step id from the same transcript entry when deterministic
-- `output`: empty string or omitted
+- `output`: exposed output from `AfterTool` when present; transcript tool-call output fields remain omitted
 
-The runtime must not persist transcript tool output fields, including `result`, `resultDisplay`, `functionResponse`, and nested response output. Transcript tool calls are deduplicated by `toolCall.id` when present and by a stable hash of transcript entry id, tool name, args, status, and timestamp when no id exists.
+The runtime must not persist transcript tool output fields, including `result`, `resultDisplay`, `functionResponse`, and nested response output. Tool calls are deduplicated across `AfterTool` and transcript replay by session key, tool name, and normalized input, so the same tool invocation is not written twice when Gemini exposes it through both surfaces.
 
 ### SessionEnd
 
@@ -320,7 +321,7 @@ If transcript reading fails:
 - Do not create entities directly from hooks.
 - Do not store private or unexposed hidden reasoning.
 - Persist Gemini transcript `thoughts` only when they are explicitly exposed in the transcript and only as NAMS reasoning steps, not as conversation messages.
-- Do not persist raw tool output.
+- Persist tool output only when Gemini exposes it cleanly through `AfterTool`.
 - Do not persist transcript `toolCalls[].result`, `resultDisplay`, `functionResponse`, or nested tool response output.
 - Keep `.nams/.env`, `.nams/state/`, and `.nams/logs/` local and gitignored.
 - Write only harness-specific JSON to stdout.
