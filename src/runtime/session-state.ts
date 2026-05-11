@@ -17,6 +17,7 @@ export interface SessionState {
   seenTranscriptEntryIds: string[];
   seenReasoningStepHashes: string[];
   seenToolCallIds: string[];
+  reasoningStepIdsByHash: Record<string, string>;
 }
 
 export interface ResolveSessionKeyInput {
@@ -70,6 +71,7 @@ export function createInitialSessionState(input: ResolveSessionKeyInput, now = n
     seenTranscriptEntryIds: [],
     seenReasoningStepHashes: [],
     seenToolCallIds: [],
+    reasoningStepIdsByHash: {},
   };
 }
 

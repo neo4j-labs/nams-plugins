@@ -23,6 +23,17 @@ test("falls back to cwd-derived Gemini session key when session id is missing", 
   assert.match(key, /^cwd-[a-f0-9]{64}$/);
 });
 
+test("initializes reasoning step id map for new session state", async () => {
+  const { createInitialSessionState } = await import(stateUrl);
+  const state = createInitialSessionState({
+    platform: "gemini",
+    sessionId: "session-1",
+    projectDirectory: "/tmp/project",
+  });
+
+  assert.deepEqual(state.reasoningStepIdsByHash, {});
+});
+
 test("persists session state under .nams/state/sessions using safe session filenames", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-state-"));
   try {

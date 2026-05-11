@@ -56,6 +56,8 @@ test("reads Gemini transcript messages, thoughts, and tool metadata", async () =
       {
         kind: "thought",
         id: "gemini-1:thought:0",
+        parentTranscriptEntryId: "gemini-1",
+        parentTranscriptEntryIndex: 3,
         subject: "Researching",
         description: "Searching official guidance",
         timestamp: "2026-05-11T12:11:55.500Z",
@@ -63,6 +65,8 @@ test("reads Gemini transcript messages, thoughts, and tool metadata", async () =
       {
         kind: "toolCall",
         id: "google_web_search_1",
+        parentTranscriptEntryId: "gemini-1",
+        parentTranscriptEntryIndex: 3,
         name: "google_web_search",
         args: { query: "autonomo spain" },
         status: "success",
@@ -112,7 +116,14 @@ test("omits thought id when Gemini transcript entry has no id", async () => {
     const { readGeminiTranscript } = await import(transcriptUrl);
     const entries = await readGeminiTranscript(transcriptPath);
 
-    assert.deepEqual(entries, [{ kind: "thought", subject: "Planning", description: "Checking the next step" }]);
+    assert.deepEqual(entries, [
+      {
+        kind: "thought",
+        parentTranscriptEntryIndex: 0,
+        subject: "Planning",
+        description: "Checking the next step",
+      },
+    ]);
     assert.equal(Object.hasOwn(entries[0], "id"), false);
   } finally {
     await rm(tempDir, { recursive: true, force: true });

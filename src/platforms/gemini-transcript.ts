@@ -4,26 +4,45 @@ export type GeminiTranscriptEntry =
   | { kind: "header"; sessionId?: string }
   | { kind: "user"; id?: string; content: string; timestamp?: string }
   | { kind: "assistant"; id?: string; content: string; timestamp?: string }
-  | { kind: "thought"; id?: string; subject: string; description: string; timestamp?: string }
-  | { kind: "toolCall"; id?: string; name: string; args: unknown; status?: string; timestamp?: string };
+  | {
+      kind: "thought";
+      id?: string;
+      parentTranscriptEntryId?: string;
+      parentTranscriptEntryIndex: number;
+      subject: string;
+      description: string;
+      timestamp?: string;
+    }
+  | {
+      kind: "toolCall";
+      id?: string;
+      parentTranscriptEntryId?: string;
+      parentTranscriptEntryIndex: number;
+      name: string;
+      args: unknown;
+      status?: string;
+      timestamp?: string;
+    };
 
 export async function readGeminiTranscript(transcriptPath: string): Promise<GeminiTranscriptEntry[]> {
   const content = await readFile(transcriptPath, "utf8");
   const entries: GeminiTranscriptEntry[] = [];
 
+  let rawEntryIndex = 0;
   for (const line of content.split(/\r?\n/)) {
     if (line.trim() === "") {
       continue;
     }
 
     const raw = JSON.parse(line) as Record<string, unknown>;
-    entries.push(...toEntries(raw));
+    entries.push(...toEntries(raw, rawEntryIndex));
+    rawEntryIndex += 1;
   }
 
   return entries;
 }
 
-function toEntries(raw: Record<string, unknown>): GeminiTranscriptEntry[] {
+function toEntries(raw: Record<string, unknown>, rawEntryIndex: number): GeminiTranscriptEntry[] {
   if ("$set" in raw) {
     return [];
   }
@@ -41,7 +60,7 @@ function toEntries(raw: Record<string, unknown>): GeminiTranscriptEntry[] {
   }
 
   if (raw.type === "gemini") {
-    return [...assistantEntry(raw), ...thoughtEntries(raw), ...toolCallEntries(raw)];
+    return [...assistantEntry(raw), ...thoughtEntries(raw, rawEntryIndex), ...toolCallEntries(raw, rawEntryIndex)];
   }
 
   return [];
@@ -54,7 +73,7 @@ function assistantEntry(raw: Record<string, unknown>): GeminiTranscriptEntry[] {
   return [{ kind: "assistant", ...idAndTimestamp(raw), content: raw.content }];
 }
 
-function thoughtEntries(raw: Record<string, unknown>): GeminiTranscriptEntry[] {
+function thoughtEntries(raw: Record<string, unknown>, rawEntryIndex: number): GeminiTranscriptEntry[] {
   if (!Array.isArray(raw.thoughts)) {
     return [];
   }
@@ -73,6 +92,7 @@ function thoughtEntries(raw: Record<string, unknown>): GeminiTranscriptEntry[] {
       {
         kind: "thought" as const,
         ...(typeof raw.id === "string" && raw.id.trim() !== "" ? { id: `${raw.id}:thought:${index}` } : {}),
+        ...parentTranscriptEntry(raw, rawEntryIndex),
         subject: candidate.subject,
         description: candidate.description,
         ...(typeof candidate.timestamp === "string" ? { timestamp: candidate.timestamp } : {}),
@@ -81,7 +101,7 @@ function thoughtEntries(raw: Record<string, unknown>): GeminiTranscriptEntry[] {
   });
 }
 
-function toolCallEntries(raw: Record<string, unknown>): GeminiTranscriptEntry[] {
+function toolCallEntries(raw: Record<string, unknown>, rawEntryIndex: number): GeminiTranscriptEntry[] {
   if (!Array.isArray(raw.toolCalls)) {
     return [];
   }
@@ -100,6 +120,7 @@ function toolCallEntries(raw: Record<string, unknown>): GeminiTranscriptEntry[] 
       {
         kind: "toolCall" as const,
         ...(typeof candidate.id === "string" ? { id: candidate.id } : {}),
+        ...parentTranscriptEntry(raw, rawEntryIndex),
         name: candidate.name,
         args: candidate.args,
         ...(typeof candidate.status === "string" ? { status: candidate.status } : {}),
@@ -134,5 +155,15 @@ function idAndTimestamp(raw: Record<string, unknown>): { id?: string; timestamp?
   return {
     ...(typeof raw.id === "string" ? { id: raw.id } : {}),
     ...(typeof raw.timestamp === "string" ? { timestamp: raw.timestamp } : {}),
+  };
+}
+
+function parentTranscriptEntry(
+  raw: Record<string, unknown>,
+  rawEntryIndex: number,
+): { parentTranscriptEntryId?: string; parentTranscriptEntryIndex: number } {
+  return {
+    ...(typeof raw.id === "string" && raw.id.trim() !== "" ? { parentTranscriptEntryId: raw.id } : {}),
+    parentTranscriptEntryIndex: rawEntryIndex,
   };
 }

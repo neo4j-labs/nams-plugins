@@ -1,11 +1,11 @@
 import type { HookInvocation, HookResult, PlatformAdapter } from "../interfaces.js";
 import { loadNamsConfig } from "../runtime/config.js";
-import { sha256 } from "../runtime/hashing.js";
+import { sha256, stableJsonHash } from "../runtime/hashing.js";
 import { appendPlatformLog } from "../runtime/logging.js";
 import { NamsMemoryService } from "../runtime/memory-service.js";
 import { createInitialSessionState, loadSessionState, saveSessionState } from "../runtime/session-state.js";
 import { parseGeminiPayload } from "./gemini-payload.js";
-import { readGeminiTranscript } from "./gemini-transcript.js";
+import { readGeminiTranscript, type GeminiTranscriptEntry } from "./gemini-transcript.js";
 
 export interface GeminiAdapterOptions {
   env?: Record<string, string | undefined>;
@@ -118,11 +118,16 @@ export class GeminiAdapter implements PlatformAdapter {
     const state =
       (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
     state.seenAssistantMessageHashes ??= [];
+    state.seenTranscriptEntryIds ??= [];
+    state.seenReasoningStepHashes ??= [];
+    state.seenToolCallIds ??= [];
+    state.reasoningStepIdsByHash ??= {};
 
     if (state.conversationId === undefined) {
       await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
+    const conversationId = state.conversationId;
 
     const config = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
     if (config === null) {
@@ -142,29 +147,14 @@ export class GeminiAdapter implements PlatformAdapter {
           await memory.storeAssistantMessage(state.conversationId, response);
         }
         markAssistantMessageSeen(state, responseHash);
-      } else if (payloadInfo.transcriptPath !== undefined) {
+      }
+
+      if (payloadInfo.transcriptPath !== undefined) {
         const entries = await readGeminiTranscript(payloadInfo.transcriptPath);
-        for (const entry of entries) {
-          if (entry.kind !== "assistant") {
-            continue;
-          }
-          if (entry.id !== undefined && state.seenTranscriptEntryIds.includes(entry.id)) {
-            continue;
-          }
-
-          const content = entry.content.trim();
-          if (content !== "") {
-            const responseHash = sha256([invocation.platform, state.sessionKey, "assistant", content].join("\n"));
-            if (!hasSeenAssistantMessage(state, responseHash)) {
-              await memory.storeAssistantMessage(state.conversationId, content);
-            }
-            markAssistantMessageSeen(state, responseHash);
-          }
-
-          if (entry.id !== undefined) {
-            state.seenTranscriptEntryIds.push(entry.id);
-          }
+        if (response === undefined || response === "") {
+          await storeAssistantMessagesFromTranscript(invocation.platform, conversationId, state, memory, entries);
         }
+        await recordTraceFromTranscript(conversationId, state, memory, entries);
       }
     } catch {
       await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
@@ -204,6 +194,147 @@ type AssistantMessageState = {
   lastAssistantMessageHash?: string;
   seenAssistantMessageHashes: string[];
 };
+
+type TraceState = {
+  sessionKey: string;
+  seenReasoningStepHashes: string[];
+  seenToolCallIds: string[];
+  reasoningStepIdsByHash: Record<string, string>;
+};
+
+async function storeAssistantMessagesFromTranscript(
+  platform: string,
+  conversationId: string,
+  state: AssistantMessageState & { sessionKey: string; seenTranscriptEntryIds: string[] },
+  memory: NamsMemoryService,
+  entries: GeminiTranscriptEntry[],
+): Promise<void> {
+  for (const entry of entries) {
+    if (entry.kind !== "assistant") {
+      continue;
+    }
+    if (entry.id !== undefined && state.seenTranscriptEntryIds.includes(entry.id)) {
+      continue;
+    }
+
+    const content = entry.content.trim();
+    if (content !== "") {
+      const responseHash = sha256([platform, state.sessionKey, "assistant", content].join("\n"));
+      if (!hasSeenAssistantMessage(state, responseHash)) {
+        await memory.storeAssistantMessage(conversationId, content);
+      }
+      markAssistantMessageSeen(state, responseHash);
+    }
+
+    if (entry.id !== undefined) {
+      state.seenTranscriptEntryIds.push(entry.id);
+    }
+  }
+}
+
+async function recordTraceFromTranscript(
+  conversationId: string,
+  state: TraceState,
+  memory: NamsMemoryService,
+  entries: GeminiTranscriptEntry[],
+): Promise<void> {
+  let currentParentKey: string | undefined;
+  let currentParentStepIds: string[] = [];
+
+  for (const entry of entries) {
+    if (entry.kind === "thought") {
+      const parentKey = transcriptParentKey(entry);
+      if (parentKey !== currentParentKey) {
+        currentParentKey = parentKey;
+        currentParentStepIds = [];
+      }
+
+      const reasoningStepHash = stableJsonHash({
+        sessionKey: state.sessionKey,
+        id: entry.id,
+        subject: entry.subject,
+        description: entry.description,
+        timestamp: entry.timestamp,
+      });
+      if (state.seenReasoningStepHashes.includes(reasoningStepHash)) {
+        addCurrentParentStepId(currentParentStepIds, state.reasoningStepIdsByHash[reasoningStepHash]);
+        continue;
+      }
+
+      const stepId = await memory.recordReasoningStep({
+        conversationId,
+        reasoning: entry.description,
+        actionTaken: entry.subject,
+      });
+      state.seenReasoningStepHashes.push(reasoningStepHash);
+      if (stepId !== undefined) {
+        state.reasoningStepIdsByHash[reasoningStepHash] = stepId;
+        addCurrentParentStepId(currentParentStepIds, stepId);
+      }
+      continue;
+    }
+
+    if (entry.kind === "toolCall") {
+      const parentKey = transcriptParentKey(entry);
+      if (parentKey !== currentParentKey) {
+        currentParentKey = parentKey;
+        currentParentStepIds = [];
+      }
+
+      const toolCallId = transcriptToolCallDedupeKey(state.sessionKey, entry);
+      if (state.seenToolCallIds.includes(toolCallId)) {
+        continue;
+      }
+
+      await memory.recordToolCall({
+        ...(currentParentStepIds.length === 1 ? { stepId: currentParentStepIds[0] } : {}),
+        toolName: entry.name,
+        input: entry.args,
+        ...(entry.status !== undefined ? { status: entry.status } : {}),
+      });
+      state.seenToolCallIds.push(toolCallId);
+    }
+  }
+}
+
+function addCurrentParentStepId(stepIds: string[], stepId: string | undefined): void {
+  if (stepId !== undefined && !stepIds.includes(stepId)) {
+    stepIds.push(stepId);
+  }
+}
+
+function transcriptParentKey(
+  entry: Extract<GeminiTranscriptEntry, { kind: "thought" | "toolCall" }>,
+): string {
+  return stableJsonHash({
+    parentTranscriptEntryId: entry.parentTranscriptEntryId,
+    parentTranscriptEntryIndex: entry.parentTranscriptEntryIndex,
+  });
+}
+
+function transcriptToolCallDedupeKey(
+  sessionKey: string,
+  entry: Extract<GeminiTranscriptEntry, { kind: "toolCall" }>,
+): string {
+  if (entry.id !== undefined) {
+    return stableJsonHash({
+      sessionKey,
+      parentTranscriptEntryId: entry.parentTranscriptEntryId,
+      parentTranscriptEntryIndex: entry.parentTranscriptEntryIndex,
+      id: entry.id,
+    });
+  }
+
+  return stableJsonHash({
+    sessionKey,
+    parentTranscriptEntryId: entry.parentTranscriptEntryId,
+    parentTranscriptEntryIndex: entry.parentTranscriptEntryIndex,
+    name: entry.name,
+    args: entry.args,
+    status: entry.status,
+    timestamp: entry.timestamp,
+  });
+}
 
 function hasSeenAssistantMessage(state: AssistantMessageState, messageHash: string): boolean {
   return state.lastAssistantMessageHash === messageHash || state.seenAssistantMessageHashes.includes(messageHash);
