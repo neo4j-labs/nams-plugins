@@ -567,6 +567,154 @@ test("Gemini hooks continue when observability log writes fail", async () => {
   }
 });
 
+test("records Gemini AfterTool payload as sanitized tool metadata", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
+  try {
+    const requests = [];
+    const mockFetch = async (url, init) => {
+      requests.push({ url, init });
+      if (url === "https://memory.example.test/v1/conversations") {
+        return jsonResponse({ id: "conversation-1" }, 201);
+      }
+      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
+        return jsonResponse({});
+      }
+      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
+        return jsonResponse({ id: "message-1" }, 201);
+      }
+      if (url === "https://memory.example.test/v1/reasoning/tool-calls") {
+        return jsonResponse({ id: "tool-call-1" }, 201);
+      }
+      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
+    };
+
+    const { GeminiAdapter } = await import(geminiUrl);
+    const adapter = new GeminiAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: mockFetch,
+    });
+
+    await adapter.beforeAgent({
+      platform: "gemini",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "Read a file.",
+      },
+    });
+
+    const result = await adapter.afterTool({
+      platform: "gemini",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        tool_call_id: "tool-1",
+        tool_name: "read_file",
+        tool_input: { path: "notes.md", keep: "metadata" },
+        status: "success",
+        duration_ms: 42,
+        output: "raw output secret",
+        result: "raw result secret",
+        responseBody: "raw response body secret",
+      },
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    const toolBodies = requests
+      .filter(
+        (request) =>
+          request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/tool-calls",
+      )
+      .map((request) => JSON.parse(request.init.body));
+    assert.equal(toolBodies.length, 1);
+    assert.equal(toolBodies[0].toolName, "read_file");
+    assert.equal(toolBodies[0].status, "success");
+    assert.equal(toolBodies[0].durationMs, 42);
+    assert.equal(toolBodies[0].output, "");
+    assert.match(toolBodies[0].input, /"path":"notes.md"/);
+    assert.match(toolBodies[0].input, /"keep":"metadata"/);
+    assert.doesNotMatch(toolBodies[0].input, /raw output secret|raw result secret|raw response body secret/);
+    assert.doesNotMatch(toolBodies[0].input, /"output"|"result"|"responseBody"/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("does not duplicate Gemini AfterTool metadata for the same tool call id", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
+  try {
+    const requests = [];
+    const mockFetch = async (url, init) => {
+      requests.push({ url, init });
+      if (url === "https://memory.example.test/v1/conversations") {
+        return jsonResponse({ id: "conversation-1" }, 201);
+      }
+      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
+        return jsonResponse({});
+      }
+      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
+        return jsonResponse({ id: "message-1" }, 201);
+      }
+      if (url === "https://memory.example.test/v1/reasoning/tool-calls") {
+        return jsonResponse({ id: "tool-call-1" }, 201);
+      }
+      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
+    };
+
+    const { GeminiAdapter } = await import(geminiUrl);
+    const adapter = new GeminiAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: mockFetch,
+    });
+
+    await adapter.beforeAgent({
+      platform: "gemini",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "Search once.",
+      },
+    });
+
+    const invocation = {
+      platform: "gemini",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        tool_call_id: "tool-1",
+        tool_name: "google_web_search",
+        tool_input: { query: "nams" },
+        status: "success",
+      },
+    };
+
+    await adapter.afterTool(invocation);
+    await adapter.afterTool(invocation);
+
+    const toolRequests = requests.filter(
+      (request) =>
+        request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/tool-calls",
+    );
+    assert.equal(toolRequests.length, 1);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("stores Gemini AfterAgent prompt_response as an assistant message", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {

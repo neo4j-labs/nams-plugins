@@ -161,13 +161,60 @@ export class GeminiAdapter implements PlatformAdapter {
   }
 
   async afterTool(invocation: HookInvocation<"AfterTool">): Promise<HookResult> {
-    return logAndContinue(invocation);
-  }
-}
+    await appendSanitizedPlatformLog(invocation);
 
-async function logAndContinue(invocation: HookInvocation): Promise<HookResult> {
-  await appendSanitizedPlatformLog(invocation);
-  return { stdout: { continue: true, suppressOutput: true } };
+    const payloadInfo = parseGeminiPayload(invocation.rawPayload, invocation.processCwd);
+    const initialState = createInitialSessionState({
+      platform: invocation.platform,
+      sessionId: payloadInfo.sessionId,
+      projectDirectory: payloadInfo.projectDirectory,
+    });
+    const state =
+      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
+    state.seenToolCallIds ??= [];
+
+    if (state.conversationId === undefined) {
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      return allowOutput();
+    }
+
+    const toolPayload = parseGeminiAfterToolPayload(invocation.rawPayload);
+    if (toolPayload.toolName === undefined) {
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      return allowOutput();
+    }
+
+    const config = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
+    if (config === null) {
+      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      return allowOutput();
+    }
+
+    try {
+      const toolCallId = geminiAfterToolDedupeKey(state.sessionKey, toolPayload);
+      if (!state.seenToolCallIds.includes(toolCallId)) {
+        const memory = new NamsMemoryService({
+          ...config,
+          ...(this.options.fetch !== undefined ? { fetch: this.options.fetch } : {}),
+        });
+        await memory.recordToolCall({
+          toolName: toolPayload.toolName,
+          input: toolPayload.input,
+          ...(toolPayload.status !== undefined ? { status: toolPayload.status } : {}),
+          ...(toolPayload.durationMs !== undefined ? { durationMs: toolPayload.durationMs } : {}),
+        });
+        state.seenToolCallIds.push(toolCallId);
+      }
+    } catch {
+      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      return allowOutput();
+    }
+
+    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    return allowOutput();
+  }
 }
 
 function allowOutput(additionalContext?: string): HookResult {
@@ -178,6 +225,78 @@ function allowOutput(additionalContext?: string): HookResult {
       ...(additionalContext !== undefined ? { additionalContext } : {}),
     },
   };
+}
+
+interface GeminiAfterToolPayload {
+  id?: string;
+  toolName?: string;
+  input: unknown;
+  status?: string;
+  durationMs?: number;
+}
+
+function parseGeminiAfterToolPayload(payload: Record<string, unknown>): GeminiAfterToolPayload {
+  return {
+    ...optionalString("id", firstString(payload.tool_call_id, payload.toolCallId, payload.id)),
+    ...optionalString("toolName", firstString(payload.tool_name, payload.toolName, payload.name, payload.displayName)),
+    input: firstDefined(payload.tool_input, payload.toolInput, payload.input, payload.args, payload.arguments) ?? payload,
+    ...optionalString("status", firstString(payload.status)),
+    ...optionalNumber("durationMs", firstNumber(payload.duration_ms, payload.durationMs)),
+  };
+}
+
+function geminiAfterToolDedupeKey(sessionKey: string, payload: GeminiAfterToolPayload): string {
+  if (payload.id !== undefined) {
+    return stableJsonHash({
+      sessionKey,
+      source: "afterTool",
+      id: payload.id,
+    });
+  }
+
+  return stableJsonHash({
+    sessionKey,
+    source: "afterTool",
+    toolName: payload.toolName,
+    input: payload.input,
+    status: payload.status,
+  });
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim() !== "") {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function firstNumber(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === "string" && value.trim() !== "") {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return undefined;
+}
+
+function firstDefined(...values: unknown[]): unknown {
+  return values.find((value) => value !== undefined);
+}
+
+function optionalString<K extends string>(key: K, value: string | undefined): { [P in K]?: string } {
+  return value !== undefined ? ({ [key]: value } as { [P in K]: string }) : {};
+}
+
+function optionalNumber<K extends string>(key: K, value: number | undefined): { [P in K]?: number } {
+  return value !== undefined ? ({ [key]: value } as { [P in K]: number }) : {};
 }
 
 async function appendNamsConfigDiagnostic(invocation: HookInvocation, projectDirectory: string): Promise<void> {

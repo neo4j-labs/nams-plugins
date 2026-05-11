@@ -25,7 +25,7 @@ export interface ToolCallInput {
   durationMs?: number;
 }
 
-const toolOutputFieldNames = new Set(["functionResponse", "result", "resultDisplay"]);
+const toolOutputFieldNames = new Set(["body", "functionresponse", "output", "response", "result", "resultdisplay"]);
 
 export class NamsMemoryService {
   private readonly client: NamsClient;
@@ -143,12 +143,24 @@ function removeToolOutputFields(value: unknown): unknown {
 
   const sanitized: Record<string, unknown> = {};
   for (const [key, nestedValue] of Object.entries(value)) {
-    if (toolOutputFieldNames.has(key)) {
+    if (isToolOutputField(key)) {
       continue;
     }
     sanitized[key] = removeToolOutputFields(nestedValue);
   }
   return sanitized;
+}
+
+function isToolOutputField(value: string): boolean {
+  const normalized = value.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+  return (
+    toolOutputFieldNames.has(normalized) ||
+    normalized.includes("body") ||
+    normalized.includes("functionresponse") ||
+    normalized.includes("output") ||
+    normalized.includes("response") ||
+    normalized.includes("result")
+  );
 }
 
 function isNonBlankString(value: unknown): value is string {

@@ -68,6 +68,11 @@ test("recordToolCall serializes sanitized capped input and omits tool output", a
       query: "autonomo spain",
       payload: {
         result: "raw command output",
+        output: "raw output value",
+        tool_output: "raw snake output value",
+        response: "raw response value",
+        responseBody: "raw response body value",
+        body: "raw body value",
         functionResponse: { output: "hidden tool output" },
         keep: "metadata",
       },
@@ -88,6 +93,12 @@ test("recordToolCall serializes sanitized capped input and omits tool output", a
   assert.match(body.input, /\.\.\.\[truncated\]$/);
   assert.match(body.input, /"query":"autonomo spain"/);
   assert.match(body.input, /"keep":"metadata"/);
-  assert.doesNotMatch(body.input, /raw command output|hidden tool output|rendered result/);
-  assert.doesNotMatch(body.input, /"result"|"resultDisplay"|"functionResponse"/);
+  assert.doesNotMatch(
+    body.input,
+    /raw command output|raw output value|raw snake output value|raw response value|raw response body value|raw body value|hidden tool output|rendered result/,
+  );
+  assert.doesNotMatch(
+    body.input,
+    /"result"|"output"|"tool_output"|"response"|"responseBody"|"body"|"resultDisplay"|"functionResponse"/,
+  );
 });
