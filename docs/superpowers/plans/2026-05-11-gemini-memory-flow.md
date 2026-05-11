@@ -42,8 +42,8 @@ Create:
 - `src/runtime/hashing.ts`: stable SHA-256 helpers for session keys and duplicate suppression.
 - `src/runtime/session-state.ts`: JSON state read/write under `.nams/state/sessions/<platform>/`.
 - `src/runtime/memory-service.ts`: hook-safe wrapper around `NamsClient`.
-- `src/platforms/gemini-payload.ts`: Gemini hook payload extraction.
-- `src/platforms/gemini-transcript.ts`: Gemini transcript reader and transcript-derived candidates.
+- `src/platforms/gemini/payload.ts`: Gemini hook payload extraction.
+- `src/platforms/gemini/transcript.ts`: Gemini transcript reader and transcript-derived candidates.
 - `test/architecture.test.js`: ArchUnitTS dependency direction tests.
 - `test/runtime-config.test.js`: config precedence and missing-key tests.
 - `test/session-state.test.js`: state key and persistence tests.
@@ -57,7 +57,7 @@ Modify:
 - `package-lock.json`: update via `npm install archunit --save-dev`.
 - `src/interfaces.ts`: add typed hook events and adapter methods.
 - `src/cli.ts`: route new typed events.
-- `src/platforms/gemini.ts`: orchestrate Gemini memory flow.
+- `src/platforms/gemini/index.ts`: orchestrate Gemini memory flow.
 - `templates/gemini/hooks/hooks.json`: add Gemini `BeforeAgent`, `AfterAgent`, and `AfterTool` hooks.
 - `test/cli-session-start.test.js`: preserve existing gateway tests and add routing validation where needed.
 
@@ -174,13 +174,13 @@ test("generated client does not import project runtime modules", async () => {
 
 test("only the platform registry imports all concrete adapters", async () => {
   await assertNoViolations(
-    projectFiles().inFolder("src/cli.ts").shouldNot().dependOnFiles().inFolder("src/platforms/gemini.ts"),
+    projectFiles().inFolder("src/cli.ts").shouldNot().dependOnFiles().inFolder("src/platforms/gemini/index.ts"),
   );
   await assertNoViolations(
-    projectFiles().inFolder("src/cli.ts").shouldNot().dependOnFiles().inFolder("src/platforms/claude.ts"),
+    projectFiles().inFolder("src/cli.ts").shouldNot().dependOnFiles().inFolder("src/platforms/claude/index.ts"),
   );
   await assertNoViolations(
-    projectFiles().inFolder("src/cli.ts").shouldNot().dependOnFiles().inFolder("src/platforms/codex.ts"),
+    projectFiles().inFolder("src/cli.ts").shouldNot().dependOnFiles().inFolder("src/platforms/codex/index.ts"),
   );
 });
 ```
@@ -226,9 +226,9 @@ git commit -m "test: add architecture guards" -m "Co-authored-by: Codex <codex@o
 
 - Modify: `src/interfaces.ts`
 - Modify: `src/cli.ts`
-- Modify: `src/platforms/gemini.ts`
-- Modify: `src/platforms/claude.ts`
-- Modify: `src/platforms/codex.ts`
+- Modify: `src/platforms/gemini/index.ts`
+- Modify: `src/platforms/claude/index.ts`
+- Modify: `src/platforms/codex/index.ts`
 - Modify: `templates/gemini/hooks/hooks.json`
 - Modify: `test/cli-session-start.test.js`
 
@@ -343,7 +343,7 @@ process.stderr.write("Usage: nams-hooks run <gemini|claude|codex> --event <Sessi
 
 - [x] **Step 5: Add Gemini adapter methods with allow-only behavior**
 
-In `src/platforms/gemini.ts`, add methods:
+In `src/platforms/gemini/index.ts`, add methods:
 
 ```ts
   async beforeAgent(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult> {
@@ -458,7 +458,7 @@ Expected:
 - [x] **Step 8: Commit**
 
 ```bash
-git add src/interfaces.ts src/cli.ts src/platforms/gemini.ts src/platforms/claude.ts src/platforms/codex.ts templates/gemini/hooks/hooks.json test/cli-session-start.test.js
+git add src/interfaces.ts src/cli.ts src/platforms/gemini/index.ts src/platforms/claude/index.ts src/platforms/codex/index.ts templates/gemini/hooks/hooks.json test/cli-session-start.test.js
 git commit -m "feat: route gemini memory hook events" -m "Co-authored-by: Codex <codex@openai.com>"
 ```
 
@@ -860,8 +860,8 @@ git commit -m "feat: persist hook session state" -m "Co-authored-by: Codex <code
 
 **Files:**
 
-- Create: `src/platforms/gemini-payload.ts`
-- Create: `src/platforms/gemini-transcript.ts`
+- Create: `src/platforms/gemini/payload.ts`
+- Create: `src/platforms/gemini/transcript.ts`
 - Create: `test/gemini-payload.test.js`
 - Create: `test/gemini-transcript.test.js`
 
@@ -876,7 +876,7 @@ import { test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const payloadUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "platforms", "gemini-payload.js")).href;
+const payloadUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "platforms", "gemini", "payload.js")).href;
 
 test("extracts Gemini prompt and response fields from hook payload", async () => {
   const { parseGeminiPayload } = await import(payloadUrl);
@@ -921,7 +921,7 @@ import { test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const transcriptUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "platforms", "gemini-transcript.js")).href;
+const transcriptUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "platforms", "gemini", "transcript.js")).href;
 
 test("reads Gemini transcript messages, thoughts, and tool metadata", async () => {
   const tempDir = await mkdtemp(path.join(tmpdir(), "nams-transcript-"));
@@ -983,7 +983,7 @@ Expected:
 
 - [x] **Step 4: Implement payload parser**
 
-Create `src/platforms/gemini-payload.ts`:
+Create `src/platforms/gemini/payload.ts`:
 
 ```ts
 export interface GeminiPayloadInfo {
@@ -1025,7 +1025,7 @@ function firstString(...values: unknown[]): string | undefined {
 
 - [x] **Step 5: Implement transcript reader**
 
-Create `src/platforms/gemini-transcript.ts`:
+Create `src/platforms/gemini/transcript.ts`:
 
 ```ts
 import { readFile } from "node:fs/promises";
@@ -1159,7 +1159,7 @@ Expected:
 - [x] **Step 7: Commit**
 
 ```bash
-git add src/platforms/gemini-payload.ts src/platforms/gemini-transcript.ts test/gemini-payload.test.js test/gemini-transcript.test.js
+git add src/platforms/gemini/payload.ts src/platforms/gemini/transcript.ts test/gemini-payload.test.js test/gemini-transcript.test.js
 git commit -m "feat: parse gemini hook payloads and transcripts" -m "Co-authored-by: Codex <codex@openai.com>"
 ```
 
@@ -1397,7 +1397,7 @@ git commit -m "feat: add nams memory service" -m "Co-authored-by: Codex <codex@o
 
 **Files:**
 
-- Modify: `src/platforms/gemini.ts`
+- Modify: `src/platforms/gemini/index.ts`
 - Create: `test/gemini-memory-flow.test.js`
 
 - [x] **Step 1: Write failing SessionStart test**
@@ -1413,7 +1413,7 @@ import { test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const geminiUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "platforms", "gemini.js")).href;
+const geminiUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "platforms", "gemini", "index.js")).href;
 
 test("Gemini SessionStart creates local state without NAMS conversation", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-flow-"));
@@ -1456,11 +1456,11 @@ Expected:
 
 - [x] **Step 3: Implement SessionStart state initialization**
 
-Modify `src/platforms/gemini.ts`:
+Modify `src/platforms/gemini/index.ts`:
 
 ```ts
 import { createInitialSessionState, loadSessionState, saveSessionState } from "../runtime/session-state.js";
-import { parseGeminiPayload } from "./gemini-payload.js";
+import { parseGeminiPayload } from "./payload.js";
 ```
 
 Inside `startConversation`, after logging:
@@ -1497,7 +1497,7 @@ Expected:
 - [x] **Step 5: Commit**
 
 ```bash
-git add src/platforms/gemini.ts test/gemini-memory-flow.test.js
+git add src/platforms/gemini/index.ts test/gemini-memory-flow.test.js
 git commit -m "feat: initialize gemini session state" -m "Co-authored-by: Codex <codex@openai.com>"
 ```
 
@@ -1507,7 +1507,7 @@ git commit -m "feat: initialize gemini session state" -m "Co-authored-by: Codex 
 
 **Files:**
 
-- Modify: `src/platforms/gemini.ts`
+- Modify: `src/platforms/gemini/index.ts`
 - Modify: `test/gemini-memory-flow.test.js`
 
 - [x] **Step 1: Add failing BeforeAgent integration test**
@@ -1570,7 +1570,7 @@ Expected:
 
 - [x] **Step 3: Add GeminiAdapter dependency injection**
 
-In `src/platforms/gemini.ts`, add:
+In `src/platforms/gemini/index.ts`, add:
 
 ```ts
 import type { NamsRuntimeConfig } from "../runtime/config.js";
@@ -1588,7 +1588,7 @@ Use `this.options.env` when loading config and `this.options.fetch` when creatin
 
 - [x] **Step 4: Implement BeforeAgent flow**
 
-In `src/platforms/gemini.ts`, implement `beforeAgent` with this control flow:
+In `src/platforms/gemini/index.ts`, implement `beforeAgent` with this control flow:
 
 ```ts
 const info = parseGeminiPayload(invocation.rawPayload, invocation.processCwd);
@@ -1630,7 +1630,7 @@ return additionalContext === ""
   : { stdout: { continue: true, suppressOutput: true, additionalContext } };
 ```
 
-Define local helpers in `src/platforms/gemini.ts`:
+Define local helpers in `src/platforms/gemini/index.ts`:
 
 ```ts
 function messageHash(platform: string, sessionKey: string, role: string, content: string): string {
@@ -1707,7 +1707,7 @@ Expected:
 - [x] **Step 8: Commit**
 
 ```bash
-git add src/platforms/gemini.ts test/gemini-memory-flow.test.js
+git add src/platforms/gemini/index.ts test/gemini-memory-flow.test.js
 git commit -m "feat: persist gemini user prompts" -m "Co-authored-by: Codex <codex@openai.com>"
 ```
 
@@ -1717,7 +1717,7 @@ git commit -m "feat: persist gemini user prompts" -m "Co-authored-by: Codex <cod
 
 **Files:**
 
-- Modify: `src/platforms/gemini.ts`
+- Modify: `src/platforms/gemini/index.ts`
 - Modify: `test/gemini-memory-flow.test.js`
 
 - [x] **Step 1: Add failing prompt_response test**
@@ -1778,7 +1778,7 @@ Expected:
 
 - [x] **Step 3: Implement prompt_response persistence**
 
-In `src/platforms/gemini.ts`, implement `afterAgent`:
+In `src/platforms/gemini/index.ts`, implement `afterAgent`:
 
 ```ts
 const info = parseGeminiPayload(invocation.rawPayload, invocation.processCwd);
@@ -1902,7 +1902,7 @@ Expected:
 - [x] **Step 7: Commit**
 
 ```bash
-git add src/platforms/gemini.ts test/gemini-memory-flow.test.js
+git add src/platforms/gemini/index.ts test/gemini-memory-flow.test.js
 git commit -m "feat: persist gemini assistant responses" -m "Co-authored-by: Codex <codex@openai.com>"
 ```
 
@@ -1912,7 +1912,7 @@ git commit -m "feat: persist gemini assistant responses" -m "Co-authored-by: Cod
 
 **Files:**
 
-- Modify: `src/platforms/gemini.ts`
+- Modify: `src/platforms/gemini/index.ts`
 - Modify: `test/gemini-memory-flow.test.js`
 
 - [x] **Step 1: Add failing transcript thoughts and toolCalls test**
@@ -2016,7 +2016,7 @@ Expected:
 
 - [x] **Step 3: Implement reasoning and tool metadata processing**
 
-In `src/platforms/gemini.ts`, add helper logic used by `afterAgent` when `transcriptPath` is present:
+In `src/platforms/gemini/index.ts`, add helper logic used by `afterAgent` when `transcriptPath` is present:
 
 ```ts
 async function processTraceEntries(input: {
@@ -2087,7 +2087,7 @@ Expected:
 - [x] **Step 5: Commit**
 
 ```bash
-git add src/platforms/gemini.ts test/gemini-memory-flow.test.js
+git add src/platforms/gemini/index.ts test/gemini-memory-flow.test.js
 git commit -m "feat: record gemini reasoning and tool metadata" -m "Co-authored-by: Codex <codex@openai.com>"
 ```
 
@@ -2097,7 +2097,7 @@ git commit -m "feat: record gemini reasoning and tool metadata" -m "Co-authored-
 
 **Files:**
 
-- Modify: `src/platforms/gemini.ts`
+- Modify: `src/platforms/gemini/index.ts`
 - Modify: `test/gemini-memory-flow.test.js`
 
 - [x] **Step 1: Add failing missing API key test**
@@ -2218,7 +2218,7 @@ Expected:
 - [x] **Step 6: Commit**
 
 ```bash
-git add src/platforms/gemini.ts test/gemini-memory-flow.test.js
+git add src/platforms/gemini/index.ts test/gemini-memory-flow.test.js
 git commit -m "fix: keep gemini hooks non-blocking" -m "Co-authored-by: Codex <codex@openai.com>"
 ```
 

@@ -1,13 +1,13 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";
-import type { HookInvocation, HookResult, PlatformAdapter } from "../interfaces.js";
-import { loadNamsConfig } from "../runtime/config.js";
-import { sha256, stableJsonHash } from "../runtime/hashing.js";
-import { appendPlatformLog } from "../runtime/logging.js";
-import { NamsMemoryService } from "../runtime/memory-service.js";
-import { createInitialSessionState, loadSessionState, saveSessionState } from "../runtime/session-state.js";
-import { parseGeminiPayload } from "./gemini-payload.js";
-import { readGeminiTranscript, type GeminiTranscriptEntry } from "./gemini-transcript.js";
+import type { HookInvocation, HookResult, PlatformAdapter } from "../../interfaces.js";
+import { loadNamsConfig } from "../../runtime/config.js";
+import { sha256, stableJsonHash } from "../../runtime/hashing.js";
+import { appendPlatformLog } from "../../runtime/logging.js";
+import { NamsMemoryService } from "../../runtime/memory-service.js";
+import { createInitialSessionState, loadSessionState, saveSessionState } from "../../runtime/session-state.js";
+import { parseGeminiPayload } from "./payload.js";
+import { readGeminiTranscript, type GeminiTranscriptEntry } from "./transcript.js";
 
 export interface GeminiAdapterOptions {
   env?: Record<string, string | undefined>;

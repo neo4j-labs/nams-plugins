@@ -23,7 +23,7 @@ The runtime must not fetch OpenAPI specs, inspect schemas, or discover endpoints
 ## Architecture Rules
 
 - `src/cli.ts` is a gateway. It parses the command, platform, and typed `--event`, reads stdin JSON as an opaque object, and dispatches through the platform registry.
-- Keep platform-specific JSON interpretation inside `src/platforms/<platform>.ts`.
+- Keep platform-specific code inside `src/platforms/<platform>/`. The platform adapter entrypoint is `src/platforms/<platform>/index.ts`; helper parsers and platform-only utilities live beside it.
 - Keep shared contracts in `src/interfaces.ts`. Add new hook events there before wiring platform implementations.
 - `invocation.event` is typed. Do not infer hook event names from payload fields such as `hook_event_name`, `hookEventName`, or `event`.
 - Use the static adapter registry in `src/platforms/index.ts`; avoid dynamic module discovery.

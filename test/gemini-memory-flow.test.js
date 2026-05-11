@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const geminiUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "platforms", "gemini.js")).href;
+const geminiUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "platforms", "gemini", "index.js")).href;
 const stateUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "runtime", "session-state.js")).href;
 
 test("initializes Gemini session state on SessionStart without creating a conversation", async () => {

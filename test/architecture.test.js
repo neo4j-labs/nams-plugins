@@ -33,9 +33,9 @@ function importedSourcePaths(filePath, content) {
 
 function importsConcreteAdapter(file) {
   const concreteAdapters = new Set([
-    "src/platforms/gemini.ts",
-    "src/platforms/claude.ts",
-    "src/platforms/codex.ts",
+    "src/platforms/gemini/index.ts",
+    "src/platforms/claude/index.ts",
+    "src/platforms/codex/index.ts",
   ]);
 
   return importedSourcePaths(file.path, file.content).some((importedPath) => concreteAdapters.has(importedPath));
@@ -47,10 +47,10 @@ test("platform adapters do not import each other", async () => {
     for (const otherPlatform of otherPlatforms) {
       await assertNoViolations(
         projectFiles()
-          .inPath(`src/platforms/${platform}.ts`)
+          .inFolder(`src/platforms/${platform}/**`)
           .shouldNot()
           .dependOnFiles()
-          .inPath(`src/platforms/${otherPlatform}.ts`),
+          .inFolder(`src/platforms/${otherPlatform}/**`),
       );
     }
   }

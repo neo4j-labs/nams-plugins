@@ -6,7 +6,9 @@ import { test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const transcriptUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "platforms", "gemini-transcript.js")).href;
+const transcriptUrl = pathToFileURL(
+  path.join(repoRoot, ".build", "tsc", "platforms", "gemini", "transcript.js"),
+).href;
 
 test("reads Gemini transcript messages, thoughts, and tool metadata", async () => {
   const tempDir = await mkdtemp(path.join(tmpdir(), "nams-transcript-"));

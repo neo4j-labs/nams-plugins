@@ -90,7 +90,7 @@ Phase 4 may improve trace grouping and explanation support by associating tool c
 
 ### Gemini Adapter And Parser
 
-Gemini-specific parsing stays in `src/platforms/gemini.ts` or a Gemini-specific helper module. It extracts:
+Gemini-specific code stays under `src/platforms/gemini/`. The adapter entrypoint is `src/platforms/gemini/index.ts`, and Gemini-only parser helpers live beside it. It extracts:
 
 - `session_id`
 - `cwd`
