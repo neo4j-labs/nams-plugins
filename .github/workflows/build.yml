@@ -3,6 +3,9 @@ name: Build
 on:
   pull_request:
   push:
+    branches:
+      - devel
+  workflow_dispatch:
 
 permissions:
   contents: read
