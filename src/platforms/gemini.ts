@@ -1,9 +1,27 @@
 import type { HookInvocation, HookResult, PlatformAdapter } from "../interfaces.js";
 import { appendPlatformLog } from "../runtime/logging.js";
+import { createInitialSessionState, loadSessionState, saveSessionState } from "../runtime/session-state.js";
+import { parseGeminiPayload } from "./gemini-payload.js";
 
 export class GeminiAdapter implements PlatformAdapter {
   async startConversation(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
-    return logAndContinue(invocation);
+    await appendPlatformLog({
+      platform: invocation.platform,
+      event: invocation.event,
+      payload: invocation.rawPayload,
+      projectDirectory: resolveGeminiProjectDirectory(invocation),
+    });
+
+    const payloadInfo = parseGeminiPayload(invocation.rawPayload, invocation.processCwd);
+    const initialState = createInitialSessionState({
+      platform: invocation.platform,
+      sessionId: payloadInfo.sessionId,
+      projectDirectory: payloadInfo.projectDirectory,
+    });
+    const state = (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
+    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+
+    return { stdout: { continue: true, suppressOutput: true } };
   }
 
   async beforeAgent(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult> {
