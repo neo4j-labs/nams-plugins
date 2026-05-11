@@ -1,0 +1,396 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const specPath = path.join(root, "docs", "nams-openapi.json");
+const outputPath = path.join(root, "src", "generated", "nams-client.ts");
+
+const endpoints = [
+  {
+    methodName: "createConversation",
+    httpMethod: "POST",
+    path: "/v1/conversations",
+    successStatus: "201",
+    bodyRequired: false,
+  },
+  {
+    methodName: "addMessage",
+    httpMethod: "POST",
+    path: "/v1/conversations/{id}/messages",
+    successStatus: "201",
+    bodyRequired: true,
+    pathArgs: [{ argumentName: "conversationId", parameterName: "id" }],
+  },
+  {
+    methodName: "addMessagesBulk",
+    httpMethod: "POST",
+    path: "/v1/conversations/{id}/messages/bulk",
+    successStatus: "201",
+    bodyRequired: true,
+    pathArgs: [{ argumentName: "conversationId", parameterName: "id" }],
+  },
+  {
+    methodName: "getConversationContext",
+    httpMethod: "GET",
+    path: "/v1/conversations/{id}/context",
+    successStatus: "200",
+    pathArgs: [{ argumentName: "conversationId", parameterName: "id" }],
+  },
+  {
+    methodName: "searchConversationMessages",
+    httpMethod: "POST",
+    path: "/v1/conversations/{id}/search",
+    successStatus: "200",
+    bodyRequired: true,
+    pathArgs: [{ argumentName: "conversationId", parameterName: "id" }],
+  },
+  {
+    methodName: "searchEntities",
+    httpMethod: "POST",
+    path: "/v1/entities/search",
+    successStatus: "200",
+    bodyRequired: true,
+  },
+  {
+    methodName: "recordReasoningStep",
+    httpMethod: "POST",
+    path: "/v1/reasoning/steps",
+    successStatus: "201",
+    bodyRequired: true,
+  },
+  {
+    methodName: "recordToolCall",
+    httpMethod: "POST",
+    path: "/v1/reasoning/tool-calls",
+    successStatus: "201",
+    bodyRequired: true,
+  },
+];
+
+const spec = JSON.parse(await readFile(specPath, "utf8"));
+const definitions = spec.definitions ?? {};
+const resolvedEndpoints = endpoints.map((endpoint) => resolveEndpoint(spec, endpoint));
+const referencedDefinitions = collectReferencedDefinitions(resolvedEndpoints, definitions);
+const source = renderClient(resolvedEndpoints, referencedDefinitions, definitions);
+
+if (process.argv.includes("--check")) {
+  const current = await readFile(outputPath, "utf8").catch(() => "");
+  if (current !== source) {
+    throw new Error("src/generated/nams-client.ts is stale. Run npm run openapi:generate.");
+  }
+} else {
+  await mkdir(path.dirname(outputPath), { recursive: true });
+  await writeFile(outputPath, source, "utf8");
+}
+
+function resolveEndpoint(openapi, endpoint) {
+  const operation = openapi.paths?.[endpoint.path]?.[endpoint.httpMethod.toLowerCase()];
+  if (operation === undefined) {
+    throw new Error(`Missing endpoint ${endpoint.httpMethod} ${endpoint.path}`);
+  }
+
+  const pathParameters = (operation.parameters ?? []).filter((parameter) => parameter.in === "path");
+  const pathArgs = endpoint.pathArgs ?? [];
+  const placeholderNames = pathPlaceholders(endpoint.path);
+  const pathArgNames = pathArgs.map((pathArg) => pathArg.parameterName);
+  const missingPathArgs = placeholderNames.filter((placeholderName) => !pathArgNames.includes(placeholderName));
+  const extraPathArgs = pathArgNames.filter((pathArgName) => !placeholderNames.includes(pathArgName));
+  if (missingPathArgs.length > 0 || extraPathArgs.length > 0) {
+    throw new Error(
+      [
+        `Path arguments for ${endpoint.methodName} must match placeholders in ${endpoint.path}.`,
+        missingPathArgs.length > 0 ? `missing pathArgs for ${missingPathArgs.join(", ")}` : undefined,
+        extraPathArgs.length > 0 ? `extra pathArgs for ${extraPathArgs.join(", ")}` : undefined,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
+  }
+
+  for (const pathArg of pathArgs) {
+    const parameter = pathParameters.find((candidate) => candidate.name === pathArg.parameterName);
+    if (parameter === undefined || parameter.required !== true || parameter.type !== "string") {
+      throw new Error(`Missing required string path parameter ${pathArg.parameterName} on ${endpoint.path}`);
+    }
+  }
+
+  const bodyParameter = (operation.parameters ?? []).find((parameter) => parameter.in === "body");
+  const bodyRef = bodyParameter?.schema?.$ref !== undefined ? parseDefinitionRef(bodyParameter.schema.$ref) : undefined;
+  if (endpoint.bodyRequired && bodyRef === undefined) {
+    throw new Error(`Missing required body schema on ${endpoint.methodName}`);
+  }
+  if (endpoint.bodyRequired && bodyParameter?.required !== true) {
+    throw new Error(`Body schema must be marked required on ${endpoint.methodName}`);
+  }
+
+  const responseRef = parseDefinitionRef(operation.responses?.[endpoint.successStatus]?.schema?.$ref);
+  if (responseRef === undefined) {
+    throw new Error(`Missing ${endpoint.successStatus} response schema on ${endpoint.methodName}`);
+  }
+
+  return {
+    ...endpoint,
+    bodyRef,
+    bodyType: bodyRef === undefined ? undefined : typeNameForDefinition(bodyRef),
+    responseRef,
+    responseType: typeNameForDefinition(responseRef),
+  };
+}
+
+function pathPlaceholders(endpointPath) {
+  return [...endpointPath.matchAll(/\{([^}]+)\}/g)].map((match) => match[1]);
+}
+
+function collectReferencedDefinitions(resolved, allDefinitions) {
+  const ordered = [];
+  const seen = new Set();
+  const queue = [];
+
+  for (const endpoint of resolved) {
+    add(endpoint.bodyRef);
+    add(endpoint.responseRef);
+  }
+
+  while (queue.length > 0) {
+    const definitionName = queue.shift();
+    collectFromSchema(allDefinitions[definitionName]);
+  }
+
+  return ordered;
+
+  function add(definitionName) {
+    if (definitionName === undefined || seen.has(definitionName)) {
+      return;
+    }
+    if (allDefinitions[definitionName] === undefined) {
+      throw new Error(`Missing definition ${definitionName}`);
+    }
+    seen.add(definitionName);
+    ordered.push(definitionName);
+    queue.push(definitionName);
+  }
+
+  function collectFromSchema(schema) {
+    if (schema === undefined) {
+      return;
+    }
+    const ref = parseDefinitionRef(schema.$ref);
+    if (ref !== undefined) {
+      add(ref);
+    }
+    if (schema.items !== undefined) {
+      collectFromSchema(schema.items);
+    }
+    if (schema.additionalProperties !== undefined && typeof schema.additionalProperties === "object") {
+      collectFromSchema(schema.additionalProperties);
+    }
+    for (const property of Object.values(schema.properties ?? {})) {
+      collectFromSchema(property);
+    }
+  }
+}
+
+function renderClient(resolved, definitionNames, allDefinitions) {
+  const lines = [
+    "// This file is auto-generated by scripts/generate-nams-client.mjs",
+    "",
+    "export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };",
+    "export type HttpMethod = \"GET\" | \"POST\";",
+    "",
+    "export interface NamsClientOptions {",
+    "  baseUrl?: string;",
+    "  apiKey: string;",
+    "  fetch?: typeof fetch;",
+    "}",
+    "",
+    "export class NamsClientError extends Error {",
+    "  constructor(",
+    "    message: string,",
+    "    public readonly status: number,",
+    "    public readonly body: unknown,",
+    "  ) {",
+    "    super(message);",
+    "    this.name = \"NamsClientError\";",
+    "  }",
+    "}",
+    "",
+  ];
+
+  for (const definitionName of definitionNames) {
+    lines.push(renderDefinition(definitionName, allDefinitions[definitionName]), "");
+  }
+
+  lines.push(
+    "export const NAMS_CLIENT_ENDPOINTS = [",
+    ...resolved.map(
+      (endpoint) =>
+        `  { methodName: "${endpoint.methodName}", httpMethod: "${endpoint.httpMethod}", path: "${endpoint.path}" },`,
+    ),
+    "] as const;",
+    "",
+    "export class NamsClient {",
+    "  private readonly baseUrl: string;",
+    "  private readonly apiKey: string;",
+    "  private readonly fetchImpl: typeof fetch;",
+    "",
+    "  constructor(options: NamsClientOptions) {",
+    "    this.baseUrl = (options.baseUrl ?? \"https://memory.neo4jlabs.com\").replace(/\\/+$/, \"\");",
+    "    this.apiKey = options.apiKey;",
+    "    this.fetchImpl = options.fetch ?? globalThis.fetch;",
+    "    if (this.fetchImpl === undefined) {",
+    "      throw new Error(\"NamsClient requires a fetch implementation\");",
+    "    }",
+    "  }",
+    "",
+  );
+
+  for (const endpoint of resolved) {
+    lines.push(renderMethod(endpoint), "");
+  }
+
+  lines.push(
+    "  private async request<TResponse>(",
+    "    httpMethod: HttpMethod,",
+    "    pathTemplate: string,",
+    "    pathParams?: Record<string, string>,",
+    "    body?: unknown,",
+    "  ): Promise<TResponse> {",
+    "    const url = `${this.baseUrl}${formatPath(pathTemplate, pathParams)}`;",
+    "    const headers: Record<string, string> = {",
+    "      Accept: \"application/json\",",
+    "      Authorization: `Bearer ${this.apiKey}`,",
+    "    };",
+    "    const init: RequestInit = { method: httpMethod, headers };",
+    "    if (body !== undefined) {",
+    "      headers[\"Content-Type\"] = \"application/json\";",
+    "      init.body = JSON.stringify(body);",
+    "    }",
+    "",
+    "    const response = await this.fetchImpl(url, init);",
+    "    const responseBody = await readResponseBody(response);",
+    "    if (!response.ok) {",
+    "      const message = extractErrorMessage(responseBody) ?? `NAMS request failed with status ${response.status}`;",
+    "      throw new NamsClientError(message, response.status, responseBody);",
+    "    }",
+    "    return responseBody as TResponse;",
+    "  }",
+    "}",
+    "",
+    "function formatPath(pathTemplate: string, pathParams: Record<string, string> = {}): string {",
+    "  return pathTemplate.replace(/\\{([^}]+)\\}/g, (_match, key: string) => {",
+    "    const value = pathParams[key];",
+    "    if (value === undefined) {",
+    "      throw new Error(`Missing path parameter ${key}`);",
+    "    }",
+    "    return encodeURIComponent(value);",
+    "  });",
+    "}",
+    "",
+    "async function readResponseBody(response: Response): Promise<unknown> {",
+    "  const text = await response.text();",
+    "  if (text.trim() === \"\") {",
+    "    return undefined;",
+    "  }",
+    "  try {",
+    "    return JSON.parse(text);",
+    "  } catch {",
+    "    return text;",
+    "  }",
+    "}",
+    "",
+    "function extractErrorMessage(body: unknown): string | undefined {",
+    "  if (typeof body === \"object\" && body !== null && \"error\" in body) {",
+    "    const value = (body as { error?: unknown }).error;",
+    "    return typeof value === \"string\" ? value : undefined;",
+    "  }",
+    "  return undefined;",
+    "}",
+    "",
+  );
+
+  return lines.join("\n");
+}
+
+function renderMethod(endpoint) {
+  const pathArgs = endpoint.pathArgs ?? [];
+  const args = [
+    ...pathArgs.map((pathArg) => `${pathArg.argumentName}: string`),
+    endpoint.bodyType === undefined
+      ? undefined
+      : endpoint.bodyRequired
+        ? `body: ${endpoint.bodyType}`
+        : `body?: ${endpoint.bodyType}`,
+  ].filter(Boolean);
+  const pathParams =
+    pathArgs.length === 0
+      ? "undefined"
+      : `{ ${pathArgs.map((pathArg) => `${pathArg.parameterName}: ${pathArg.argumentName}`).join(", ")} }`;
+  const bodyArg = endpoint.bodyType === undefined ? "undefined" : "body";
+
+  return [
+    `  async ${endpoint.methodName}(${args.join(", ")}): Promise<${endpoint.responseType}> {`,
+    `    return this.request<${endpoint.responseType}>("${endpoint.httpMethod}", "${endpoint.path}", ${pathParams}, ${bodyArg});`,
+    "  }",
+  ].join("\n");
+}
+
+function renderDefinition(definitionName, schema) {
+  const typeName = typeNameForDefinition(definitionName);
+  if (schema.type !== "object" || schema.properties === undefined) {
+    return `export type ${typeName} = ${schemaToType(schema)};`;
+  }
+
+  const required = new Set(schema.required ?? []);
+  const lines = [`export interface ${typeName} {`];
+  for (const [propertyName, propertySchema] of Object.entries(schema.properties)) {
+    const optional = required.has(propertyName) ? "" : "?";
+    lines.push(`  ${propertyName}${optional}: ${schemaToType(propertySchema)};`);
+  }
+  lines.push("}");
+  return lines.join("\n");
+}
+
+function schemaToType(schema) {
+  const ref = parseDefinitionRef(schema?.$ref);
+  if (ref !== undefined) {
+    return typeNameForDefinition(ref);
+  }
+  if (schema?.type === "array") {
+    return `${schemaToType(schema.items)}[]`;
+  }
+  if (schema?.type === "object") {
+    if (schema.additionalProperties !== undefined) {
+      return `Record<string, ${schemaToType(schema.additionalProperties)}>`;
+    }
+    return "Record<string, JsonValue>";
+  }
+  if (schema?.type === "integer" || schema?.type === "number") {
+    return "number";
+  }
+  if (schema?.type === "boolean") {
+    return "boolean";
+  }
+  if (schema?.type === "string") {
+    return "string";
+  }
+  return "JsonValue";
+}
+
+function parseDefinitionRef(ref) {
+  if (typeof ref !== "string") {
+    return undefined;
+  }
+  const prefix = "#/definitions/";
+  if (!ref.startsWith(prefix)) {
+    throw new Error(`Unsupported ref ${ref}`);
+  }
+  return ref.slice(prefix.length);
+}
+
+function typeNameForDefinition(definitionName) {
+  const localName = definitionName.replace(/^handlers\./, "");
+  return localName
+    .replace(/(^|[^a-zA-Z0-9]+)([a-zA-Z0-9])/g, (_match, _prefix, char) => char.toUpperCase())
+    .replace(/[^a-zA-Z0-9]/g, "");
+}

@@ -6,7 +6,7 @@ Repository: nams-hooks
 
 ## Summary
 
-`nams-hooks` is a standalone, dependency-free Node.js integration layer that connects local agent harness hooks to the Neo4j Agent Memory Service (NAMS) REST API. The first iteration supports macOS project-level installs for Codex, Claude Code, and Gemini CLI.
+`nams-hooks` is a standalone, dependency-free Node.js integration layer that connects local agent harness hooks to the Neo4j Agent Memory Service (NAMS) REST API. The first iteration supports macOS for Codex, Claude Code, and Gemini CLI. Codex and Claude use project-level installs; Gemini uses extension distribution while keeping runtime state and logs project-local.
 
 The hook runner owns deterministic memory persistence. Agents receive recalled context, but they are not responsible for deciding whether to write memory. The runner stores conversation messages, recalls relevant memory before agent work, and records limited tool metadata through NAMS REST endpoints.
 
@@ -23,7 +23,7 @@ The hook runner owns deterministic memory persistence. Agents receive recalled c
 
 - Provide deterministic memory behavior through harness hooks and REST API calls.
 - Support Codex, Claude Code, and Gemini CLI on macOS in v1.
-- Install per project, not globally.
+- Keep runtime state, logs, and harness configuration project-scoped wherever the platform supports it.
 - Use plain Node.js built-in modules only. No npm dependencies.
 - Persist standard user and assistant messages as the primary memory stream.
 - Recall memory before agent responses and inject concise context plus a short operating instruction.
@@ -33,7 +33,7 @@ The hook runner owns deterministic memory persistence. Agents receive recalled c
 ## Non-Goals For v1
 
 - Windows support.
-- Global user-level install.
+- Global-only installation with shared state across projects.
 - MCP-driven memory writes.
 - Explicit entity creation from hook logic.
 - Full raw tool input/output capture.
@@ -59,9 +59,14 @@ This approach avoids per-harness logic drift while still respecting each platfor
 
 ```text
 nams-hooks/
+  scripts/
+    build-dist.mjs
+    generate-nams-client.mjs
   src/
     cli.ts
     interfaces.ts
+    generated/
+      nams-client.ts
     runtime/
       stdin.ts
       logging.ts
@@ -77,8 +82,11 @@ nams-hooks/
     codex/
       hooks.json
     gemini/
-      settings.json
+      gemini-extension.json
+      hooks/
+        hooks.json
   docs/
+    nams-openapi.json
     nams-skill.md
     superpowers/specs/2026-05-10-nams-hooks-design.md
 ```
@@ -98,8 +106,81 @@ target-project/
     logs/
   .claude/settings.local.json
   .codex/hooks.json
-  .gemini/settings.json
 ```
+
+Gemini v1 distribution is an extension install rather than a project `.gemini/settings.json` template. Gemini still writes hook runtime state and logs into the project-local `.nams/` directory when the extension runs from that project.
+
+## Build And Distribution
+
+`nams-hooks` is authored in TypeScript and released as plain JavaScript. Runtime code must use Node built-ins only; build-time development tools such as TypeScript and the OpenAPI generator stay out of the published hook runtime.
+
+Branch model:
+
+- `devel`: source branch containing TypeScript source, templates, docs, the pinned OpenAPI spec, the custom generator, and committed generated TypeScript client source.
+- `master`: generated release/distribution branch containing runnable JavaScript and Gemini extension root files.
+
+On `devel`, `dist/` is generated and ignored. `npm run dist` creates a Gemini-linkable extension tree in `dist/`:
+
+```text
+dist/
+  gemini-extension.json
+  hooks/
+    hooks.json
+  bin/
+    cli.js
+    platforms/
+    runtime/
+    generated/
+      nams-client.js
+  docs/
+    nams-openapi.json
+  package.json
+```
+
+Gemini users install from the generated release branch:
+
+```bash
+gemini extensions install https://github.com/neo4j-labs/nams-hooks
+```
+
+For local testing, link the generated extension folder:
+
+```bash
+npm run dist
+gemini extensions link ./dist
+```
+
+Gemini hook templates live under `templates/gemini/` on `devel`. The release artifact places `gemini-extension.json` and `hooks/hooks.json` at the extension root because Gemini expects those paths. Gemini hooks call the compiled runtime through `${extensionPath}`:
+
+```bash
+node "${extensionPath}/bin/cli.js" run gemini --event SessionStart
+```
+
+Codex and Claude distribution use the released CLI package and project-level installer:
+
+```bash
+npm install -g @neo4j-labs/nams-hooks
+nams-hooks install --harness codex,claude
+```
+
+Manual or CI release flow:
+
+1. Work on `devel`.
+2. Run `npm run openapi:fetch` when the NAMS contract needs refreshing.
+3. Run `npm run openapi:generate`.
+4. Commit `docs/nams-openapi.json` and `src/generated/nams-client.ts` if they changed.
+5. Run package verification.
+6. Run release preparation to create the release tree.
+7. Replace `master` contents with the validated release tree.
+8. Commit the release artifact on `master`.
+9. Tag the release commit, for example `v0.1.0`.
+
+Rules:
+
+- `master` is generated from `devel`; no hand edits.
+- Release tags are created from `master`.
+- Gemini installs default to `master`.
+- Codex and Claude npm releases are produced from the same validated artifact.
 
 ## Configuration
 
@@ -148,25 +229,31 @@ If no state exists on a user prompt event, the runtime creates a NAMS conversati
 
 ## NAMS REST Mapping
 
+REST calls go through the generated `NamsClient` from `src/generated/nams-client.ts`. The OpenAPI generator and generated client contract are described in `docs/superpowers/specs/2026-05-10-nams-openapi-client-build-design.md`.
+
 Conversation creation:
 
 - `POST /v1/conversations`
 - Body: `{ "userId": "<NAMS_USER_ID if configured>", "metadata": {} }`
+- Client method: `createConversation`
 
 Message persistence:
 
 - `POST /v1/conversations/{conversationId}/messages`
 - User body: `{ "role": "user", "content": "<prompt>" }`
 - Assistant body: `{ "role": "assistant", "content": "<response>" }`
+- Client method: `addMessage`
 
 Bulk message persistence may be used only when a harness exposes both user and assistant messages together and duplicate suppression remains reliable:
 
 - `POST /v1/conversations/{conversationId}/messages/bulk`
+- Client method: `addMessagesBulk`
 
 Recall:
 
 - Prefer `GET /v1/conversations/{conversationId}/context` when a conversation already exists.
 - Use `POST /v1/entities/search` or `POST /v1/conversations/{conversationId}/search` when the prompt provides useful query terms.
+- Client methods: `getConversationContext`, `searchEntities`, `searchConversationMessages`
 
 Tool metadata:
 
@@ -178,10 +265,12 @@ Tool metadata:
   - `output`: empty string
   - `status`
   - `durationMs`
+- Client method: `recordToolCall`
 
 Reasoning steps:
 
 - v1 may support `POST /v1/reasoning/steps` for operational summaries when a harness exposes a clean summary. It must not store hidden chain-of-thought. This is secondary to message and tool-call persistence.
+- Client method: `recordReasoningStep`
 
 Entity persistence:
 
@@ -235,7 +324,7 @@ Claude Code:
 
 Gemini CLI:
 
-- Use project-level `.gemini/settings.json`.
+- Use Gemini extension distribution for v1. Source templates live under `templates/gemini/`, and release artifacts place `gemini-extension.json` plus `hooks/hooks.json` at extension root.
 - Use `SessionStart`, `BeforeAgent`, `AfterTool`, and `AfterAgent` where available.
 - `BeforeAgent` can inject relevant memory context.
 - `AfterAgent` can persist assistant responses when `prompt_response` or equivalent is present.
@@ -311,10 +400,18 @@ Unit tests:
 - config precedence: `.nams/.env` values are primary and environment variables fill missing values
 - session-state creation and lookup
 - REST request shaping
+- generated `NamsClient` request and error behavior
 - duplicate message suppression
 - harness payload parsing
 - harness output formatting
 - tool input sanitization and size capping
+
+Contract tests:
+
+- generated NAMS client endpoint metadata matches `docs/nams-openapi.json`
+- generated client does not read OpenAPI at runtime
+- generated client shapes bearer JSON requests correctly
+- generated client throws stable errors for NAMS error responses
 
 Fixture tests:
 
@@ -372,7 +469,8 @@ Manual validation:
 - Gemini session identity may require fallback keys if the hook payload lacks a stable session ID.
 - Assistant response capture may be best-effort for some harness versions.
 - Prompt/context injection may be visible in some harness UIs even when intended as model context.
-- NAMS REST API shape may drift from the local OpenAPI copy. Tests should read fixture contracts from the hosted OpenAPI where possible.
+- NAMS REST API shape may drift from the pinned OpenAPI copy. The build-time fetch and contract-test workflow should make drift explicit before release.
+- GitHub install from `master` means any accidental unreleased commit to `master` becomes installable immediately; branch protections should require release automation.
 
 ## Approval Record
 
@@ -380,7 +478,8 @@ Approved decisions from brainstorming:
 
 - Standalone `nams-hooks` repo.
 - First iteration: Codex, Claude Code, Gemini CLI on macOS.
-- Project-level installation.
+- Project-local runtime state and logs.
+- Project-level installs for Codex and Claude; Gemini extension distribution for v1.
 - Plain Node.js with built-in modules only.
 - `.nams/.env` plus real environment variables, with environment variables as fallback.
 - Deterministic REST writes from hook runner, not MCP-driven writes.
@@ -388,3 +487,6 @@ Approved decisions from brainstorming:
 - Store assistant responses in v1 where harnesses expose them cleanly.
 - Store tool-call metadata without actual output.
 - Rely on NAMS async entity extraction from stored messages.
+- Use TypeScript for source and release vanilla JavaScript.
+- Use a custom generated `NamsClient` for REST calls.
+- Use `devel` for source and generated TypeScript, and `master` for generated release distribution.
