@@ -110,6 +110,38 @@ test("generated NAMS client endpoint table matches the pinned OpenAPI spec", asy
 });
 
 test("generator rejects endpoint path placeholders missing from manifest args", async () => {
+  await assert.rejects(
+    () =>
+      runGeneratorWithManifestMutation((source) =>
+        source.replace(
+          '    pathArgs: [{ argumentName: "conversationId", parameterName: "id" }],',
+          "    pathArgs: [],",
+        ),
+      ),
+    (error) => {
+      assert.match(error.stderr, /missing pathArgs for id/);
+      return true;
+    },
+  );
+});
+
+test("generator rejects manifest path args missing from endpoint path", async () => {
+  await assert.rejects(
+    () =>
+      runGeneratorWithManifestMutation((source) =>
+        source.replace(
+          '    path: "/v1/entities/search",\n    successStatus: "200",',
+          '    path: "/v1/entities/search",\n    pathArgs: [{ argumentName: "conversationId", parameterName: "id" }],\n    successStatus: "200",',
+        ),
+      ),
+    (error) => {
+      assert.match(error.stderr, /extra pathArgs for id/);
+      return true;
+    },
+  );
+});
+
+async function runGeneratorWithManifestMutation(mutateSource) {
   const tempRoot = await mkdtemp(path.join(tmpdir(), "nams-generator-"));
   try {
     const tempScriptPath = path.join(tempRoot, "scripts", "generate-nams-client.mjs");
@@ -118,26 +150,17 @@ test("generator rejects endpoint path placeholders missing from manifest args", 
     await mkdir(path.dirname(tempSpecPath), { recursive: true });
 
     const source = await readFile(generatorScriptPath, "utf8");
-    const sourceWithBrokenManifest = source.replace(
-      '    pathArgs: [{ argumentName: "conversationId", parameterName: "id" }],',
-      "    pathArgs: [],",
-    );
+    const sourceWithBrokenManifest = mutateSource(source);
     assert.notEqual(sourceWithBrokenManifest, source, "expected fixture mutation to alter generator manifest");
 
     await writeFile(tempScriptPath, sourceWithBrokenManifest, "utf8");
     await writeFile(tempSpecPath, await readFile(path.join(repoRoot, "docs", "nams-openapi.json"), "utf8"), "utf8");
 
-    await assert.rejects(
-      () => execFileAsync(process.execPath, [tempScriptPath], { cwd: tempRoot }),
-      (error) => {
-        assert.match(error.stderr, /missing pathArgs for id/);
-        return true;
-      },
-    );
+    await execFileAsync(process.execPath, [tempScriptPath], { cwd: tempRoot });
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
-});
+}
 
 test("generated NAMS client source does not read OpenAPI at runtime", async () => {
   const source = await readFile(path.join(repoRoot, "src", "generated", "nams-client.ts"), "utf8");

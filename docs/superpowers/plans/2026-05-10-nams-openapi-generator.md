@@ -44,7 +44,7 @@ Do not copy the Hey API spike into the implementation branch.
 **Files:**
 - Create: `test/nams-client-generator.test.js`
 
-- [ ] **Step 1: Write the failing contract/runtime tests**
+- [x] **Step 1: Write the failing contract/runtime tests**
 
 Create `test/nams-client-generator.test.js` with these tests:
 
@@ -133,7 +133,7 @@ test("generated NAMS client throws stable NAMS errors", async () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify red**
+- [x] **Step 2: Run tests to verify red**
 
 Run:
 
@@ -149,7 +149,7 @@ Expected: FAIL because `.build/tsc/generated/nams-client.js` does not exist.
 - Create: `scripts/generate-nams-client.mjs`
 - Modify: `package.json`
 
-- [ ] **Step 1: Add package scripts**
+- [x] **Step 1: Add package scripts**
 
 Add these scripts to `package.json`:
 
@@ -164,7 +164,7 @@ Add these scripts to `package.json`:
 
 Keep the existing `build`, `test`, `check`, and `dist` scripts.
 
-- [ ] **Step 2: Add generator script from the custom spike**
+- [x] **Step 2: Add generator script from the custom spike**
 
 Create `scripts/generate-nams-client.mjs` using the custom spike as the baseline. Preserve these design points:
 
@@ -206,7 +206,7 @@ if (process.argv.includes("--check")) {
 }
 ```
 
-- [ ] **Step 3: Run generator**
+- [x] **Step 3: Run generator**
 
 Run:
 
@@ -221,7 +221,7 @@ Expected: creates `src/generated/nams-client.ts`.
 **Files:**
 - Create: `src/generated/nams-client.ts`
 
-- [ ] **Step 1: Verify generated client shape**
+- [x] **Step 1: Verify generated client shape**
 
 Inspect `src/generated/nams-client.ts` and confirm it exports:
 
@@ -249,7 +249,7 @@ export const NAMS_CLIENT_ENDPOINTS = [
 ] as const;
 ```
 
-- [ ] **Step 2: Verify green**
+- [x] **Step 2: Verify green**
 
 Run:
 
@@ -259,7 +259,7 @@ npm run check
 
 Expected: PASS with the existing hook tests plus the new generated-client tests.
 
-- [ ] **Step 3: Verify generated output is fresh**
+- [x] **Step 3: Verify generated output is fresh**
 
 Run:
 
@@ -274,7 +274,7 @@ Expected: PASS with no file changes.
 **Files:**
 - Modify only if needed: `scripts/build-dist.mjs`
 
-- [ ] **Step 1: Build local distribution**
+- [x] **Step 1: Build local distribution**
 
 Run:
 
@@ -284,7 +284,7 @@ npm run dist
 
 Expected: PASS.
 
-- [ ] **Step 2: Confirm generated runtime is included**
+- [x] **Step 2: Confirm generated runtime is included**
 
 Run:
 
@@ -294,7 +294,7 @@ test -f dist/bin/generated/nams-client.js
 
 Expected: exit code 0.
 
-- [ ] **Step 3: Confirm source OpenAPI is not imported by compiled runtime**
+- [x] **Step 3: Confirm source OpenAPI is not imported by compiled runtime**
 
 Run:
 
@@ -315,7 +315,7 @@ If `dist/bin/generated/nams-client.js` is missing, update `scripts/build-dist.mj
 - Create: `src/generated/nams-client.ts`
 - Create: `test/nams-client-generator.test.js`
 
-- [ ] **Step 1: Run package verification**
+- [x] **Step 1: Run package verification**
 
 Run:
 
@@ -330,7 +330,7 @@ Expected:
 - Node tests pass
 - `npm run dist` creates the Gemini-linkable tree
 
-- [ ] **Step 2: Confirm tests did not create project `.nams` artifacts**
+- [x] **Step 2: Confirm tests did not create project `.nams` artifacts**
 
 Run:
 
@@ -340,7 +340,7 @@ find . -maxdepth 2 -type d -name .nams -print
 
 Expected: no output.
 
-- [ ] **Step 3: Review diff**
+- [x] **Step 3: Review diff**
 
 Run:
 
@@ -351,7 +351,7 @@ git diff -- package.json scripts/generate-nams-client.mjs test/nams-client-gener
 
 Expected: changes are limited to generator, generated client, tests, and package scripts.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 Run:
 
