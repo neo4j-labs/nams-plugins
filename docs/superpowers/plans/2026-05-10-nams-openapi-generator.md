@@ -57,11 +57,22 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const generatedClientPath = path.join(repoRoot, ".build", "tsc", "generated", "nams-client.js");
+const expectedEndpoints = [
+  { methodName: "createConversation", httpMethod: "POST", path: "/v1/conversations" },
+  { methodName: "addMessage", httpMethod: "POST", path: "/v1/conversations/{id}/messages" },
+  { methodName: "addMessagesBulk", httpMethod: "POST", path: "/v1/conversations/{id}/messages/bulk" },
+  { methodName: "getConversationContext", httpMethod: "GET", path: "/v1/conversations/{id}/context" },
+  { methodName: "searchConversationMessages", httpMethod: "POST", path: "/v1/conversations/{id}/search" },
+  { methodName: "searchEntities", httpMethod: "POST", path: "/v1/entities/search" },
+  { methodName: "recordReasoningStep", httpMethod: "POST", path: "/v1/reasoning/steps" },
+  { methodName: "recordToolCall", httpMethod: "POST", path: "/v1/reasoning/tool-calls" },
+];
 
 test("generated NAMS client endpoint table matches the pinned OpenAPI spec", async () => {
   const spec = JSON.parse(await readFile(path.join(repoRoot, "docs", "nams-openapi.json"), "utf8"));
   const { NAMS_CLIENT_ENDPOINTS } = await import(generatedClientPath);
 
+  assert.deepEqual(NAMS_CLIENT_ENDPOINTS, expectedEndpoints);
   for (const endpoint of NAMS_CLIENT_ENDPOINTS) {
     const operation = spec.paths[endpoint.path]?.[endpoint.httpMethod.toLowerCase()];
     assert.ok(operation, `expected ${endpoint.httpMethod} ${endpoint.path} in OpenAPI spec`);
