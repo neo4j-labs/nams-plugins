@@ -48,8 +48,6 @@ test("creates Gemini conversation, recalls memory, and stores first BeforeAgent 
         entities: [{ name: "Fixture-driven tests", description: "User prefers fixture-driven tests." }],
       })
       .message();
-    const { requests } = nams;
-
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
@@ -75,17 +73,17 @@ test("creates Gemini conversation, recalls memory, and stores first BeforeAgent 
     assert.equal(Object.hasOwn(result.stdout, "additionalContext"), false);
     assert.match(result.stdout.hookSpecificOutput.additionalContext, /User prefers fixture-driven tests\./);
     assert.equal(result.stdout.hookSpecificOutput.hookEventName, "BeforeAgent");
-    assert.deepEqual(JSON.parse(requests[0].init.body), {
+    assert.deepEqual(nams.requestBody("createConversation"), {
       metadata: {
         harness: "gemini",
         projectDirectory: projectDir,
       },
     });
-    assert.deepEqual(JSON.parse(requests[2].init.body), {
+    assert.deepEqual(nams.requestBody("searchEntities"), {
       query: prompt,
       limit: 5,
     });
-    assert.deepEqual(JSON.parse(requests[3].init.body), {
+    assert.deepEqual(nams.requestBody("addMessage"), {
       role: "user",
       content: prompt,
     });
@@ -156,8 +154,6 @@ test("Gemini BeforeAgent uses entity search context when conversation context fa
         entities: [{ name: "Autonomo", description: "User is exploring autonomo setup in Spain." }],
       })
       .message();
-    const { requests } = nams;
-
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
@@ -183,19 +179,11 @@ test("Gemini BeforeAgent uses entity search context when conversation context fa
     assert.equal(Object.hasOwn(result.stdout, "additionalContext"), false);
     assert.match(result.stdout.hookSpecificOutput.additionalContext, /Autonomo: User is exploring autonomo setup in Spain\./);
     assert.equal(result.stdout.hookSpecificOutput.hookEventName, "BeforeAgent");
-    const entitySearchRequest = requests.find(
-      (request) => request.init.method === "POST" && request.url === "https://memory.example.test/v1/entities/search",
-    );
-    assert.deepEqual(JSON.parse(entitySearchRequest.init.body), {
+    assert.deepEqual(nams.requestBody("searchEntities"), {
       query: prompt,
       limit: 5,
     });
-    const messageRequest = requests.find(
-      (request) =>
-        request.init.method === "POST" &&
-        request.url === "https://memory.example.test/v1/conversations/conversation-1/messages",
-    );
-    assert.deepEqual(JSON.parse(messageRequest.init.body), {
+    assert.deepEqual(nams.requestBody("addMessage"), {
       role: "user",
       content: prompt,
     });
@@ -209,8 +197,6 @@ test("does not store duplicate Gemini BeforeAgent user prompt twice", async () =
   try {
     const prompt = "Remember this only once.";
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
-    const { requests } = nams;
-
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
@@ -233,12 +219,7 @@ test("does not store duplicate Gemini BeforeAgent user prompt twice", async () =
     await adapter.beforeAgent(invocation);
     await adapter.beforeAgent(invocation);
 
-    const userMessageRequests = requests.filter(
-      (request) =>
-        request.init.method === "POST" &&
-        request.url === "https://memory.example.test/v1/conversations/conversation-1/messages",
-    );
-    assert.equal(userMessageRequests.length, 1);
+    assert.equal(nams.calls("addMessage").length, 1);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -281,7 +262,6 @@ test("Gemini BeforeAgent returns recalled context when user message persistence 
       .context({ observations: [{ content: "User wants concise updates." }] })
       .searchEntities()
       .message({ error: "message write unavailable" }, 503);
-    const { requests } = nams;
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
@@ -307,12 +287,7 @@ test("Gemini BeforeAgent returns recalled context when user message persistence 
     assert.equal(Object.hasOwn(result.stdout, "additionalContext"), false);
     assert.match(result.stdout.hookSpecificOutput.additionalContext, /User wants concise updates\./);
     assert.equal(result.stdout.hookSpecificOutput.hookEventName, "BeforeAgent");
-    assert.equal(
-      requests.filter(
-        (request) => request.url === "https://memory.example.test/v1/conversations/conversation-1/messages",
-      ).length,
-      1,
-    );
+    assert.equal(nams.calls("addMessage").length, 1);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -626,8 +601,6 @@ test("records Gemini AfterTool payload as a reasoning step with tool output", as
       .message()
       .reasoningStep({ id: "step-after-tool-1" })
       .toolCall();
-    const { requests } = nams;
-
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
@@ -668,12 +641,7 @@ test("records Gemini AfterTool payload as a reasoning step with tool output", as
     });
 
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
-    const reasoningBodies = requests
-      .filter(
-        (request) =>
-          request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/steps",
-      )
-      .map((request) => JSON.parse(request.init.body));
+    const reasoningBodies = nams.requestBodies("addReasoningStep");
     assert.deepEqual(reasoningBodies, [
       {
         conversationId: "conversation-1",
@@ -683,12 +651,7 @@ test("records Gemini AfterTool payload as a reasoning step with tool output", as
       },
     ]);
 
-    const toolBodies = requests
-      .filter(
-        (request) =>
-          request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/tool-calls",
-      )
-      .map((request) => JSON.parse(request.init.body));
+    const toolBodies = nams.requestBodies("addToolCall");
     assert.equal(toolBodies.length, 1);
     assert.equal(toolBodies[0].toolName, "read_file");
     assert.equal(toolBodies[0].stepId, "step-after-tool-1");
@@ -714,8 +677,6 @@ test("does not duplicate Gemini AfterTool metadata for the same tool call id", a
       .message()
       .reasoningStep({ id: "step-after-tool-1" })
       .toolCall();
-    const { requests } = nams;
-
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
@@ -753,11 +714,7 @@ test("does not duplicate Gemini AfterTool metadata for the same tool call id", a
     await adapter.afterTool(invocation);
     await adapter.afterTool(invocation);
 
-    const toolRequests = requests.filter(
-      (request) =>
-        request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/tool-calls",
-    );
-    assert.equal(toolRequests.length, 1);
+    assert.equal(nams.calls("addToolCall").length, 1);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -773,8 +730,6 @@ test("records distinct Gemini AfterTool calls with matching inputs when ids diff
       .message()
       .reasoningStep({ id: "step-after-tool-1" })
       .toolCall();
-    const { requests } = nams;
-
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
@@ -811,12 +766,7 @@ test("records distinct Gemini AfterTool calls with matching inputs when ids diff
       });
     }
 
-    const toolBodies = requests
-      .filter(
-        (request) =>
-          request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/tool-calls",
-      )
-      .map((request) => JSON.parse(request.init.body));
+    const toolBodies = nams.requestBodies("addToolCall");
     assert.equal(toolBodies.length, 2);
     assert.match(toolBodies[0].input, /"query":"nams"/);
     assert.match(toolBodies[1].input, /"query":"nams"/);
@@ -859,8 +809,6 @@ test("does not duplicate AfterTool when transcript later contains the same tool 
       .message()
       .reasoningStep({ id: "step-after-tool-1" })
       .toolCall();
-    const { requests } = nams;
-
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
@@ -904,12 +852,9 @@ test("does not duplicate AfterTool when transcript later contains the same tool 
       },
     });
 
-    const toolRequests = requests.filter(
-      (request) =>
-        request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/tool-calls",
-    );
-    assert.equal(toolRequests.length, 1);
-    assert.equal(JSON.parse(toolRequests[0].init.body).stepId, "step-after-tool-1");
+    const toolBodies = nams.requestBodies("addToolCall");
+    assert.equal(toolBodies.length, 1);
+    assert.equal(toolBodies[0].stepId, "step-after-tool-1");
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -919,8 +864,6 @@ test("stores Gemini AfterAgent prompt_response as an assistant message", async (
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
-    const { requests } = nams;
-
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
@@ -953,12 +896,7 @@ test("stores Gemini AfterAgent prompt_response as an assistant message", async (
     });
 
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
-    const messageRequests = requests.filter(
-      (request) =>
-        request.init.method === "POST" &&
-        request.url === "https://memory.example.test/v1/conversations/conversation-1/messages",
-    );
-    assert.deepEqual(JSON.parse(messageRequests.at(-1).init.body), {
+    assert.deepEqual(nams.requestBodies("addMessage").at(-1), {
       role: "assistant",
       content: "Hello!",
     });
@@ -982,8 +920,6 @@ test("stores Gemini AfterAgent assistant message from transcript when prompt_res
     );
 
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
-    const { requests } = nams;
-
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
@@ -1016,12 +952,7 @@ test("stores Gemini AfterAgent assistant message from transcript when prompt_res
     });
 
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
-    const messageRequests = requests.filter(
-      (request) =>
-        request.init.method === "POST" &&
-        request.url === "https://memory.example.test/v1/conversations/conversation-1/messages",
-    );
-    assert.deepEqual(JSON.parse(messageRequests.at(-1).init.body), {
+    assert.deepEqual(nams.requestBodies("addMessage").at(-1), {
       role: "assistant",
       content: "Fallback response",
     });
@@ -1046,8 +977,6 @@ test("does not duplicate prompt_response assistant messages during later transcr
     );
 
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
-    const { requests } = nams;
-
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
@@ -1099,14 +1028,7 @@ test("does not duplicate prompt_response assistant messages during later transcr
       },
     });
 
-    const assistantMessageBodies = requests
-      .filter(
-        (request) =>
-          request.init.method === "POST" &&
-          request.url === "https://memory.example.test/v1/conversations/conversation-1/messages",
-      )
-      .map((request) => JSON.parse(request.init.body))
-      .filter((body) => body.role === "assistant");
+    const assistantMessageBodies = nams.requestBodies("addMessage").filter((body) => body.role === "assistant");
     assert.deepEqual(assistantMessageBodies, [
       { role: "assistant", content: "A" },
       { role: "assistant", content: "B" },
@@ -1159,8 +1081,6 @@ test("deduplicates repeated Gemini transcript thoughts by reasoning body", async
     );
 
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message().reasoningStep();
-    const { requests } = nams;
-
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
@@ -1192,12 +1112,7 @@ test("deduplicates repeated Gemini transcript thoughts by reasoning body", async
       },
     });
 
-    const reasoningBodies = requests
-      .filter(
-        (request) =>
-          request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/steps",
-      )
-      .map((request) => JSON.parse(request.init.body));
+    const reasoningBodies = nams.requestBodies("addReasoningStep");
     assert.deepEqual(reasoningBodies, [
       {
         conversationId: "conversation-1",
@@ -1254,8 +1169,6 @@ test("records Gemini transcript thoughts and sanitized tool metadata", async () 
       .message()
       .reasoningStep()
       .toolCall();
-    const { requests } = nams;
-
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
@@ -1288,21 +1201,13 @@ test("records Gemini transcript thoughts and sanitized tool metadata", async () 
     });
 
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
-    const reasoningRequest = requests.find(
-      (request) =>
-        request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/steps",
-    );
-    assert.deepEqual(JSON.parse(reasoningRequest.init.body), {
+    assert.deepEqual(nams.requestBody("addReasoningStep"), {
       conversationId: "conversation-1",
       reasoning: "Searching official guidance",
       actionTaken: "Researching",
     });
 
-    const toolRequest = requests.find(
-      (request) =>
-        request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/tool-calls",
-    );
-    const toolBody = JSON.parse(toolRequest.init.body);
+    const toolBody = nams.requestBody("addToolCall");
     assert.equal(toolBody.toolName, "google_web_search");
     assert.equal(toolBody.status, "success");
     assert.equal(toolBody.stepId, "step-1");
@@ -1360,8 +1265,6 @@ test("deduplicates repeated Gemini transcript tool ids", async () => {
     );
 
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message().toolCall();
-    const { requests } = nams;
-
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
@@ -1392,12 +1295,7 @@ test("deduplicates repeated Gemini transcript tool ids", async () => {
       },
     });
 
-    const toolBodies = requests
-      .filter(
-        (request) =>
-          request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/tool-calls",
-      )
-      .map((request) => JSON.parse(request.init.body));
+    const toolBodies = nams.requestBodies("addToolCall");
     assert.equal(toolBodies.length, 1);
     assert.match(toolBodies[0].input, /"query":"autonomo spain"/);
   } finally {
@@ -1453,8 +1351,6 @@ test("preserves reasoning step id when retrying a failed transcript tool call", 
         }
         return { status: 201, body: { id: "tool-call-1" } };
       });
-    const { requests } = nams;
-
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
@@ -1495,13 +1391,7 @@ test("preserves reasoning step id when retrying a failed transcript tool call", 
       },
     });
 
-    const successfulToolBody = requests
-      .filter(
-        (request) =>
-          request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/tool-calls",
-      )
-      .map((request) => JSON.parse(request.init.body))
-      .at(-1);
+    const successfulToolBody = nams.requestBodies("addToolCall").at(-1);
     assert.equal(successfulToolBody.stepId, "step-1");
   } finally {
     await rm(projectDir, { recursive: true, force: true });
@@ -1554,8 +1444,6 @@ test("does not attach reasoning step from a previous transcript entry to a later
       .message()
       .reasoningStep()
       .toolCall();
-    const { requests } = nams;
-
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
@@ -1586,13 +1474,7 @@ test("does not attach reasoning step from a previous transcript entry to a later
       },
     });
 
-    const toolBody = requests
-      .filter(
-        (request) =>
-          request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/tool-calls",
-      )
-      .map((request) => JSON.parse(request.init.body))
-      .at(-1);
+    const toolBody = nams.requestBodies("addToolCall").at(-1);
     assert.equal(Object.hasOwn(toolBody, "stepId"), false);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
@@ -1649,8 +1531,6 @@ test("does not attach reasoning step when a transcript entry has multiple though
         return { status: 201, body: { id: `step-${stepCount}` } };
       })
       .toolCall();
-    const { requests } = nams;
-
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
@@ -1681,13 +1561,7 @@ test("does not attach reasoning step when a transcript entry has multiple though
       },
     });
 
-    const toolBody = requests
-      .filter(
-        (request) =>
-          request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/tool-calls",
-      )
-      .map((request) => JSON.parse(request.init.body))
-      .at(-1);
+    const toolBody = nams.requestBodies("addToolCall").at(-1);
     assert.equal(Object.hasOwn(toolBody, "stepId"), false);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
@@ -1725,8 +1599,6 @@ test("deduplicates repeated parent transcript tool id despite changed status and
     await writeTranscript("running", "2026-05-11T09:30:01.000Z");
 
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message().toolCall();
-    const { requests } = nams;
-
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
@@ -1769,12 +1641,7 @@ test("deduplicates repeated parent transcript tool id despite changed status and
       },
     });
 
-    const toolBodies = requests
-      .filter(
-        (request) =>
-          request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/tool-calls",
-      )
-      .map((request) => JSON.parse(request.init.body));
+    const toolBodies = nams.requestBodies("addToolCall");
     assert.equal(toolBodies.length, 1);
     assert.equal(toolBodies[0].status, "running");
   } finally {
