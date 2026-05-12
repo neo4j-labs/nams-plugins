@@ -4,8 +4,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { createNamsFetchMock } from "../support/nams-fetch-mock.js";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const geminiUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "platforms", "gemini", "index.js")).href;
 const stateUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "runtime", "session-state.js")).href;
 
@@ -39,28 +40,15 @@ test("initializes Gemini session state on SessionStart without creating a conver
 test("creates Gemini conversation, recalls memory, and stores first BeforeAgent user prompt", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
-    const requests = [];
     const prompt = "Please remember that I prefer fixture-driven tests.";
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({
-          observations: [{ content: "User prefers fixture-driven tests." }],
-        });
-      }
-      if (url === "https://memory.example.test/v1/entities/search") {
-        return jsonResponse({
-          entities: [{ name: "Fixture-driven tests", description: "User prefers fixture-driven tests." }],
-        });
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context({ observations: [{ content: "User prefers fixture-driven tests." }] })
+      .searchEntities({
+        entities: [{ name: "Fixture-driven tests", description: "User prefers fixture-driven tests." }],
+      })
+      .message();
+    const { requests } = nams;
 
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
@@ -68,7 +56,7 @@ test("creates Gemini conversation, recalls memory, and stores first BeforeAgent 
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     const result = await adapter.beforeAgent({
@@ -160,26 +148,15 @@ test("creates Gemini conversation, recalls memory, and stores first BeforeAgent 
 test("Gemini BeforeAgent uses entity search context when conversation context fails", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
-    const requests = [];
     const prompt = "Persist this even if recall is unavailable.";
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({ error: "context unavailable" }, 503);
-      }
-      if (url === "https://memory.example.test/v1/entities/search") {
-        return jsonResponse({
-          entities: [{ name: "Autonomo", description: "User is exploring autonomo setup in Spain." }],
-        });
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context({ error: "context unavailable" }, 503)
+      .searchEntities({
+        entities: [{ name: "Autonomo", description: "User is exploring autonomo setup in Spain." }],
+      })
+      .message();
+    const { requests } = nams;
 
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
@@ -187,7 +164,7 @@ test("Gemini BeforeAgent uses entity search context when conversation context fa
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     const result = await adapter.beforeAgent({
@@ -230,21 +207,9 @@ test("Gemini BeforeAgent uses entity search context when conversation context fa
 test("does not store duplicate Gemini BeforeAgent user prompt twice", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
-    const requests = [];
     const prompt = "Remember this only once.";
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    const { requests } = nams;
 
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
@@ -252,7 +217,7 @@ test("does not store duplicate Gemini BeforeAgent user prompt twice", async () =
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
     const invocation = {
       platform: "gemini",
@@ -288,7 +253,7 @@ test("allows Gemini BeforeAgent when NAMS returns an error", async () => {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: async () => jsonResponse({ error: "service unavailable" }, 503),
+      fetch: createNamsFetchMock().all({ error: "service unavailable" }, 503).fetch,
     });
 
     const result = await adapter.beforeAgent({
@@ -311,28 +276,19 @@ test("allows Gemini BeforeAgent when NAMS returns an error", async () => {
 test("Gemini BeforeAgent returns recalled context when user message persistence fails", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
-    const requests = [];
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context({ observations: [{ content: "User wants concise updates." }] })
+      .searchEntities()
+      .message({ error: "message write unavailable" }, 503);
+    const { requests } = nams;
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: async (url, init) => {
-        requests.push({ url, init });
-        if (url === "https://memory.example.test/v1/conversations") {
-          return jsonResponse({ id: "conversation-1" }, 201);
-        }
-        if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-          return jsonResponse({
-            observations: [{ content: "User wants concise updates." }],
-          });
-        }
-        if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-          return jsonResponse({ error: "message write unavailable" }, 503);
-        }
-        return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-      },
+      fetch: nams.fetch,
     });
 
     const result = await adapter.beforeAgent({
@@ -397,7 +353,7 @@ test("Gemini BeforeAgent continues when NAMS request fails", async () => {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: async () => jsonResponse({ error: "service unavailable" }, 503),
+      fetch: createNamsFetchMock().all({ error: "service unavailable" }, 503).fetch,
     });
 
     const result = await adapter.beforeAgent({
@@ -429,11 +385,13 @@ test("Gemini NAMS failure diagnostics do not include arbitrary error text", asyn
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: async () => {
-        throw new Error(
-          'Authorization: Bearer secret NAMS_API_KEY {"body":"content secret","prompt":"do not log me"}',
-        );
-      },
+      fetch: createNamsFetchMock()
+        .throws(
+          new Error(
+            'Authorization: Bearer secret NAMS_API_KEY {"body":"content secret","prompt":"do not log me"}',
+          ),
+        )
+        .fetch,
     });
 
     const result = await adapter.beforeAgent({
@@ -626,7 +584,7 @@ test("Gemini hooks continue when observability log writes fail", async () => {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: async () => jsonResponse({ error: "service unavailable" }, 503),
+      fetch: createNamsFetchMock().all({ error: "service unavailable" }, 503).fetch,
     });
 
     const beforeAgentResult = await adapter.beforeAgent({
@@ -661,26 +619,14 @@ test("Gemini hooks continue when observability log writes fail", async () => {
 test("records Gemini AfterTool payload as a reasoning step with tool output", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
-    const requests = [];
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/steps") {
-        return jsonResponse({ id: "step-after-tool-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/tool-calls") {
-        return jsonResponse({ id: "tool-call-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message()
+      .reasoningStep({ id: "step-after-tool-1" })
+      .toolCall();
+    const { requests } = nams;
 
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
@@ -688,7 +634,7 @@ test("records Gemini AfterTool payload as a reasoning step with tool output", as
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     await adapter.beforeAgent({
@@ -761,26 +707,14 @@ test("records Gemini AfterTool payload as a reasoning step with tool output", as
 test("does not duplicate Gemini AfterTool metadata for the same tool call id", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
-    const requests = [];
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/steps") {
-        return jsonResponse({ id: "step-after-tool-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/tool-calls") {
-        return jsonResponse({ id: "tool-call-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message()
+      .reasoningStep({ id: "step-after-tool-1" })
+      .toolCall();
+    const { requests } = nams;
 
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
@@ -788,7 +722,7 @@ test("does not duplicate Gemini AfterTool metadata for the same tool call id", a
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     await adapter.beforeAgent({
@@ -832,29 +766,14 @@ test("does not duplicate Gemini AfterTool metadata for the same tool call id", a
 test("records distinct Gemini AfterTool calls with matching inputs when ids differ", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
-    const requests = [];
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/entities/search") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/steps") {
-        return jsonResponse({ id: "step-after-tool-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/tool-calls") {
-        return jsonResponse({ id: "tool-call-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message()
+      .reasoningStep({ id: "step-after-tool-1" })
+      .toolCall();
+    const { requests } = nams;
 
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
@@ -862,7 +781,7 @@ test("records distinct Gemini AfterTool calls with matching inputs when ids diff
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     await adapter.beforeAgent({
@@ -933,26 +852,14 @@ test("does not duplicate AfterTool when transcript later contains the same tool 
       "utf8",
     );
 
-    const requests = [];
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/steps") {
-        return jsonResponse({ id: "step-after-tool-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/tool-calls") {
-        return jsonResponse({ id: "tool-call-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message()
+      .reasoningStep({ id: "step-after-tool-1" })
+      .toolCall();
+    const { requests } = nams;
 
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
@@ -960,7 +867,7 @@ test("does not duplicate AfterTool when transcript later contains the same tool 
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     await adapter.beforeAgent({
@@ -1011,20 +918,8 @@ test("does not duplicate AfterTool when transcript later contains the same tool 
 test("stores Gemini AfterAgent prompt_response as an assistant message", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
-    const requests = [];
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    const { requests } = nams;
 
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
@@ -1032,7 +927,7 @@ test("stores Gemini AfterAgent prompt_response as an assistant message", async (
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     await adapter.beforeAgent({
@@ -1086,20 +981,8 @@ test("stores Gemini AfterAgent assistant message from transcript when prompt_res
       "utf8",
     );
 
-    const requests = [];
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    const { requests } = nams;
 
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
@@ -1107,7 +990,7 @@ test("stores Gemini AfterAgent assistant message from transcript when prompt_res
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     await adapter.beforeAgent({
@@ -1162,20 +1045,8 @@ test("does not duplicate prompt_response assistant messages during later transcr
       "utf8",
     );
 
-    const requests = [];
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    const { requests } = nams;
 
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
@@ -1183,7 +1054,7 @@ test("does not duplicate prompt_response assistant messages during later transcr
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     await adapter.beforeAgent({
@@ -1287,23 +1158,8 @@ test("deduplicates repeated Gemini transcript thoughts by reasoning body", async
       "utf8",
     );
 
-    const requests = [];
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/steps") {
-        return jsonResponse({ id: "step-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message().reasoningStep();
+    const { requests } = nams;
 
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
@@ -1311,7 +1167,7 @@ test("deduplicates repeated Gemini transcript thoughts by reasoning body", async
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     await adapter.beforeAgent({
@@ -1391,26 +1247,14 @@ test("records Gemini transcript thoughts and sanitized tool metadata", async () 
       "utf8",
     );
 
-    const requests = [];
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/steps") {
-        return jsonResponse({ id: "step-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/tool-calls") {
-        return jsonResponse({ id: "tool-call-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message()
+      .reasoningStep()
+      .toolCall();
+    const { requests } = nams;
 
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
@@ -1418,7 +1262,7 @@ test("records Gemini transcript thoughts and sanitized tool metadata", async () 
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     await adapter.beforeAgent({
@@ -1515,23 +1359,8 @@ test("deduplicates repeated Gemini transcript tool ids", async () => {
       "utf8",
     );
 
-    const requests = [];
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/tool-calls") {
-        return jsonResponse({ id: "tool-call-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message().toolCall();
+    const { requests } = nams;
 
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
@@ -1539,7 +1368,7 @@ test("deduplicates repeated Gemini transcript tool ids", async () => {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     await adapter.beforeAgent({
@@ -1610,31 +1439,21 @@ test("preserves reasoning step id when retrying a failed transcript tool call", 
       "utf8",
     );
 
-    const requests = [];
     let failToolCall = true;
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/steps") {
-        return jsonResponse({ id: "step-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/tool-calls") {
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message()
+      .reasoningStep()
+      .toolCall(() => {
         if (failToolCall) {
           failToolCall = false;
-          return jsonResponse({ error: "temporary failure" }, 503);
+          return { status: 503, body: { error: "temporary failure" } };
         }
-        return jsonResponse({ id: "tool-call-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
+        return { status: 201, body: { id: "tool-call-1" } };
+      });
+    const { requests } = nams;
 
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
@@ -1642,7 +1461,7 @@ test("preserves reasoning step id when retrying a failed transcript tool call", 
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     await adapter.beforeAgent({
@@ -1728,26 +1547,14 @@ test("does not attach reasoning step from a previous transcript entry to a later
       "utf8",
     );
 
-    const requests = [];
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/steps") {
-        return jsonResponse({ id: "step-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/tool-calls") {
-        return jsonResponse({ id: "tool-call-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message()
+      .reasoningStep()
+      .toolCall();
+    const { requests } = nams;
 
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
@@ -1755,7 +1562,7 @@ test("does not attach reasoning step from a previous transcript entry to a later
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     await adapter.beforeAgent({
@@ -1831,28 +1638,18 @@ test("does not attach reasoning step when a transcript entry has multiple though
       "utf8",
     );
 
-    const requests = [];
     let stepCount = 0;
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/steps") {
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message()
+      .reasoningStep(() => {
         stepCount += 1;
-        return jsonResponse({ id: `step-${stepCount}` }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/tool-calls") {
-        return jsonResponse({ id: "tool-call-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
+        return { status: 201, body: { id: `step-${stepCount}` } };
+      })
+      .toolCall();
+    const { requests } = nams;
 
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
@@ -1860,7 +1657,7 @@ test("does not attach reasoning step when a transcript entry has multiple though
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     await adapter.beforeAgent({
@@ -1927,23 +1724,8 @@ test("deduplicates repeated parent transcript tool id despite changed status and
     };
     await writeTranscript("running", "2026-05-11T09:30:01.000Z");
 
-    const requests = [];
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/tool-calls") {
-        return jsonResponse({ id: "tool-call-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message().toolCall();
+    const { requests } = nams;
 
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
@@ -1951,7 +1733,7 @@ test("deduplicates repeated parent transcript tool id despite changed status and
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     await adapter.beforeAgent({
@@ -1999,10 +1781,6 @@ test("deduplicates repeated parent transcript tool id despite changed status and
     await rm(projectDir, { recursive: true, force: true });
   }
 });
-
-function jsonResponse(body, status = 200) {
-  return new Response(JSON.stringify(body), { status });
-}
 
 async function readSingleSessionLog(projectDir) {
   const logDir = path.join(projectDir, ".nams", "logs");

@@ -14,13 +14,14 @@ Distribution, branch model, platform installs, and release-package shape are own
 
 ## Goals
 
-- Keep runtime deterministic and dependency-light.
+- Keep runtime deterministic and free of runtime npm dependencies.
 - Use TypeScript for maintainable source code and generated client types.
 - Generate a focused NAMS REST client from the pinned OpenAPI spec.
 - Commit generated TypeScript source on the development branch so API drift is visible in review.
 - Run contract tests that compare generated output to `docs/nams-openapi.json`.
 - Keep all OpenAPI parsing and endpoint validation in build-time scripts.
 - Produce generated client code with no runtime npm dependencies.
+- Permit dev-only generator and contract-test dependencies when they stay out of generated runtime output.
 
 ## Non-Goals
 
@@ -166,7 +167,7 @@ The generated TypeScript client is committed. This makes OpenAPI drift visible i
 - `test:contract`: verify generated endpoint metadata, request shaping, and error behavior against the pinned spec.
 - `package:check`: run generation freshness checks, build, tests, and contract tests.
 
-`openapi:fetch` is the only target that needs network access. Hook runtime, normal tests, and contract tests use the pinned local spec.
+`openapi:fetch` is the only target that needs network access. Hook runtime, normal tests, and contract tests use the pinned local spec. Build-time and test-time dependencies may support these checks, but generated client code must remain dependency-free at runtime.
 
 ## Custom Generator Scope
 

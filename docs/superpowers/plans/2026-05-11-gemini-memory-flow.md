@@ -47,9 +47,9 @@ Create:
 - `test/architecture.test.js`: ArchUnitTS dependency direction tests.
 - `test/runtime-config.test.js`: config precedence and missing-key tests.
 - `test/session-state.test.js`: state key and persistence tests.
-- `test/gemini-payload.test.js`: Gemini hook payload parser tests.
-- `test/gemini-transcript.test.js`: transcript reader tests, including `thoughts` and `toolCalls[]`.
-- `test/gemini-memory-flow.test.js`: fixture-driven mocked NAMS flow tests.
+- `test/gemini/gemini-payload.test.js`: Gemini hook payload parser tests.
+- `test/gemini/gemini-transcript.test.js`: transcript reader tests, including `thoughts` and `toolCalls[]`.
+- `test/gemini/gemini-memory-flow.test.js`: fixture-driven mocked NAMS flow tests.
 
 Modify:
 
@@ -862,12 +862,12 @@ git commit -m "feat: persist hook session state" -m "Co-authored-by: Codex <code
 
 - Create: `src/platforms/gemini/payload.ts`
 - Create: `src/platforms/gemini/transcript.ts`
-- Create: `test/gemini-payload.test.js`
-- Create: `test/gemini-transcript.test.js`
+- Create: `test/gemini/gemini-payload.test.js`
+- Create: `test/gemini/gemini-transcript.test.js`
 
 - [x] **Step 1: Write failing Gemini payload parser tests**
 
-Create `test/gemini-payload.test.js`:
+Create `test/gemini/gemini-payload.test.js`:
 
 ```js
 import assert from "node:assert/strict";
@@ -910,7 +910,7 @@ test("falls back to process cwd when Gemini cwd is absent", async () => {
 
 - [x] **Step 2: Write failing transcript parser tests**
 
-Create `test/gemini-transcript.test.js`:
+Create `test/gemini/gemini-transcript.test.js`:
 
 ```js
 import assert from "node:assert/strict";
@@ -974,7 +974,7 @@ test("reads Gemini transcript messages, thoughts, and tool metadata", async () =
 Run:
 
 ```bash
-npm run build && node --test test/gemini-payload.test.js test/gemini-transcript.test.js
+npm run build && node --test test/gemini/gemini-payload.test.js test/gemini/gemini-transcript.test.js
 ```
 
 Expected:
@@ -1149,7 +1149,7 @@ function idAndTimestamp(raw: Record<string, unknown>): { id?: string; timestamp?
 Run:
 
 ```bash
-npm run build && node --test test/gemini-payload.test.js test/gemini-transcript.test.js
+npm run build && node --test test/gemini/gemini-payload.test.js test/gemini/gemini-transcript.test.js
 ```
 
 Expected:
@@ -1159,7 +1159,7 @@ Expected:
 - [x] **Step 7: Commit**
 
 ```bash
-git add src/platforms/gemini/payload.ts src/platforms/gemini/transcript.ts test/gemini-payload.test.js test/gemini-transcript.test.js
+git add src/platforms/gemini/payload.ts src/platforms/gemini/transcript.ts test/gemini/gemini-payload.test.js test/gemini/gemini-transcript.test.js
 git commit -m "feat: parse gemini hook payloads and transcripts" -m "Co-authored-by: Codex <codex@openai.com>"
 ```
 
@@ -1398,11 +1398,11 @@ git commit -m "feat: add nams memory service" -m "Co-authored-by: Codex <codex@o
 **Files:**
 
 - Modify: `src/platforms/gemini/index.ts`
-- Create: `test/gemini-memory-flow.test.js`
+- Create: `test/gemini/gemini-memory-flow.test.js`
 
 - [x] **Step 1: Write failing SessionStart test**
 
-Create `test/gemini-memory-flow.test.js` with this first test and helper:
+Create `test/gemini/gemini-memory-flow.test.js` with this first test and helper:
 
 ```js
 import assert from "node:assert/strict";
@@ -1447,7 +1447,7 @@ test("Gemini SessionStart creates local state without NAMS conversation", async 
 Run:
 
 ```bash
-npm run build && node --test test/gemini-memory-flow.test.js
+npm run build && node --test test/gemini/gemini-memory-flow.test.js
 ```
 
 Expected:
@@ -1487,7 +1487,7 @@ return { stdout: { continue: true, suppressOutput: true } };
 Run:
 
 ```bash
-npm run build && node --test test/gemini-memory-flow.test.js
+npm run build && node --test test/gemini/gemini-memory-flow.test.js
 ```
 
 Expected:
@@ -1497,7 +1497,7 @@ Expected:
 - [x] **Step 5: Commit**
 
 ```bash
-git add src/platforms/gemini/index.ts test/gemini-memory-flow.test.js
+git add src/platforms/gemini/index.ts test/gemini/gemini-memory-flow.test.js
 git commit -m "feat: initialize gemini session state" -m "Co-authored-by: Codex <codex@openai.com>"
 ```
 
@@ -1508,11 +1508,11 @@ git commit -m "feat: initialize gemini session state" -m "Co-authored-by: Codex 
 **Files:**
 
 - Modify: `src/platforms/gemini/index.ts`
-- Modify: `test/gemini-memory-flow.test.js`
+- Modify: `test/gemini/gemini-memory-flow.test.js`
 
 - [x] **Step 1: Add failing BeforeAgent integration test**
 
-Append to `test/gemini-memory-flow.test.js`:
+Append to `test/gemini/gemini-memory-flow.test.js`:
 
 ```js
 test("Gemini BeforeAgent creates conversation, recalls memory, stores prompt, and injects context", async () => {
@@ -1561,7 +1561,7 @@ test("Gemini BeforeAgent creates conversation, recalls memory, stores prompt, an
 Run:
 
 ```bash
-npm run build && node --test test/gemini-memory-flow.test.js
+npm run build && node --test test/gemini/gemini-memory-flow.test.js
 ```
 
 Expected:
@@ -1651,7 +1651,7 @@ function messageHash(platform: string, sessionKey: string, role: string, content
 Run:
 
 ```bash
-npm run build && node --test test/gemini-memory-flow.test.js
+npm run build && node --test test/gemini/gemini-memory-flow.test.js
 ```
 
 Expected:
@@ -1703,7 +1703,7 @@ test("Gemini BeforeAgent suppresses duplicate user prompt writes", async () => {
 Run:
 
 ```bash
-npm run build && node --test test/gemini-memory-flow.test.js
+npm run build && node --test test/gemini/gemini-memory-flow.test.js
 ```
 
 Expected:
@@ -1713,7 +1713,7 @@ Expected:
 - [x] **Step 8: Commit**
 
 ```bash
-git add src/platforms/gemini/index.ts test/gemini-memory-flow.test.js
+git add src/platforms/gemini/index.ts test/gemini/gemini-memory-flow.test.js
 git commit -m "feat: persist gemini user prompts" -m "Co-authored-by: Codex <codex@openai.com>"
 ```
 
@@ -1724,11 +1724,11 @@ git commit -m "feat: persist gemini user prompts" -m "Co-authored-by: Codex <cod
 **Files:**
 
 - Modify: `src/platforms/gemini/index.ts`
-- Modify: `test/gemini-memory-flow.test.js`
+- Modify: `test/gemini/gemini-memory-flow.test.js`
 
 - [x] **Step 1: Add failing prompt_response test**
 
-Append to `test/gemini-memory-flow.test.js`:
+Append to `test/gemini/gemini-memory-flow.test.js`:
 
 ```js
 test("Gemini AfterAgent stores prompt_response as assistant message", async () => {
@@ -1775,7 +1775,7 @@ test("Gemini AfterAgent stores prompt_response as assistant message", async () =
 Run:
 
 ```bash
-npm run build && node --test test/gemini-memory-flow.test.js
+npm run build && node --test test/gemini/gemini-memory-flow.test.js
 ```
 
 Expected:
@@ -1865,7 +1865,7 @@ test("Gemini AfterAgent falls back to unseen transcript assistant entries", asyn
 });
 ```
 
-Add `writeFile` to the imports in `test/gemini-memory-flow.test.js`.
+Add `writeFile` to the imports in `test/gemini/gemini-memory-flow.test.js`.
 
 - [x] **Step 5: Implement transcript assistant fallback**
 
@@ -1898,7 +1898,7 @@ if ((response === undefined || response.trim() === "") && info.transcriptPath !=
 Run:
 
 ```bash
-npm run build && node --test test/gemini-memory-flow.test.js
+npm run build && node --test test/gemini/gemini-memory-flow.test.js
 ```
 
 Expected:
@@ -1908,7 +1908,7 @@ Expected:
 - [x] **Step 7: Commit**
 
 ```bash
-git add src/platforms/gemini/index.ts test/gemini-memory-flow.test.js
+git add src/platforms/gemini/index.ts test/gemini/gemini-memory-flow.test.js
 git commit -m "feat: persist gemini assistant responses" -m "Co-authored-by: Codex <codex@openai.com>"
 ```
 
@@ -1919,11 +1919,11 @@ git commit -m "feat: persist gemini assistant responses" -m "Co-authored-by: Cod
 **Files:**
 
 - Modify: `src/platforms/gemini/index.ts`
-- Modify: `test/gemini-memory-flow.test.js`
+- Modify: `test/gemini/gemini-memory-flow.test.js`
 
 - [x] **Step 1: Add failing transcript thoughts and toolCalls test**
 
-Append to `test/gemini-memory-flow.test.js`:
+Append to `test/gemini/gemini-memory-flow.test.js`:
 
 ```js
 test("Gemini transcript thoughts and toolCalls become reasoning and tool metadata without output", async () => {
@@ -2013,7 +2013,7 @@ test("Gemini transcript thoughts and toolCalls become reasoning and tool metadat
 Run:
 
 ```bash
-npm run build && node --test test/gemini-memory-flow.test.js
+npm run build && node --test test/gemini/gemini-memory-flow.test.js
 ```
 
 Expected:
@@ -2081,7 +2081,7 @@ Call this helper after transcript entries are read. Guard it with `state.convers
 Run:
 
 ```bash
-npm run build && node --test test/gemini-memory-flow.test.js
+npm run build && node --test test/gemini/gemini-memory-flow.test.js
 ```
 
 Expected:
@@ -2091,7 +2091,7 @@ Expected:
 - [x] **Step 5: Commit**
 
 ```bash
-git add src/platforms/gemini/index.ts test/gemini-memory-flow.test.js
+git add src/platforms/gemini/index.ts test/gemini/gemini-memory-flow.test.js
 git commit -m "feat: record gemini reasoning and tool metadata" -m "Co-authored-by: Codex <codex@openai.com>"
 ```
 
@@ -2102,7 +2102,7 @@ git commit -m "feat: record gemini reasoning and tool metadata" -m "Co-authored-
 **Files:**
 
 - Modify: `src/platforms/gemini/index.ts`
-- Modify: `test/gemini-memory-flow.test.js`
+- Modify: `test/gemini/gemini-memory-flow.test.js`
 
 - [x] **Step 1: Add failing missing API key test**
 
@@ -2170,7 +2170,7 @@ test("Gemini BeforeAgent continues when NAMS request fails", async () => {
 Run:
 
 ```bash
-npm run build && node --test test/gemini-memory-flow.test.js
+npm run build && node --test test/gemini/gemini-memory-flow.test.js
 ```
 
 Expected:
@@ -2212,7 +2212,7 @@ Do not include raw request bodies, API keys, Authorization headers, or full conf
 Run:
 
 ```bash
-npm run build && node --test test/gemini-memory-flow.test.js
+npm run build && node --test test/gemini/gemini-memory-flow.test.js
 ```
 
 Expected:
@@ -2222,7 +2222,7 @@ Expected:
 - [x] **Step 6: Commit**
 
 ```bash
-git add src/platforms/gemini/index.ts test/gemini-memory-flow.test.js
+git add src/platforms/gemini/index.ts test/gemini/gemini-memory-flow.test.js
 git commit -m "fix: keep gemini hooks non-blocking" -m "Co-authored-by: Codex <codex@openai.com>"
 ```
 

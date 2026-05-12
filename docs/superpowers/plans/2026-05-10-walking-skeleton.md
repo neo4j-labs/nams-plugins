@@ -6,7 +6,7 @@
 
 **Architecture:** Keep the walking skeleton narrow. `src/cli.ts` parses `nams-hooks run <harness> --event SessionStart`, reads JSON from stdin as an opaque payload, dispatches to a platform adapter through shared interfaces, and emits hook-safe JSON on stdout. Platform adapters write JSONL diagnostics into `.nams/logs/`.
 
-**Tech Stack:** Node.js 26 for verification, TypeScript as a dev dependency, Node built-ins only for runtime, Node's built-in `node:test` runner for tests.
+**Tech Stack:** Node.js 26 for verification, TypeScript as a dev dependency, Node built-ins only for runtime, Node's built-in `node:test` runner for tests. Dependency-light means zero runtime npm dependencies; dev-only build and test dependencies are allowed.
 
 ---
 
@@ -23,7 +23,7 @@ Create `package.json` with `build`, `test`, and `check` scripts. `build` runs `t
 
 - [x] **Step 2: Create TypeScript config**
 
-Create `tsconfig.json` that emits ESM JavaScript from `src/` and `test/` into `dist/`, with strict checking and no runtime dependencies.
+Create `tsconfig.json` that emits ESM JavaScript from `src/` and `test/` into `dist/`, with strict checking and no runtime dependencies. Dev-only tooling may be installed for build and test workflows.
 
 - [x] **Step 3: Ignore generated local files**
 
