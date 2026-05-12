@@ -1,7 +1,7 @@
 import type { Platform, PlatformAdapter } from "../interfaces.js";
-import { ClaudeAdapter } from "./claude.js";
-import { CodexAdapter } from "./codex.js";
-import { GeminiAdapter } from "./gemini.js";
+import { ClaudeAdapter } from "./claude/index.js";
+import { CodexAdapter } from "./codex/index.js";
+import { GeminiAdapter } from "./gemini/index.js";
 
 const adapters: Record<Platform, PlatformAdapter> = {
   gemini: new GeminiAdapter(),

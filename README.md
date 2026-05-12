@@ -32,7 +32,7 @@ It ensures deterministic memory persistence and context recall across different 
 
 ### Prerequisites
 
-- Node.js (v18+)
+- Node.js (v20+)
 - A NAMS API Key
 
 ### Installation
@@ -60,14 +60,26 @@ npm test
 # Run build and tests
 npm run check
 
+# Regenerate the OpenAPI client and run OpenAPI client tests
+npm run openapi:test
+
 # Generate distribution artifacts and link for Gemini CLI
 npm run dist
 gemini extensions link ./dist
 ```
+
+### Runtime Logs
+
+Gemini writes local JSONL diagnostics under the project `.nams/logs/` directory. Events for one Gemini session are kept in a single file named like:
+
+```text
+.nams/logs/session-2026-05-11T15-40-1b11dfee.jsonl
+```
+
+Hook payload entries use `kind: "hook.event"` and keep the raw hook payload for local debugging. NAMS HTTP entries use `kind: "nams.request"` and include operation metadata plus logged request and response details. Request headers omit `Authorization`; request and response bodies are kept for debugging.
 
 ## Development
 
 `nams-hooks` follows a strict "no runtime dependencies" rule. All platform-specific logic should be contained within its respective adapter in `src/platforms/`.
 
 For more details on the design, see `docs/superpowers/specs/2026-05-10-nams-hooks-design.md`.
-

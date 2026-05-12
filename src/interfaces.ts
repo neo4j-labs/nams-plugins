@@ -1,7 +1,7 @@
 export const platforms = ["gemini", "claude", "codex"] as const;
 export type Platform = (typeof platforms)[number];
 
-export const hookEvents = ["SessionStart"] as const;
+export const hookEvents = ["SessionStart", "BeforeAgent", "AfterAgent", "AfterTool"] as const;
 export type HookEvent = (typeof hookEvents)[number];
 
 export interface HookInvocation<E extends HookEvent = HookEvent> {
@@ -17,6 +17,9 @@ export interface HookResult {
 
 export interface PlatformAdapter {
   startConversation(invocation: HookInvocation<"SessionStart">): Promise<HookResult>;
+  beforeAgent?(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult>;
+  afterAgent?(invocation: HookInvocation<"AfterAgent">): Promise<HookResult>;
+  afterTool?(invocation: HookInvocation<"AfterTool">): Promise<HookResult>;
 }
 
 export function isPlatform(value: string | undefined): value is Platform {

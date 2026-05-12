@@ -23,7 +23,7 @@ The runtime must not fetch OpenAPI specs, inspect schemas, or discover endpoints
 ## Architecture Rules
 
 - `src/cli.ts` is a gateway. It parses the command, platform, and typed `--event`, reads stdin JSON as an opaque object, and dispatches through the platform registry.
-- Keep platform-specific JSON interpretation inside `src/platforms/<platform>.ts`.
+- Keep platform-specific code inside `src/platforms/<platform>/`. The platform adapter entrypoint is `src/platforms/<platform>/index.ts`; helper parsers and platform-only utilities live beside it.
 - Keep shared contracts in `src/interfaces.ts`. Add new hook events there before wiring platform implementations.
 - `invocation.event` is typed. Do not infer hook event names from payload fields such as `hook_event_name`, `hookEventName`, or `event`.
 - Use the static adapter registry in `src/platforms/index.ts`; avoid dynamic module discovery.
@@ -35,10 +35,13 @@ The runtime must not fetch OpenAPI specs, inspect schemas, or discover endpoints
 - The hook runner owns deterministic writes to NAMS; agents should not decide whether memory is written.
 - Standard user messages are the reliable core memory stream.
 - Assistant responses are best-effort where the harness exposes them cleanly.
-- Tool logging stores metadata only: tool name, sanitized input, optional step id, status, and duration. Do not persist tool output in v1.
+- Tool logging stores tool name, sanitized input, optional step id, status, duration, and exposed tool output when the harness provides it cleanly.
 - Do not write hidden chain-of-thought. Reasoning traces may store operational summaries only when exposed safely.
 - Do not create entities directly from hooks in v1. Rely on NAMS async entity extraction from stored messages.
 - Keep secrets and local state under `.nams/`. Never print API keys to stdout, stderr, logs, or test output.
+- Gemini observability logs are session-scoped under `.nams/logs/session-<created-at>-<session-part>.jsonl`. Keep hook events and diagnostics for one session together.
+- All log records include `kind`. Hook payload logs use `hook.event`; NAMS HTTP request/response logs use `nams.request`.
+- Gemini hook event logs keep the raw platform payload for local debugging. Do not transform hook payload logs unless the task explicitly asks for it.
 
 ## Configuration And State
 
@@ -57,6 +60,7 @@ The runtime must not fetch OpenAPI specs, inspect schemas, or discover endpoints
 - In the generated extension, compiled runtime files live under `dist/bin/`.
 - Gemini root files are produced from `templates/gemini/`.
 - Do not hand-edit generated `dist/` output as a source change.
+- GitHub Actions `Build` runs on pull requests, pushes to `devel`, and manual dispatch. It runs `npm run build`, `npm test`, and `npm run openapi:test`.
 
 ## Testing Rules
 
@@ -82,6 +86,7 @@ The runtime must not fetch OpenAPI specs, inspect schemas, or discover endpoints
 npm run build
 npm test
 npm run check
+npm run openapi:test
 npm run dist
 ```
 
@@ -99,6 +104,6 @@ gemini extensions link ./dist
 - Platform payload parsing in `cli.ts`.
 - Implicit hook event inference from stdin JSON.
 - Writing test artifacts into the project root.
-- Capturing raw tool outputs.
+- Inferring hidden reasoning or scraping tool output from places the harness did not expose cleanly.
 - Logging secrets.
 - Editing generated distribution files instead of their source templates or TypeScript inputs.

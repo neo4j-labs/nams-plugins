@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -9,9 +9,9 @@ import { spawn } from "node:child_process";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cliPath = path.join(repoRoot, ".build", "tsc", "cli.js");
 
-function runCli(harness, payload, cwd) {
+function runCliWithEvent(harness, event, payload, cwd) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [cliPath, "run", harness, "--event", "SessionStart"], {
+    const child = spawn(process.execPath, [cliPath, "run", harness, "--event", event], {
       cwd,
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -31,6 +31,10 @@ function runCli(harness, payload, cwd) {
     });
     child.stdin.end(`${JSON.stringify(payload)}\n`);
   });
+}
+
+function runCli(harness, payload, cwd) {
+  return runCliWithEvent(harness, "SessionStart", payload, cwd);
 }
 
 function runCliWithoutEvent(harness, payload, cwd) {
@@ -76,7 +80,10 @@ for (const harness of ["gemini", "claude", "codex"]) {
         suppressOutput: true,
       });
 
-      const logPath = path.join(projectDir, ".nams", "logs", `${harness}-session-start.jsonl`);
+      const logPath =
+        harness === "gemini"
+          ? await singleSessionLogPath(projectDir)
+          : path.join(projectDir, ".nams", "logs", `${harness}-session-start.jsonl`);
       const lines = (await readFile(logPath, "utf8")).trim().split("\n");
       assert.equal(lines.length, 1);
       const entry = JSON.parse(lines[0]);
@@ -95,7 +102,7 @@ test("requires explicit typed hook event", async () => {
     const result = await runCliWithoutEvent("gemini", { cwd: projectDir }, projectDir);
 
     assert.equal(result.code, 1);
-    assert.match(result.stderr, /--event <SessionStart>/);
+    assert.match(result.stderr, /--event <SessionStart\|BeforeAgent\|AfterAgent\|AfterTool>/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -112,10 +119,37 @@ test("writes fallback logs under child process cwd when payload omits cwd", asyn
     const result = await runCli("gemini", payload, projectDir);
 
     assert.equal(result.code, 0, result.stderr);
-    const logPath = path.join(projectDir, ".nams", "logs", "gemini-session-start.jsonl");
+    const logPath = await singleSessionLogPath(projectDir);
     const entry = JSON.parse((await readFile(logPath, "utf8")).trim());
     assert.deepEqual(entry.payload, payload);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
 });
+
+for (const event of ["BeforeAgent", "AfterAgent", "AfterTool"]) {
+  test(`routes gemini ${event} hook event`, async () => {
+    const projectDir = await mkdtemp(path.join(tmpdir(), "nams-hooks-"));
+    try {
+      const payload = {
+        session_id: `gemini-${event}`,
+        hook_event_name: "WrongEventNameMustNotMatter",
+        cwd: projectDir,
+      };
+
+      const result = await runCliWithEvent("gemini", event, payload, projectDir);
+
+      assert.equal(result.code, 0, result.stderr);
+      assert.equal(JSON.parse(result.stdout).continue, true);
+    } finally {
+      await rm(projectDir, { recursive: true, force: true });
+    }
+  });
+}
+
+async function singleSessionLogPath(projectDir) {
+  const logDir = path.join(projectDir, ".nams", "logs");
+  const logFiles = (await readdir(logDir)).filter((fileName) => /^session-.*\.jsonl$/.test(fileName));
+  assert.equal(logFiles.length, 1, `expected one session log file, got ${logFiles.join(", ")}`);
+  return path.join(logDir, logFiles[0]);
+}
