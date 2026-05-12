@@ -61,7 +61,7 @@ The runtime must not fetch OpenAPI specs, inspect schemas, or discover endpoints
 - In the generated extension, compiled runtime files live under `dist/bin/`.
 - Gemini root files are produced from `templates/gemini/`.
 - Do not hand-edit generated `dist/` output as a source change.
-- GitHub Actions `Build` runs on pull requests, pushes to `devel`, and manual dispatch. It runs `npm run build`, `npm test`, and `npm run openapi:test`.
+- GitHub Actions `Build` runs on pull requests, pushes to `devel`, and manual dispatch. It runs the default verification target, `npm run check`, which performs OpenAPI freshness checks, TypeScript build, and the full test suite.
 
 ## Testing Rules
 
@@ -88,6 +88,7 @@ The runtime must not fetch OpenAPI specs, inspect schemas, or discover endpoints
 npm run build
 npm test
 npm run check
+npm run openapi:check
 npm run openapi:test
 npm run dist
 ```

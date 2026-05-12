@@ -164,8 +164,10 @@ The generated TypeScript client is committed. This makes OpenAPI drift visible i
 
 - `openapi:fetch`: fetch `https://memory.neo4jlabs.com/openapi.json` and write `docs/nams-openapi.json`.
 - `openapi:generate`: read `docs/nams-openapi.json` and write `src/generated/nams-client.ts`.
-- `test:contract`: verify generated endpoint metadata, request shaping, and error behavior against the pinned spec.
-- `package:check`: run generation freshness checks, build, tests, and contract tests.
+- `openapi:check`: verify the committed generated client is fresh relative to `docs/nams-openapi.json`.
+- `openapi:test`: regenerate and build the client, then verify generated endpoint metadata, request shaping, and error behavior against the pinned spec.
+- `check`: default verification target. Runs OpenAPI freshness checks, TypeScript build, and the full test suite.
+- `package:check`: run the default checks, distribution build, and distribution checks.
 
 `openapi:fetch` is the only target that needs network access. Hook runtime, normal tests, and contract tests use the pinned local spec. Build-time and test-time dependencies may support these checks, but generated client code must remain dependency-free at runtime.
 

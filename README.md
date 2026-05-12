@@ -57,10 +57,10 @@ npm run build
 # Run tests (using Node's built-in runner)
 npm test
 
-# Run build and tests
+# Run OpenAPI freshness check, build, and tests
 npm run check
 
-# Regenerate the OpenAPI client and run OpenAPI client tests
+# Regenerate and build the OpenAPI client, then run OpenAPI client tests directly
 npm run openapi:test
 
 # Generate distribution artifacts and link for Gemini CLI
