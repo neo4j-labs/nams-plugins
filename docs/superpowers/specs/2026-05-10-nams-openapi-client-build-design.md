@@ -14,13 +14,14 @@ Distribution, branch model, platform installs, and release-package shape are own
 
 ## Goals
 
-- Keep runtime deterministic and dependency-light.
+- Keep runtime deterministic and free of runtime npm dependencies.
 - Use TypeScript for maintainable source code and generated client types.
 - Generate a focused NAMS REST client from the pinned OpenAPI spec.
 - Commit generated TypeScript source on the development branch so API drift is visible in review.
 - Run contract tests that compare generated output to `docs/nams-openapi.json`.
 - Keep all OpenAPI parsing and endpoint validation in build-time scripts.
 - Produce generated client code with no runtime npm dependencies.
+- Permit dev-only generator and contract-test dependencies when they stay out of generated runtime output.
 
 ## Non-Goals
 
@@ -163,10 +164,12 @@ The generated TypeScript client is committed. This makes OpenAPI drift visible i
 
 - `openapi:fetch`: fetch `https://memory.neo4jlabs.com/openapi.json` and write `docs/nams-openapi.json`.
 - `openapi:generate`: read `docs/nams-openapi.json` and write `src/generated/nams-client.ts`.
-- `test:contract`: verify generated endpoint metadata, request shaping, and error behavior against the pinned spec.
-- `package:check`: run generation freshness checks, build, tests, and contract tests.
+- `openapi:check`: verify the committed generated client is fresh relative to `docs/nams-openapi.json`.
+- `openapi:test`: regenerate and build the client, then verify generated endpoint metadata, request shaping, and error behavior against the pinned spec.
+- `check`: default verification target. Runs OpenAPI freshness checks, TypeScript build, and the full test suite.
+- `package:check`: run the default checks, distribution build, and distribution checks.
 
-`openapi:fetch` is the only target that needs network access. Hook runtime, normal tests, and contract tests use the pinned local spec.
+`openapi:fetch` is the only target that needs network access. Hook runtime, normal tests, and contract tests use the pinned local spec. Build-time and test-time dependencies may support these checks, but generated client code must remain dependency-free at runtime.
 
 ## Custom Generator Scope
 

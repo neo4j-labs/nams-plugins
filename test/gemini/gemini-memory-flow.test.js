@@ -4,8 +4,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { createNamsFetchMock } from "../support/nams-fetch-mock.js";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const geminiUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "platforms", "gemini", "index.js")).href;
 const stateUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "runtime", "session-state.js")).href;
 
@@ -39,36 +40,21 @@ test("initializes Gemini session state on SessionStart without creating a conver
 test("creates Gemini conversation, recalls memory, and stores first BeforeAgent user prompt", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
-    const requests = [];
     const prompt = "Please remember that I prefer fixture-driven tests.";
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({
-          observations: [{ content: "User prefers fixture-driven tests." }],
-        });
-      }
-      if (url === "https://memory.example.test/v1/entities/search") {
-        return jsonResponse({
-          entities: [{ name: "Fixture-driven tests", description: "User prefers fixture-driven tests." }],
-        });
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
-
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context({ observations: [{ content: "User prefers fixture-driven tests." }] })
+      .searchEntities({
+        entities: [{ name: "Fixture-driven tests", description: "User prefers fixture-driven tests." }],
+      })
+      .message();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     const result = await adapter.beforeAgent({
@@ -87,17 +73,17 @@ test("creates Gemini conversation, recalls memory, and stores first BeforeAgent 
     assert.equal(Object.hasOwn(result.stdout, "additionalContext"), false);
     assert.match(result.stdout.hookSpecificOutput.additionalContext, /User prefers fixture-driven tests\./);
     assert.equal(result.stdout.hookSpecificOutput.hookEventName, "BeforeAgent");
-    assert.deepEqual(JSON.parse(requests[0].init.body), {
+    assert.deepEqual(nams.requestBody("createConversation"), {
       metadata: {
         harness: "gemini",
         projectDirectory: projectDir,
       },
     });
-    assert.deepEqual(JSON.parse(requests[2].init.body), {
+    assert.deepEqual(nams.requestBody("searchEntities"), {
       query: prompt,
       limit: 5,
     });
-    assert.deepEqual(JSON.parse(requests[3].init.body), {
+    assert.deepEqual(nams.requestBody("addMessage"), {
       role: "user",
       content: prompt,
     });
@@ -160,34 +146,21 @@ test("creates Gemini conversation, recalls memory, and stores first BeforeAgent 
 test("Gemini BeforeAgent uses entity search context when conversation context fails", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
-    const requests = [];
     const prompt = "Persist this even if recall is unavailable.";
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({ error: "context unavailable" }, 503);
-      }
-      if (url === "https://memory.example.test/v1/entities/search") {
-        return jsonResponse({
-          entities: [{ name: "Autonomo", description: "User is exploring autonomo setup in Spain." }],
-        });
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
-
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context({ error: "context unavailable" }, 503)
+      .searchEntities({
+        entities: [{ name: "Autonomo", description: "User is exploring autonomo setup in Spain." }],
+      })
+      .message();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     const result = await adapter.beforeAgent({
@@ -206,19 +179,11 @@ test("Gemini BeforeAgent uses entity search context when conversation context fa
     assert.equal(Object.hasOwn(result.stdout, "additionalContext"), false);
     assert.match(result.stdout.hookSpecificOutput.additionalContext, /Autonomo: User is exploring autonomo setup in Spain\./);
     assert.equal(result.stdout.hookSpecificOutput.hookEventName, "BeforeAgent");
-    const entitySearchRequest = requests.find(
-      (request) => request.init.method === "POST" && request.url === "https://memory.example.test/v1/entities/search",
-    );
-    assert.deepEqual(JSON.parse(entitySearchRequest.init.body), {
+    assert.deepEqual(nams.requestBody("searchEntities"), {
       query: prompt,
       limit: 5,
     });
-    const messageRequest = requests.find(
-      (request) =>
-        request.init.method === "POST" &&
-        request.url === "https://memory.example.test/v1/conversations/conversation-1/messages",
-    );
-    assert.deepEqual(JSON.parse(messageRequest.init.body), {
+    assert.deepEqual(nams.requestBody("addMessage"), {
       role: "user",
       content: prompt,
     });
@@ -230,29 +195,15 @@ test("Gemini BeforeAgent uses entity search context when conversation context fa
 test("does not store duplicate Gemini BeforeAgent user prompt twice", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
-    const requests = [];
     const prompt = "Remember this only once.";
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
-
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
     const invocation = {
       platform: "gemini",
@@ -268,12 +219,7 @@ test("does not store duplicate Gemini BeforeAgent user prompt twice", async () =
     await adapter.beforeAgent(invocation);
     await adapter.beforeAgent(invocation);
 
-    const userMessageRequests = requests.filter(
-      (request) =>
-        request.init.method === "POST" &&
-        request.url === "https://memory.example.test/v1/conversations/conversation-1/messages",
-    );
-    assert.equal(userMessageRequests.length, 1);
+    assert.equal(nams.calls("addMessage").length, 1);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -288,7 +234,7 @@ test("allows Gemini BeforeAgent when NAMS returns an error", async () => {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: async () => jsonResponse({ error: "service unavailable" }, 503),
+      fetch: createNamsFetchMock().all({ error: "service unavailable" }, 503).fetch,
     });
 
     const result = await adapter.beforeAgent({
@@ -311,28 +257,18 @@ test("allows Gemini BeforeAgent when NAMS returns an error", async () => {
 test("Gemini BeforeAgent returns recalled context when user message persistence fails", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
-    const requests = [];
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context({ observations: [{ content: "User wants concise updates." }] })
+      .searchEntities()
+      .message({ error: "message write unavailable" }, 503);
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: async (url, init) => {
-        requests.push({ url, init });
-        if (url === "https://memory.example.test/v1/conversations") {
-          return jsonResponse({ id: "conversation-1" }, 201);
-        }
-        if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-          return jsonResponse({
-            observations: [{ content: "User wants concise updates." }],
-          });
-        }
-        if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-          return jsonResponse({ error: "message write unavailable" }, 503);
-        }
-        return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-      },
+      fetch: nams.fetch,
     });
 
     const result = await adapter.beforeAgent({
@@ -351,12 +287,7 @@ test("Gemini BeforeAgent returns recalled context when user message persistence 
     assert.equal(Object.hasOwn(result.stdout, "additionalContext"), false);
     assert.match(result.stdout.hookSpecificOutput.additionalContext, /User wants concise updates\./);
     assert.equal(result.stdout.hookSpecificOutput.hookEventName, "BeforeAgent");
-    assert.equal(
-      requests.filter(
-        (request) => request.url === "https://memory.example.test/v1/conversations/conversation-1/messages",
-      ).length,
-      1,
-    );
+    assert.equal(nams.calls("addMessage").length, 1);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -397,7 +328,7 @@ test("Gemini BeforeAgent continues when NAMS request fails", async () => {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: async () => jsonResponse({ error: "service unavailable" }, 503),
+      fetch: createNamsFetchMock().all({ error: "service unavailable" }, 503).fetch,
     });
 
     const result = await adapter.beforeAgent({
@@ -429,11 +360,13 @@ test("Gemini NAMS failure diagnostics do not include arbitrary error text", asyn
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: async () => {
-        throw new Error(
-          'Authorization: Bearer secret NAMS_API_KEY {"body":"content secret","prompt":"do not log me"}',
-        );
-      },
+      fetch: createNamsFetchMock()
+        .throws(
+          new Error(
+            'Authorization: Bearer secret NAMS_API_KEY {"body":"content secret","prompt":"do not log me"}',
+          ),
+        )
+        .fetch,
     });
 
     const result = await adapter.beforeAgent({
@@ -626,7 +559,7 @@ test("Gemini hooks continue when observability log writes fail", async () => {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: async () => jsonResponse({ error: "service unavailable" }, 503),
+      fetch: createNamsFetchMock().all({ error: "service unavailable" }, 503).fetch,
     });
 
     const beforeAgentResult = await adapter.beforeAgent({
@@ -661,34 +594,20 @@ test("Gemini hooks continue when observability log writes fail", async () => {
 test("records Gemini AfterTool payload as a reasoning step with tool output", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
-    const requests = [];
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/steps") {
-        return jsonResponse({ id: "step-after-tool-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/tool-calls") {
-        return jsonResponse({ id: "tool-call-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
-
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message()
+      .reasoningStep({ id: "step-after-tool-1" })
+      .toolCall();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     await adapter.beforeAgent({
@@ -722,12 +641,7 @@ test("records Gemini AfterTool payload as a reasoning step with tool output", as
     });
 
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
-    const reasoningBodies = requests
-      .filter(
-        (request) =>
-          request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/steps",
-      )
-      .map((request) => JSON.parse(request.init.body));
+    const reasoningBodies = nams.requestBodies("addReasoningStep");
     assert.deepEqual(reasoningBodies, [
       {
         conversationId: "conversation-1",
@@ -737,12 +651,7 @@ test("records Gemini AfterTool payload as a reasoning step with tool output", as
       },
     ]);
 
-    const toolBodies = requests
-      .filter(
-        (request) =>
-          request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/tool-calls",
-      )
-      .map((request) => JSON.parse(request.init.body));
+    const toolBodies = nams.requestBodies("addToolCall");
     assert.equal(toolBodies.length, 1);
     assert.equal(toolBodies[0].toolName, "read_file");
     assert.equal(toolBodies[0].stepId, "step-after-tool-1");
@@ -761,34 +670,20 @@ test("records Gemini AfterTool payload as a reasoning step with tool output", as
 test("does not duplicate Gemini AfterTool metadata for the same tool call id", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
-    const requests = [];
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/steps") {
-        return jsonResponse({ id: "step-after-tool-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/tool-calls") {
-        return jsonResponse({ id: "tool-call-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
-
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message()
+      .reasoningStep({ id: "step-after-tool-1" })
+      .toolCall();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     await adapter.beforeAgent({
@@ -819,11 +714,7 @@ test("does not duplicate Gemini AfterTool metadata for the same tool call id", a
     await adapter.afterTool(invocation);
     await adapter.afterTool(invocation);
 
-    const toolRequests = requests.filter(
-      (request) =>
-        request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/tool-calls",
-    );
-    assert.equal(toolRequests.length, 1);
+    assert.equal(nams.calls("addToolCall").length, 1);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -832,37 +723,20 @@ test("does not duplicate Gemini AfterTool metadata for the same tool call id", a
 test("records distinct Gemini AfterTool calls with matching inputs when ids differ", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
-    const requests = [];
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/entities/search") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/steps") {
-        return jsonResponse({ id: "step-after-tool-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/tool-calls") {
-        return jsonResponse({ id: "tool-call-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
-
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message()
+      .reasoningStep({ id: "step-after-tool-1" })
+      .toolCall();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     await adapter.beforeAgent({
@@ -892,12 +766,7 @@ test("records distinct Gemini AfterTool calls with matching inputs when ids diff
       });
     }
 
-    const toolBodies = requests
-      .filter(
-        (request) =>
-          request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/tool-calls",
-      )
-      .map((request) => JSON.parse(request.init.body));
+    const toolBodies = nams.requestBodies("addToolCall");
     assert.equal(toolBodies.length, 2);
     assert.match(toolBodies[0].input, /"query":"nams"/);
     assert.match(toolBodies[1].input, /"query":"nams"/);
@@ -933,34 +802,20 @@ test("does not duplicate AfterTool when transcript later contains the same tool 
       "utf8",
     );
 
-    const requests = [];
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/steps") {
-        return jsonResponse({ id: "step-after-tool-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/tool-calls") {
-        return jsonResponse({ id: "tool-call-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
-
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message()
+      .reasoningStep({ id: "step-after-tool-1" })
+      .toolCall();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     await adapter.beforeAgent({
@@ -997,12 +852,9 @@ test("does not duplicate AfterTool when transcript later contains the same tool 
       },
     });
 
-    const toolRequests = requests.filter(
-      (request) =>
-        request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/tool-calls",
-    );
-    assert.equal(toolRequests.length, 1);
-    assert.equal(JSON.parse(toolRequests[0].init.body).stepId, "step-after-tool-1");
+    const toolBodies = nams.requestBodies("addToolCall");
+    assert.equal(toolBodies.length, 1);
+    assert.equal(toolBodies[0].stepId, "step-after-tool-1");
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -1011,28 +863,14 @@ test("does not duplicate AfterTool when transcript later contains the same tool 
 test("stores Gemini AfterAgent prompt_response as an assistant message", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
-    const requests = [];
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
-
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     await adapter.beforeAgent({
@@ -1058,12 +896,7 @@ test("stores Gemini AfterAgent prompt_response as an assistant message", async (
     });
 
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
-    const messageRequests = requests.filter(
-      (request) =>
-        request.init.method === "POST" &&
-        request.url === "https://memory.example.test/v1/conversations/conversation-1/messages",
-    );
-    assert.deepEqual(JSON.parse(messageRequests.at(-1).init.body), {
+    assert.deepEqual(nams.requestBodies("addMessage").at(-1), {
       role: "assistant",
       content: "Hello!",
     });
@@ -1086,28 +919,14 @@ test("stores Gemini AfterAgent assistant message from transcript when prompt_res
       "utf8",
     );
 
-    const requests = [];
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
-
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     await adapter.beforeAgent({
@@ -1133,12 +952,7 @@ test("stores Gemini AfterAgent assistant message from transcript when prompt_res
     });
 
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
-    const messageRequests = requests.filter(
-      (request) =>
-        request.init.method === "POST" &&
-        request.url === "https://memory.example.test/v1/conversations/conversation-1/messages",
-    );
-    assert.deepEqual(JSON.parse(messageRequests.at(-1).init.body), {
+    assert.deepEqual(nams.requestBodies("addMessage").at(-1), {
       role: "assistant",
       content: "Fallback response",
     });
@@ -1162,28 +976,14 @@ test("does not duplicate prompt_response assistant messages during later transcr
       "utf8",
     );
 
-    const requests = [];
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
-
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     await adapter.beforeAgent({
@@ -1228,14 +1028,7 @@ test("does not duplicate prompt_response assistant messages during later transcr
       },
     });
 
-    const assistantMessageBodies = requests
-      .filter(
-        (request) =>
-          request.init.method === "POST" &&
-          request.url === "https://memory.example.test/v1/conversations/conversation-1/messages",
-      )
-      .map((request) => JSON.parse(request.init.body))
-      .filter((body) => body.role === "assistant");
+    const assistantMessageBodies = nams.requestBodies("addMessage").filter((body) => body.role === "assistant");
     assert.deepEqual(assistantMessageBodies, [
       { role: "assistant", content: "A" },
       { role: "assistant", content: "B" },
@@ -1287,31 +1080,14 @@ test("deduplicates repeated Gemini transcript thoughts by reasoning body", async
       "utf8",
     );
 
-    const requests = [];
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/steps") {
-        return jsonResponse({ id: "step-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
-
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message().reasoningStep();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     await adapter.beforeAgent({
@@ -1336,12 +1112,7 @@ test("deduplicates repeated Gemini transcript thoughts by reasoning body", async
       },
     });
 
-    const reasoningBodies = requests
-      .filter(
-        (request) =>
-          request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/steps",
-      )
-      .map((request) => JSON.parse(request.init.body));
+    const reasoningBodies = nams.requestBodies("addReasoningStep");
     assert.deepEqual(reasoningBodies, [
       {
         conversationId: "conversation-1",
@@ -1391,34 +1162,20 @@ test("records Gemini transcript thoughts and sanitized tool metadata", async () 
       "utf8",
     );
 
-    const requests = [];
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/steps") {
-        return jsonResponse({ id: "step-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/tool-calls") {
-        return jsonResponse({ id: "tool-call-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
-
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message()
+      .reasoningStep()
+      .toolCall();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     await adapter.beforeAgent({
@@ -1444,21 +1201,13 @@ test("records Gemini transcript thoughts and sanitized tool metadata", async () 
     });
 
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
-    const reasoningRequest = requests.find(
-      (request) =>
-        request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/steps",
-    );
-    assert.deepEqual(JSON.parse(reasoningRequest.init.body), {
+    assert.deepEqual(nams.requestBody("addReasoningStep"), {
       conversationId: "conversation-1",
       reasoning: "Searching official guidance",
       actionTaken: "Researching",
     });
 
-    const toolRequest = requests.find(
-      (request) =>
-        request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/tool-calls",
-    );
-    const toolBody = JSON.parse(toolRequest.init.body);
+    const toolBody = nams.requestBody("addToolCall");
     assert.equal(toolBody.toolName, "google_web_search");
     assert.equal(toolBody.status, "success");
     assert.equal(toolBody.stepId, "step-1");
@@ -1515,31 +1264,14 @@ test("deduplicates repeated Gemini transcript tool ids", async () => {
       "utf8",
     );
 
-    const requests = [];
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/tool-calls") {
-        return jsonResponse({ id: "tool-call-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
-
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message().toolCall();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     await adapter.beforeAgent({
@@ -1563,12 +1295,7 @@ test("deduplicates repeated Gemini transcript tool ids", async () => {
       },
     });
 
-    const toolBodies = requests
-      .filter(
-        (request) =>
-          request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/tool-calls",
-      )
-      .map((request) => JSON.parse(request.init.body));
+    const toolBodies = nams.requestBodies("addToolCall");
     assert.equal(toolBodies.length, 1);
     assert.match(toolBodies[0].input, /"query":"autonomo spain"/);
   } finally {
@@ -1610,39 +1337,27 @@ test("preserves reasoning step id when retrying a failed transcript tool call", 
       "utf8",
     );
 
-    const requests = [];
     let failToolCall = true;
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/steps") {
-        return jsonResponse({ id: "step-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/tool-calls") {
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message()
+      .reasoningStep()
+      .toolCall(() => {
         if (failToolCall) {
           failToolCall = false;
-          return jsonResponse({ error: "temporary failure" }, 503);
+          return { status: 503, body: { error: "temporary failure" } };
         }
-        return jsonResponse({ id: "tool-call-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
-
+        return { status: 201, body: { id: "tool-call-1" } };
+      });
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     await adapter.beforeAgent({
@@ -1676,13 +1391,7 @@ test("preserves reasoning step id when retrying a failed transcript tool call", 
       },
     });
 
-    const successfulToolBody = requests
-      .filter(
-        (request) =>
-          request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/tool-calls",
-      )
-      .map((request) => JSON.parse(request.init.body))
-      .at(-1);
+    const successfulToolBody = nams.requestBodies("addToolCall").at(-1);
     assert.equal(successfulToolBody.stepId, "step-1");
   } finally {
     await rm(projectDir, { recursive: true, force: true });
@@ -1728,34 +1437,20 @@ test("does not attach reasoning step from a previous transcript entry to a later
       "utf8",
     );
 
-    const requests = [];
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/steps") {
-        return jsonResponse({ id: "step-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/tool-calls") {
-        return jsonResponse({ id: "tool-call-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
-
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message()
+      .reasoningStep()
+      .toolCall();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     await adapter.beforeAgent({
@@ -1779,13 +1474,7 @@ test("does not attach reasoning step from a previous transcript entry to a later
       },
     });
 
-    const toolBody = requests
-      .filter(
-        (request) =>
-          request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/tool-calls",
-      )
-      .map((request) => JSON.parse(request.init.body))
-      .at(-1);
+    const toolBody = nams.requestBodies("addToolCall").at(-1);
     assert.equal(Object.hasOwn(toolBody, "stepId"), false);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
@@ -1831,36 +1520,24 @@ test("does not attach reasoning step when a transcript entry has multiple though
       "utf8",
     );
 
-    const requests = [];
     let stepCount = 0;
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/steps") {
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message()
+      .reasoningStep(() => {
         stepCount += 1;
-        return jsonResponse({ id: `step-${stepCount}` }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/tool-calls") {
-        return jsonResponse({ id: "tool-call-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
-
+        return { status: 201, body: { id: `step-${stepCount}` } };
+      })
+      .toolCall();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     await adapter.beforeAgent({
@@ -1884,13 +1561,7 @@ test("does not attach reasoning step when a transcript entry has multiple though
       },
     });
 
-    const toolBody = requests
-      .filter(
-        (request) =>
-          request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/tool-calls",
-      )
-      .map((request) => JSON.parse(request.init.body))
-      .at(-1);
+    const toolBody = nams.requestBodies("addToolCall").at(-1);
     assert.equal(Object.hasOwn(toolBody, "stepId"), false);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
@@ -1927,31 +1598,14 @@ test("deduplicates repeated parent transcript tool id despite changed status and
     };
     await writeTranscript("running", "2026-05-11T09:30:01.000Z");
 
-    const requests = [];
-    const mockFetch = async (url, init) => {
-      requests.push({ url, init });
-      if (url === "https://memory.example.test/v1/conversations") {
-        return jsonResponse({ id: "conversation-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
-        return jsonResponse({});
-      }
-      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
-        return jsonResponse({ id: "message-1" }, 201);
-      }
-      if (url === "https://memory.example.test/v1/reasoning/tool-calls") {
-        return jsonResponse({ id: "tool-call-1" }, 201);
-      }
-      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
-    };
-
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message().toolCall();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
       env: {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       },
-      fetch: mockFetch,
+      fetch: nams.fetch,
     });
 
     await adapter.beforeAgent({
@@ -1987,22 +1641,13 @@ test("deduplicates repeated parent transcript tool id despite changed status and
       },
     });
 
-    const toolBodies = requests
-      .filter(
-        (request) =>
-          request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/tool-calls",
-      )
-      .map((request) => JSON.parse(request.init.body));
+    const toolBodies = nams.requestBodies("addToolCall");
     assert.equal(toolBodies.length, 1);
     assert.equal(toolBodies[0].status, "running");
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
 });
-
-function jsonResponse(body, status = 200) {
-  return new Response(JSON.stringify(body), { status });
-}
 
 async function readSingleSessionLog(projectDir) {
   const logDir = path.join(projectDir, ".nams", "logs");

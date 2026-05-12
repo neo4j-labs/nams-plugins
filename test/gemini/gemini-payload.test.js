@@ -3,7 +3,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const payloadUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "platforms", "gemini", "payload.js")).href;
 
 test("extracts Gemini prompt and response fields from hook payload", async () => {

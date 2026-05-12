@@ -6,7 +6,7 @@ Repository: nams-hooks
 
 ## Summary
 
-`nams-hooks` is a standalone, dependency-free Node.js integration layer that connects local agent harness hooks to the Neo4j Agent Memory Service (NAMS) REST API. The first iteration supports macOS for Codex, Claude Code, and Gemini CLI. Codex and Claude use project-level installs; Gemini uses extension distribution while keeping runtime state and logs project-local.
+`nams-hooks` is a standalone Node.js integration layer that connects local agent harness hooks to the Neo4j Agent Memory Service (NAMS) REST API. Its hook runtime and generated release artifacts have zero runtime npm dependencies and use Node.js built-ins only, while the source repository may use dev-only build, generation, and test tooling. The first iteration supports macOS for Codex, Claude Code, and Gemini CLI. Codex and Claude use project-level installs; Gemini uses extension distribution while keeping runtime state and logs project-local.
 
 The hook runner owns deterministic memory persistence. Agents receive recalled context, but they are not responsible for deciding whether to write memory. The runner stores conversation messages, recalls relevant memory before agent work, and records limited tool metadata through NAMS REST endpoints.
 
@@ -24,7 +24,8 @@ The hook runner owns deterministic memory persistence. Agents receive recalled c
 - Provide deterministic memory behavior through harness hooks and REST API calls.
 - Support Codex, Claude Code, and Gemini CLI on macOS in v1.
 - Keep runtime state, logs, and harness configuration project-scoped wherever the platform supports it.
-- Use plain Node.js built-in modules only. No npm dependencies.
+- Use plain Node.js built-in modules only in runtime code and generated release artifacts. No runtime npm dependencies.
+- Allow dev-only dependencies for TypeScript compilation, code generation, architecture checks, and test support when they do not create additional runtime package installation requirements or runtime imports.
 - Persist standard user and assistant messages as the primary memory stream.
 - Recall memory before agent responses and inject concise context plus a short operating instruction.
 - Store tool-call metadata and exposed tool output when the harness provides it cleanly.
@@ -112,7 +113,13 @@ Gemini v1 distribution is an extension install rather than a project `.gemini/se
 
 ## Build And Distribution
 
-`nams-hooks` is authored in TypeScript and released as plain JavaScript. Runtime code must use Node built-ins only; build-time development tools such as TypeScript and the OpenAPI generator stay out of the published hook runtime.
+`nams-hooks` is authored in TypeScript and released as plain JavaScript. Runtime code must use Node built-ins only; build-time development tools such as TypeScript, the OpenAPI generator, architecture checks, and test support stay out of the published hook runtime.
+
+Dependency policy:
+
+- `dependencies` should remain empty unless an approved runtime design change explicitly adds one.
+- `devDependencies` are acceptable for source maintenance, build-time generation, and automated tests.
+- Generated runtime output must not require users to run `npm install` inside target projects or install transitive runtime libraries before hooks can execute.
 
 Branch model:
 

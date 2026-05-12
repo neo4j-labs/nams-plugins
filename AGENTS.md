@@ -4,7 +4,7 @@ Guidelines for coding agents working in this repository.
 
 ## Project North Star
 
-`nams-hooks` connects local agent harness hooks to the Neo4j Agent Memory Service (NAMS). The runtime should make memory persistence deterministic, dependency-light, and platform-aware while keeping platform-specific behavior behind clear adapter boundaries.
+`nams-hooks` connects local agent harness hooks to the Neo4j Agent Memory Service (NAMS). The runtime should make memory persistence deterministic, lightweight at runtime, and platform-aware while keeping platform-specific behavior behind clear adapter boundaries.
 
 The first implementation path is Gemini CLI on macOS. Claude Code and Codex are part of the broader design, but do not expand their behavior unless the task asks for it.
 
@@ -27,7 +27,8 @@ The runtime must not fetch OpenAPI specs, inspect schemas, or discover endpoints
 - Keep shared contracts in `src/interfaces.ts`. Add new hook events there before wiring platform implementations.
 - `invocation.event` is typed. Do not infer hook event names from payload fields such as `hook_event_name`, `hookEventName`, or `event`.
 - Use the static adapter registry in `src/platforms/index.ts`; avoid dynamic module discovery.
-- Runtime code should use Node built-ins only. Do not add runtime npm dependencies without an explicit design change.
+- Runtime code and generated release artifacts should use Node built-ins only. Do not add runtime npm dependencies without an explicit design change.
+- Development, build, generation, and test tooling may use `devDependencies` when they improve maintainability or confidence and do not become runtime requirements or additional package installs for hook users.
 - TypeScript is the source language. Distribution output is generated JavaScript.
 
 ## NAMS Behavior
@@ -60,13 +61,14 @@ The runtime must not fetch OpenAPI specs, inspect schemas, or discover endpoints
 - In the generated extension, compiled runtime files live under `dist/bin/`.
 - Gemini root files are produced from `templates/gemini/`.
 - Do not hand-edit generated `dist/` output as a source change.
-- GitHub Actions `Build` runs on pull requests, pushes to `devel`, and manual dispatch. It runs `npm run build`, `npm test`, and `npm run openapi:test`.
+- GitHub Actions `Build` runs on pull requests, pushes to `devel`, and manual dispatch. It runs the default verification target, `npm run check`, which performs OpenAPI freshness checks, TypeScript build, and the full test suite.
 
 ## Testing Rules
 
 - Use Node's built-in `node:test` runner.
 - Add or update tests before changing behavior.
 - Run `npm run check` before claiming the work is complete.
+- Test support libraries are allowed as dev-only dependencies when they reduce test noise or improve contract coverage. Keep them out of `dependencies`, templates, `dist/bin/`, and runtime imports.
 - Tests that touch the filesystem must create fixtures under the OS temp directory and clean them up.
 - Tests must not leave `.nams/`, logs, state, or generated hook output in the repository directory.
 - Avoid network calls in tests. Use `docs/nams-openapi.json` or mocks unless the task explicitly targets OpenAPI fetching.
@@ -86,6 +88,7 @@ The runtime must not fetch OpenAPI specs, inspect schemas, or discover endpoints
 npm run build
 npm test
 npm run check
+npm run openapi:check
 npm run openapi:test
 npm run dist
 ```

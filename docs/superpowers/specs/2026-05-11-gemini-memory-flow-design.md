@@ -31,6 +31,7 @@ Gemini hook payloads are the primary source for current-turn data. The Gemini tr
 - Persist assistant responses from `prompt_response` when present, with transcript fallback.
 - Persist exposed Gemini transcript `thoughts` as reasoning steps in the NAMS Reasoning Memory API after the core message flow is stable.
 - Keep runtime dependencies limited to Node.js built-ins.
+- Allow dev-only test and architecture tooling when it does not enter runtime imports or generated release artifacts.
 - Add architecture tests to prevent platform modules from importing each other or upstream layers.
 
 ## Non-Goals
@@ -371,6 +372,7 @@ Unit and fixture tests:
 Mocking strategy:
 
 - Use injected fetch or a test double around the generated `NamsClient`.
+- Gemini flow tests use a dev-only `fetch-mock` helper under `test/support/` to reduce duplicated NAMS route setup while preserving the zero-runtime-dependency rule.
 - Use OS temp directories for `.nams/` state, logs, and transcript fixtures.
 - Avoid network calls in all automated tests.
 

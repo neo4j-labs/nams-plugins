@@ -15,13 +15,13 @@
   "scripts": {
     "build": "rm -rf .build/tsc && tsc -p tsconfig.json --outDir .build/tsc",
     "dist": "rm -rf .build && tsc -p tsconfig.json --outDir .build/tsc && node scripts/build-dist.mjs",
-    "test": "node --test test/*.test.js",
-    "check": "npm run build && npm test",
+    "test": "node --test test/*.test.js test/**/*.test.js",
+    "check": "npm run openapi:check && npm run build && npm test",
     "openapi:generate": "node scripts/generate-nams-client.mjs",
     "openapi:check": "node scripts/generate-nams-client.mjs --check",
-    "openapi:test": "npm run openapi:generate && node --test test/nams-client-generator.test.js",
+    "openapi:test": "npm run openapi:generate && npm run build && node --test test/nams-client-generator.test.js",
     "dist:check": "node scripts/check-dist.mjs",
-    "package:check": "npm run openapi:check && npm run check && npm run dist && npm run dist:check"
+    "package:check": "npm run check && npm run dist && npm run dist:check"
   },
   "engines": {
     "node": ">=20"
@@ -29,6 +29,7 @@
   "devDependencies": {
     "@types/node": "^24.0.0",
     "archunit": "^2.3.0",
+    "fetch-mock": "^12.6.0",
     "typescript": "^5.9.3"
   },
   "license": "Apache-2.0"
