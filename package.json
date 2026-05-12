@@ -10,7 +10,8 @@
     "dist/",
     "templates/",
     "docs/nams-openapi.json",
-    "README.md"
+    "README.md",
+    "INSTALL.md"
   ],
   "scripts": {
     "build": "rm -rf .build/tsc && tsc -p tsconfig.json --outDir .build/tsc",

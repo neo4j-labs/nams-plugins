@@ -30,23 +30,12 @@ It ensures deterministic memory persistence and context recall across different 
 
 ## Getting Started
 
+For installation steps, see [INSTALL.md](INSTALL.md).
+
 ### Prerequisites
 
 - Node.js (v20+)
 - A NAMS API Key
-
-### Installation
-
-1. Clone the repository.
-2. Install development dependencies:
-   ```bash
-   npm install
-   ```
-3. Configure your environment:
-   Create a `.nams/.env` file with your NAMS API key:
-   ```env
-   NAMS_API_KEY=your_api_key_here
-   ```
 
 ### Build and Test
 
@@ -62,10 +51,6 @@ npm run check
 
 # Regenerate and build the OpenAPI client, then run OpenAPI client tests directly
 npm run openapi:test
-
-# Generate distribution artifacts and link for Gemini CLI
-npm run dist
-gemini extensions link ./dist
 ```
 
 ### Runtime Logs
