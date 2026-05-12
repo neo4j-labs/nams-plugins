@@ -195,8 +195,13 @@ export class GeminiAdapter implements PlatformAdapter {
     }
 
     try {
-      const toolCallId = geminiToolCallDedupeKey(state.sessionKey, toolPayload.toolName, toolPayload.input);
-      if (!state.seenToolCallIds.includes(toolCallId)) {
+      const toolCallKeys = geminiToolCallDedupeKeys(
+        state.sessionKey,
+        toolPayload.id,
+        toolPayload.toolName,
+        toolPayload.input,
+      );
+      if (!hasSeenAny(state.seenToolCallIds, toolCallKeys.lookupKeys)) {
         const memory = this.createMemoryService(config, invocation, payloadInfo.projectDirectory, state);
         const reasoningStep = {
           conversationId: state.conversationId,
@@ -224,7 +229,7 @@ export class GeminiAdapter implements PlatformAdapter {
           ...(toolPayload.status !== undefined ? { status: toolPayload.status } : {}),
           ...(toolPayload.durationMs !== undefined ? { durationMs: toolPayload.durationMs } : {}),
         });
-        state.seenToolCallIds.push(toolCallId);
+        markSeen(state.seenToolCallIds, toolCallKeys.markKeys);
       }
     } catch {
       await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
@@ -255,7 +260,14 @@ function allowOutput(additionalContext?: string): HookResult {
     stdout: {
       continue: true,
       suppressOutput: true,
-      ...(additionalContext !== undefined ? { additionalContext } : {}),
+      ...(additionalContext !== undefined
+        ? {
+            hookSpecificOutput: {
+              hookEventName: "BeforeAgent",
+              additionalContext,
+            },
+          }
+        : {}),
     },
   };
 }
@@ -289,12 +301,32 @@ function parseGeminiAfterToolPayload(payload: Record<string, unknown>): GeminiAf
   };
 }
 
-function geminiToolCallDedupeKey(sessionKey: string, toolName: string, input: unknown): string {
-  return stableJsonHash({
+function geminiToolCallDedupeKeys(
+  sessionKey: string,
+  geminiToolCallId: string | undefined,
+  toolName: string,
+  input: unknown,
+): { lookupKeys: string[]; markKeys: string[] } {
+  const fallbackHash = stableJsonHash({
     sessionKey,
     toolName,
     input,
   });
+  const fallbackKey = `fallback:${fallbackHash}`;
+  const idFallbackKey = `gemini-id-fallback:${fallbackHash}`;
+
+  if (geminiToolCallId !== undefined && geminiToolCallId.trim() !== "") {
+    const idKey = `gemini-id:${stableJsonHash({ sessionKey, geminiToolCallId })}`;
+    return {
+      lookupKeys: [idKey, fallbackKey, fallbackHash],
+      markKeys: [idKey, idFallbackKey],
+    };
+  }
+
+  return {
+    lookupKeys: [fallbackKey, idFallbackKey, fallbackHash],
+    markKeys: [fallbackKey, fallbackHash],
+  };
 }
 
 function firstString(...values: unknown[]): string | undefined {
@@ -519,8 +551,8 @@ async function recordTraceFromTranscript(
         currentParentStepIds = [];
       }
 
-      const toolCallId = geminiToolCallDedupeKey(state.sessionKey, entry.name, entry.args);
-      if (state.seenToolCallIds.includes(toolCallId)) {
+      const toolCallKeys = geminiToolCallDedupeKeys(state.sessionKey, entry.id, entry.name, entry.args);
+      if (hasSeenAny(state.seenToolCallIds, toolCallKeys.lookupKeys)) {
         continue;
       }
 
@@ -530,7 +562,7 @@ async function recordTraceFromTranscript(
         input: entry.args,
         ...(entry.status !== undefined ? { status: entry.status } : {}),
       });
-      state.seenToolCallIds.push(toolCallId);
+      markSeen(state.seenToolCallIds, toolCallKeys.markKeys);
     }
   }
 }
@@ -538,6 +570,18 @@ async function recordTraceFromTranscript(
 function addCurrentParentStepId(stepIds: string[], stepId: string | undefined): void {
   if (stepId !== undefined && !stepIds.includes(stepId)) {
     stepIds.push(stepId);
+  }
+}
+
+function hasSeenAny(seen: string[], keys: string[]): boolean {
+  return keys.some((key) => seen.includes(key));
+}
+
+function markSeen(seen: string[], keys: string[]): void {
+  for (const key of keys) {
+    if (!seen.includes(key)) {
+      seen.push(key);
+    }
   }
 }
 

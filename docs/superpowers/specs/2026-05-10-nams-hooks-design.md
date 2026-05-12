@@ -294,9 +294,11 @@ User prompt submit or before-agent:
 - Resolve or create session state and NAMS conversation.
 - Recall relevant memory.
 - Store the user prompt using the messages endpoint.
-- Return harness-specific `additionalContext` with:
+- Return harness-specific context output with:
   - relevant memory context
   - a short instruction that the agent should use the context silently and avoid narrating memory mechanics
+
+For Gemini CLI this context is returned as `hookSpecificOutput.additionalContext`, not as a top-level `additionalContext` field.
 
 Tool completion:
 

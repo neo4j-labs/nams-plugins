@@ -78,7 +78,7 @@ export type SessionState = {
   projectDirectory: string;
   conversationId?: string;
   createdAt: string;
-  lastMemorySearchAt?: string;
+  lastRecallAt?: string;
   lastUserMessageHash?: string;
   lastAssistantMessageHash?: string;
   seenTranscriptEntryIds: string[];
@@ -765,7 +765,7 @@ export interface SessionState {
   projectDirectory: string;
   conversationId?: string;
   createdAt: string;
-  lastMemorySearchAt?: string;
+  lastRecallAt?: string;
   lastUserMessageHash?: string;
   lastAssistantMessageHash?: string;
   seenTranscriptEntryIds: string[];
@@ -1546,7 +1546,7 @@ test("Gemini BeforeAgent creates conversation, recalls memory, stores prompt, an
     });
 
     assert.equal(result.stdout.continue, true);
-    assert.match(result.stdout.additionalContext, /Use fixture-driven tests/);
+    assert.match(result.stdout.hookSpecificOutput.additionalContext, /Use fixture-driven tests/);
     const requestBodies = requests.map((request) => request.init.body && JSON.parse(request.init.body));
     assert.equal(requestBodies[0].metadata.harness, "gemini");
     assert.deepEqual(requestBodies[1], { role: "user", content: "Build Gemini memory flow" });
@@ -1613,9 +1613,9 @@ if (conversationId === undefined) {
 }
 
 let additionalContext = "";
-if (state.lastMemorySearchAt === undefined) {
+if (state.lastRecallAt === undefined) {
   additionalContext = await memory.recall(conversationId);
-  state.lastMemorySearchAt = new Date().toISOString();
+  state.lastRecallAt = new Date().toISOString();
 }
 
 const userHash = messageHash(invocation.platform, state.sessionKey, "user", info.prompt);
@@ -1627,7 +1627,13 @@ if (state.lastUserMessageHash !== userHash) {
 await saveSessionState(info.projectDirectory, invocation.platform, state.sessionKey, state);
 return additionalContext === ""
   ? { stdout: { continue: true, suppressOutput: true } }
-  : { stdout: { continue: true, suppressOutput: true, additionalContext } };
+  : {
+      stdout: {
+        continue: true,
+        suppressOutput: true,
+        hookSpecificOutput: { hookEventName: "BeforeAgent", additionalContext },
+      },
+    };
 ```
 
 Define local helpers in `src/platforms/gemini/index.ts`:
@@ -2052,8 +2058,6 @@ async function processTraceEntries(input: {
         sessionKey: input.state.sessionKey,
         name: entry.name,
         args: entry.args,
-        status: entry.status,
-        timestamp: entry.timestamp,
       });
       if (input.state.seenToolCallIds.includes(toolCallKey)) {
         continue;

@@ -49,7 +49,7 @@ Phase 1 implements the memory loop needed for normal Gemini CLI conversations.
 
 `SessionStart` initializes local state only. It must not create a NAMS conversation. Conversation creation happens lazily in `BeforeAgent`, when the first user prompt is available.
 
-`BeforeAgent` resolves the Gemini session, creates the NAMS conversation if local state does not yet have one, searches memory before the first response or when resuming a known conversation, stores the current user prompt, and returns Gemini-safe `additionalContext` when recall finds useful context. If recall fails, the hook allows Gemini to continue without injected memory.
+`BeforeAgent` resolves the Gemini session, creates the NAMS conversation if local state does not yet have one, searches memory before the first response or when resuming a known conversation, stores the current user prompt, and returns Gemini-safe `hookSpecificOutput.additionalContext` when recall finds useful context. If recall fails, the hook allows Gemini to continue without injected memory.
 
 `AfterAgent` stores the assistant response. The primary source is `prompt_response` from the hook payload. If `prompt_response` is absent or empty, the runtime reads `transcript_path` and stores unseen transcript entries with `type: "gemini"`.
 
@@ -227,7 +227,7 @@ It ignores `$set`, token counts, and `info` records for memory writes by default
 5. If one recall source fails, continue with the other source when it returns useful context.
 6. Persist the user prompt unless duplicate suppression says it was already stored.
 7. Update local state.
-8. Return `additionalContext` when recall produced useful context.
+8. Return `hookSpecificOutput.additionalContext` when recall produced useful context.
 
 The injected context should be concise and should instruct Gemini to use the context silently without narrating memory mechanics.
 
@@ -261,7 +261,7 @@ Transcript tool calls map to NAMS tool-call records:
 - `stepId`: nearest stored reasoning step id from the same transcript entry when deterministic
 - `output`: exposed output from `AfterTool` when present; transcript tool-call output fields remain omitted
 
-The runtime must not persist transcript tool output fields, including `result`, `resultDisplay`, `functionResponse`, and nested response output. Tool calls are deduplicated across `AfterTool` and transcript replay by session key, tool name, and normalized input, so the same tool invocation is not written twice when Gemini exposes it through both surfaces.
+The runtime must not persist transcript tool output fields, including `result`, `resultDisplay`, `functionResponse`, and nested response output. Tool calls are deduplicated by Gemini tool-call id when Gemini exposes one. If one hook surface lacks an id, a session key plus tool name and normalized input fallback is used to prevent writing the same invocation twice across `AfterTool` and transcript replay.
 
 ### SessionEnd
 
@@ -273,7 +273,8 @@ Duplicate suppression uses the most stable identifiers available:
 
 1. Transcript entry ids for transcript-derived messages.
 2. Hook event ids if Gemini exposes them.
-3. Content hashes as fallback.
+3. Gemini tool-call ids for tool metadata when exposed.
+4. Content or input hashes as fallback.
 
 Hashes include:
 
@@ -355,7 +356,7 @@ Unit and fixture tests:
 
 - Gemini `SessionStart` initializes local state without creating a NAMS conversation.
 - Gemini `BeforeAgent` creates a NAMS conversation on the first prompt.
-- Gemini `BeforeAgent` searches memory before the first response and injects `additionalContext`.
+- Gemini `BeforeAgent` searches memory before the first response and injects `hookSpecificOutput.additionalContext`.
 - Gemini `BeforeAgent` persists the user prompt.
 - Gemini `AfterAgent` persists `prompt_response`.
 - Gemini `AfterAgent` falls back to transcript `type: "gemini"` entries when `prompt_response` is missing.

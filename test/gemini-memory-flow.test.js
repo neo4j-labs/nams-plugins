@@ -84,7 +84,9 @@ test("creates Gemini conversation, recalls memory, and stores first BeforeAgent 
 
     assert.equal(result.stdout.continue, true);
     assert.equal(result.stdout.suppressOutput, true);
-    assert.match(result.stdout.additionalContext, /User prefers fixture-driven tests\./);
+    assert.equal(Object.hasOwn(result.stdout, "additionalContext"), false);
+    assert.match(result.stdout.hookSpecificOutput.additionalContext, /User prefers fixture-driven tests\./);
+    assert.equal(result.stdout.hookSpecificOutput.hookEventName, "BeforeAgent");
     assert.deepEqual(JSON.parse(requests[0].init.body), {
       metadata: {
         harness: "gemini",
@@ -201,7 +203,9 @@ test("Gemini BeforeAgent uses entity search context when conversation context fa
 
     assert.equal(result.stdout.continue, true);
     assert.equal(result.stdout.suppressOutput, true);
-    assert.match(result.stdout.additionalContext, /Autonomo: User is exploring autonomo setup in Spain\./);
+    assert.equal(Object.hasOwn(result.stdout, "additionalContext"), false);
+    assert.match(result.stdout.hookSpecificOutput.additionalContext, /Autonomo: User is exploring autonomo setup in Spain\./);
+    assert.equal(result.stdout.hookSpecificOutput.hookEventName, "BeforeAgent");
     const entitySearchRequest = requests.find(
       (request) => request.init.method === "POST" && request.url === "https://memory.example.test/v1/entities/search",
     );
@@ -344,7 +348,9 @@ test("Gemini BeforeAgent returns recalled context when user message persistence 
 
     assert.equal(result.stdout.continue, true);
     assert.equal(result.stdout.suppressOutput, true);
-    assert.match(result.stdout.additionalContext, /User wants concise updates\./);
+    assert.equal(Object.hasOwn(result.stdout, "additionalContext"), false);
+    assert.match(result.stdout.hookSpecificOutput.additionalContext, /User wants concise updates\./);
+    assert.equal(result.stdout.hookSpecificOutput.hookEventName, "BeforeAgent");
     assert.equal(
       requests.filter(
         (request) => request.url === "https://memory.example.test/v1/conversations/conversation-1/messages",
@@ -858,6 +864,83 @@ test("does not duplicate Gemini AfterTool metadata for the same tool call id", a
         request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/tool-calls",
     );
     assert.equal(toolRequests.length, 1);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("records distinct Gemini AfterTool calls with matching inputs when ids differ", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
+  try {
+    const requests = [];
+    const mockFetch = async (url, init) => {
+      requests.push({ url, init });
+      if (url === "https://memory.example.test/v1/conversations") {
+        return jsonResponse({ id: "conversation-1" }, 201);
+      }
+      if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
+        return jsonResponse({});
+      }
+      if (url === "https://memory.example.test/v1/entities/search") {
+        return jsonResponse({});
+      }
+      if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
+        return jsonResponse({ id: "message-1" }, 201);
+      }
+      if (url === "https://memory.example.test/v1/reasoning/steps") {
+        return jsonResponse({ id: "step-after-tool-1" }, 201);
+      }
+      if (url === "https://memory.example.test/v1/reasoning/tool-calls") {
+        return jsonResponse({ id: "tool-call-1" }, 201);
+      }
+      return jsonResponse({ error: `unexpected ${init.method} ${url}` }, 500);
+    };
+
+    const { GeminiAdapter } = await import(geminiUrl);
+    const adapter = new GeminiAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: mockFetch,
+    });
+
+    await adapter.beforeAgent({
+      platform: "gemini",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "Search twice.",
+      },
+    });
+
+    for (const toolCallId of ["tool-1", "tool-2"]) {
+      await adapter.afterTool({
+        platform: "gemini",
+        event: "AfterTool",
+        processCwd: projectDir,
+        rawPayload: {
+          session_id: "session-1",
+          cwd: projectDir,
+          tool_call_id: toolCallId,
+          tool_name: "google_web_search",
+          tool_input: { query: "nams" },
+          status: "success",
+        },
+      });
+    }
+
+    const toolBodies = requests
+      .filter(
+        (request) =>
+          request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/tool-calls",
+      )
+      .map((request) => JSON.parse(request.init.body));
+    assert.equal(toolBodies.length, 2);
+    assert.match(toolBodies[0].input, /"query":"nams"/);
+    assert.match(toolBodies[1].input, /"query":"nams"/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -1431,7 +1514,7 @@ test("records Gemini transcript thoughts and sanitized tool metadata", async () 
   }
 });
 
-test("records tool calls with repeated Gemini ids from different transcript entries", async () => {
+test("deduplicates repeated Gemini transcript tool ids", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
     const transcriptPath = path.join(projectDir, "gemini-transcript.jsonl");
@@ -1526,9 +1609,8 @@ test("records tool calls with repeated Gemini ids from different transcript entr
           request.init.method === "POST" && request.url === "https://memory.example.test/v1/reasoning/tool-calls",
       )
       .map((request) => JSON.parse(request.init.body));
-    assert.equal(toolBodies.length, 2);
+    assert.equal(toolBodies.length, 1);
     assert.match(toolBodies[0].input, /"query":"autonomo spain"/);
-    assert.match(toolBodies[1].input, /"query":"autonomo portugal"/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
