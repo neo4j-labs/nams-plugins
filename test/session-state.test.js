@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -56,6 +56,38 @@ test("persists session state under .nams/state/sessions using safe session filen
     const savedPath = path.join(projectDir, ".nams", "state", "sessions", "gemini", `${sha256("session/1")}.json`);
     assert.deepEqual(JSON.parse(await readFile(savedPath, "utf8")), state);
     assert.deepEqual(await loadSessionState(projectDir, "gemini", "session/1"), state);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("loads legacy lastMemorySearchAt as lastRecallAt", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-state-"));
+  try {
+    const { loadSessionState } = await import(stateUrl);
+    const statePath = path.join(projectDir, ".nams", "state", "sessions", "gemini", `${sha256("session-1")}.json`);
+    await mkdir(path.dirname(statePath), { recursive: true });
+    await writeFile(
+      statePath,
+      `${JSON.stringify({
+        harness: "gemini",
+        sessionKey: "session-1",
+        projectDirectory: projectDir,
+        createdAt: "2026-05-11T12:00:00.000Z",
+        lastMemorySearchAt: "2026-05-11T12:01:00.000Z",
+        seenAssistantMessageHashes: [],
+        seenTranscriptEntryIds: [],
+        seenReasoningStepHashes: [],
+        seenToolCallIds: [],
+        reasoningStepIdsByHash: {},
+      })}\n`,
+      "utf8",
+    );
+
+    const state = await loadSessionState(projectDir, "gemini", "session-1");
+
+    assert.equal(state.lastRecallAt, "2026-05-11T12:01:00.000Z");
+    assert.equal(Object.hasOwn(state, "lastMemorySearchAt"), false);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }

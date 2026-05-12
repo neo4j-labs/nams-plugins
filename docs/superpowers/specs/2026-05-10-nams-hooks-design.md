@@ -251,8 +251,9 @@ Bulk message persistence may be used only when a harness exposes both user and a
 
 Recall:
 
-- Prefer `GET /v1/conversations/{conversationId}/context` when a conversation already exists.
-- Use `POST /v1/entities/search` or `POST /v1/conversations/{conversationId}/search` when the prompt provides useful query terms.
+- Use `GET /v1/conversations/{conversationId}/context` when a conversation already exists.
+- Use `POST /v1/entities/search` with the first prompt or useful query terms before the first response.
+- Merge successful recall sources into one injected context. If one source fails, continue with the other.
 - Client methods: `getConversationContext`, `searchEntities`, `searchConversationMessages`
 
 Tool metadata:

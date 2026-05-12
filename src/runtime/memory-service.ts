@@ -28,6 +28,8 @@ export interface ToolCallInput {
 }
 
 const toolOutputFieldNames = new Set(["body", "functionresponse", "output", "response", "result", "resultdisplay"]);
+const memoryContextHeader = "Relevant memory context:";
+const memoryContextInstruction = "Use this context silently when it is relevant. Do not narrate memory mechanics.";
 
 export class NamsMemoryService {
   private readonly client: NamsClient;
@@ -112,11 +114,21 @@ export function formatMemoryContext(context: ContextResponse): string {
     return "";
   }
   return [
-    "Relevant memory context:",
+    memoryContextHeader,
     ...lines.slice(0, 24),
     "",
-    "Use this context silently when it is relevant. Do not narrate memory mechanics.",
+    memoryContextInstruction,
   ].join("\n");
+}
+
+export function combineMemoryContexts(contexts: string[]): string {
+  const bodyLines = contexts
+    .flatMap((context) => contextLines(context))
+    .filter((line) => line.trim() !== "");
+  if (bodyLines.length === 0) {
+    return "";
+  }
+  return [memoryContextHeader, ...bodyLines, "", memoryContextInstruction].join("\n");
 }
 
 export function serializeToolInput(input: unknown): string {
@@ -126,6 +138,13 @@ export function serializeToolInput(input: unknown): string {
   }
   const suffix = "...[truncated]";
   return `${serialized.slice(0, 4000 - suffix.length)}${suffix}`;
+}
+
+function contextLines(context: string): string[] {
+  return context
+    .split("\n")
+    .filter((line) => line !== memoryContextHeader)
+    .filter((line) => line !== memoryContextInstruction);
 }
 
 function sectionLines(label: string, values: Array<string | undefined> | undefined): string[] {

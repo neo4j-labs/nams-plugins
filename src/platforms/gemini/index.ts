@@ -3,7 +3,7 @@ import type { NamsRequestEvent } from "../../generated/nams-client.js";
 import { loadNamsConfig, type NamsRuntimeConfig } from "../../runtime/config.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
 import { appendPlatformLog } from "../../runtime/logging.js";
-import { NamsMemoryService } from "../../runtime/memory-service.js";
+import { combineMemoryContexts, NamsMemoryService } from "../../runtime/memory-service.js";
 import {
   createInitialSessionState,
   loadSessionState,
@@ -71,15 +71,22 @@ export class GeminiAdapter implements PlatformAdapter {
         state.conversationId = conversationId;
       }
 
-      if (state.lastMemorySearchAt === undefined) {
+      if (state.lastRecallAt === undefined) {
+        const recallContexts: string[] = [];
         try {
-          const recalledContext = await memory.recall(conversationId);
-          state.lastMemorySearchAt = new Date().toISOString();
-          if (recalledContext.trim() !== "") {
-            additionalContext = recalledContext;
-          }
+          recallContexts.push(await memory.recall(conversationId));
         } catch {
           await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
+        }
+        try {
+          recallContexts.push(await memory.searchEntities(payloadInfo.prompt));
+        } catch {
+          await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
+        }
+        state.lastRecallAt = new Date().toISOString();
+        const recalledContext = combineMemoryContexts(recallContexts);
+        if (recalledContext.trim() !== "") {
+          additionalContext = recalledContext;
         }
       }
 

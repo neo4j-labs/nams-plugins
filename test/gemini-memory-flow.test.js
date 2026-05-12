@@ -51,6 +51,11 @@ test("creates Gemini conversation, recalls memory, and stores first BeforeAgent 
           observations: [{ content: "User prefers fixture-driven tests." }],
         });
       }
+      if (url === "https://memory.example.test/v1/entities/search") {
+        return jsonResponse({
+          entities: [{ name: "Fixture-driven tests", description: "User prefers fixture-driven tests." }],
+        });
+      }
       if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
         return jsonResponse({ id: "message-1" }, 201);
       }
@@ -87,6 +92,10 @@ test("creates Gemini conversation, recalls memory, and stores first BeforeAgent 
       },
     });
     assert.deepEqual(JSON.parse(requests[2].init.body), {
+      query: prompt,
+      limit: 5,
+    });
+    assert.deepEqual(JSON.parse(requests[3].init.body), {
       role: "user",
       content: prompt,
     });
@@ -96,7 +105,7 @@ test("creates Gemini conversation, recalls memory, and stores first BeforeAgent 
     const requestEntries = lines.filter((entry) => entry.kind === "nams.request");
     assert.deepEqual(
       requestEntries.map((entry) => entry.payload.operation),
-      ["createConversation", "getConversationContext", "addMessage"],
+      ["createConversation", "getConversationContext", "searchEntities", "addMessage"],
     );
     assert.deepEqual(
       requestEntries.map((entry) => ({
@@ -108,6 +117,7 @@ test("creates Gemini conversation, recalls memory, and stores first BeforeAgent 
       [
         { method: "POST", path: "/v1/conversations", status: 201, ok: true },
         { method: "GET", path: "/v1/conversations/{id}/context", status: 200, ok: true },
+        { method: "POST", path: "/v1/entities/search", status: 200, ok: true },
         { method: "POST", path: "/v1/conversations/{id}/messages", status: 201, ok: true },
       ],
     );
@@ -127,10 +137,17 @@ test("creates Gemini conversation, recalls memory, and stores first BeforeAgent 
       observations: [{ content: "User prefers fixture-driven tests." }],
     });
     assert.deepEqual(requestEntries[2].payload.request.body, {
+      query: prompt,
+      limit: 5,
+    });
+    assert.deepEqual(requestEntries[2].payload.response.body, {
+      entities: [{ name: "Fixture-driven tests", description: "User prefers fixture-driven tests." }],
+    });
+    assert.deepEqual(requestEntries[3].payload.request.body, {
       role: "user",
       content: prompt,
     });
-    assert.deepEqual(requestEntries[2].payload.response.body, { id: "message-1" });
+    assert.deepEqual(requestEntries[3].payload.response.body, { id: "message-1" });
     assert.match(JSON.stringify(requestEntries), /fixture-driven tests/);
     assert.doesNotMatch(JSON.stringify(requestEntries), /Authorization|Bearer|key/);
   } finally {
@@ -138,7 +155,7 @@ test("creates Gemini conversation, recalls memory, and stores first BeforeAgent 
   }
 });
 
-test("stores Gemini BeforeAgent user prompt when recall fails", async () => {
+test("Gemini BeforeAgent uses entity search context when conversation context fails", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
     const requests = [];
@@ -150,6 +167,11 @@ test("stores Gemini BeforeAgent user prompt when recall fails", async () => {
       }
       if (url === "https://memory.example.test/v1/conversations/conversation-1/context") {
         return jsonResponse({ error: "context unavailable" }, 503);
+      }
+      if (url === "https://memory.example.test/v1/entities/search") {
+        return jsonResponse({
+          entities: [{ name: "Autonomo", description: "User is exploring autonomo setup in Spain." }],
+        });
       }
       if (url === "https://memory.example.test/v1/conversations/conversation-1/messages") {
         return jsonResponse({ id: "message-1" }, 201);
@@ -177,7 +199,16 @@ test("stores Gemini BeforeAgent user prompt when recall fails", async () => {
       },
     });
 
-    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    assert.equal(result.stdout.continue, true);
+    assert.equal(result.stdout.suppressOutput, true);
+    assert.match(result.stdout.additionalContext, /Autonomo: User is exploring autonomo setup in Spain\./);
+    const entitySearchRequest = requests.find(
+      (request) => request.init.method === "POST" && request.url === "https://memory.example.test/v1/entities/search",
+    );
+    assert.deepEqual(JSON.parse(entitySearchRequest.init.body), {
+      query: prompt,
+      limit: 5,
+    });
     const messageRequest = requests.find(
       (request) =>
         request.init.method === "POST" &&

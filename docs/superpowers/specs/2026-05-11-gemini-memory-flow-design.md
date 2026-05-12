@@ -134,7 +134,7 @@ State shape:
   "projectDirectory": "/path/to/project",
   "conversationId": "nams-conversation-id",
   "createdAt": "2026-05-11T11:31:07.448Z",
-  "lastMemorySearchAt": "2026-05-11T11:31:13.875Z",
+  "lastRecallAt": "2026-05-11T11:31:13.875Z",
   "lastUserMessageHash": "sha256...",
   "lastAssistantMessageHash": "sha256...",
   "seenTranscriptEntryIds": ["ac407eb2-...", "b1e76a69-..."],
@@ -223,8 +223,8 @@ It ignores `$set`, token counts, and `info` records for memory writes by default
 1. Parse current prompt from the hook payload.
 2. Resolve local session state.
 3. If state has no `conversationId`, create the NAMS conversation.
-4. If this is the first response for the conversation, search relevant memory using the first user prompt.
-5. If resuming a known conversation, retrieve conversation context before responding.
+4. If this is the first response for the conversation, retrieve conversation context and search entities using the first user prompt.
+5. If one recall source fails, continue with the other source when it returns useful context.
 6. Persist the user prompt unless duplicate suppression says it was already stored.
 7. Update local state.
 8. Return `additionalContext` when recall produced useful context.

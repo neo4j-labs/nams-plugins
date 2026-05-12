@@ -10,7 +10,7 @@ export interface SessionState {
   projectDirectory: string;
   conversationId?: string;
   createdAt: string;
-  lastMemorySearchAt?: string;
+  lastRecallAt?: string;
   lastUserMessageHash?: string;
   lastAssistantMessageHash?: string;
   seenAssistantMessageHashes: string[];
@@ -39,7 +39,14 @@ export async function loadSessionState(
   sessionKey: string,
 ): Promise<SessionState | null> {
   try {
-    return JSON.parse(await readFile(sessionStatePath(projectDirectory, platform, sessionKey), "utf8")) as SessionState;
+    const state = JSON.parse(await readFile(sessionStatePath(projectDirectory, platform, sessionKey), "utf8")) as SessionState & {
+      lastMemorySearchAt?: string;
+    };
+    if (state.lastRecallAt === undefined && typeof state.lastMemorySearchAt === "string") {
+      state.lastRecallAt = state.lastMemorySearchAt;
+    }
+    delete state.lastMemorySearchAt;
+    return state;
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
       return null;
