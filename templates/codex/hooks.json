@@ -11,6 +11,39 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "nams-hooks run codex --event BeforeAgent",
+            "statusMessage": "NAMS memory recall"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "nams-hooks run codex --event AfterAgent",
+            "statusMessage": "NAMS assistant persistence"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "nams-hooks run codex --event AfterTool",
+            "statusMessage": "NAMS tool metadata"
+          }
+        ]
+      }
     ]
   }
 }

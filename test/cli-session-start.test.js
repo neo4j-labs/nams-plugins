@@ -8,6 +8,7 @@ import { spawn } from "node:child_process";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cliPath = path.join(repoRoot, ".build", "tsc", "cli.js");
+const codexHooksTemplatePath = path.join(repoRoot, "templates", "codex", "hooks.json");
 
 function runCliWithEvent(harness, event, payload, cwd) {
   return new Promise((resolve, reject) => {
@@ -141,6 +142,80 @@ for (const event of ["BeforeAgent", "AfterAgent", "AfterTool"]) {
 
       assert.equal(result.code, 0, result.stderr);
       assert.equal(JSON.parse(result.stdout).continue, true);
+    } finally {
+      await rm(projectDir, { recursive: true, force: true });
+    }
+  });
+}
+
+const codexNativeHookMappings = [
+  {
+    nativeHook: "UserPromptSubmit",
+    namsEvent: "BeforeAgent",
+    statusMessage: "NAMS memory recall",
+  },
+  {
+    nativeHook: "Stop",
+    namsEvent: "AfterAgent",
+    statusMessage: "NAMS assistant persistence",
+  },
+  {
+    nativeHook: "PostToolUse",
+    namsEvent: "AfterTool",
+    statusMessage: "NAMS tool metadata",
+  },
+];
+
+for (const { nativeHook, namsEvent, statusMessage } of codexNativeHookMappings) {
+  test(`maps Codex ${nativeHook} hook through ${namsEvent} NAMS event`, async () => {
+    const template = JSON.parse(await readFile(codexHooksTemplatePath, "utf8"));
+    assert.deepEqual(template.hooks[nativeHook], [
+      {
+        hooks: [
+          {
+            type: "command",
+            command: `nams-hooks run codex --event ${namsEvent}`,
+            statusMessage,
+          },
+        ],
+      },
+    ]);
+
+    const projectDir = await mkdtemp(path.join(tmpdir(), "nams-hooks-"));
+    try {
+      const payload = {
+        session_id: `codex-${nativeHook}`,
+        hook_event_name: nativeHook,
+        cwd: projectDir,
+      };
+
+      const result = await runCliWithEvent("codex", namsEvent, payload, projectDir);
+
+      assert.equal(result.code, 0, result.stderr);
+      assert.deepEqual(JSON.parse(result.stdout), {
+        continue: true,
+        suppressOutput: true,
+      });
+    } finally {
+      await rm(projectDir, { recursive: true, force: true });
+    }
+  });
+}
+
+for (const nativeHook of ["UserPromptSubmit", "Stop", "PostToolUse"]) {
+  test(`rejects native Codex ${nativeHook} as typed NAMS event`, async () => {
+    const projectDir = await mkdtemp(path.join(tmpdir(), "nams-hooks-"));
+    try {
+      const payload = {
+        session_id: `codex-invalid-${nativeHook}`,
+        hook_event_name: nativeHook,
+        cwd: projectDir,
+      };
+
+      const result = await runCliWithEvent("codex", nativeHook, payload, projectDir);
+
+      assert.equal(result.code, 1);
+      assert.match(result.stderr, /--event <SessionStart\|BeforeAgent\|AfterAgent\|AfterTool>/);
     } finally {
       await rm(projectDir, { recursive: true, force: true });
     }
