@@ -7,7 +7,7 @@ export const NamsHooks = async ({ client, directory, project, worktree }) => {
     try {
       return await invokeNams(event, { directory, project, worktree, ...payload });
     } catch {
-      logDiagnostic(client, `NAMS OpenCode hook ${event} failed`);
+      await logDiagnostic(client, `NAMS OpenCode hook ${event} failed`);
       return undefined;
     }
   }
@@ -21,11 +21,11 @@ export const NamsHooks = async ({ client, directory, project, worktree }) => {
       await run("SessionStart", { hook: "event", event });
     },
 
-    "chat.message": async ({ input, output }) => {
+    "chat.message": async (input, output) => {
       return await run("BeforeAgent", { hook: "chat.message", input, output });
     },
 
-    "experimental.chat.system.transform": async ({ input, output }) => {
+    "experimental.chat.system.transform": async (input, output) => {
       const result = await run("BeforeAgent", { hook: "experimental.chat.system.transform", input, output });
       const additionalContext = result?.hookSpecificOutput?.additionalContext;
       if (typeof additionalContext === "string" && additionalContext.trim() !== "") {
@@ -37,11 +37,11 @@ export const NamsHooks = async ({ client, directory, project, worktree }) => {
       return output;
     },
 
-    "experimental.text.complete": async ({ input, output }) => {
+    "experimental.text.complete": async (input, output) => {
       return await run("AfterAgent", { hook: "experimental.text.complete", input, output });
     },
 
-    "tool.execute.after": async ({ input, output }) => {
+    "tool.execute.after": async (input, output) => {
       return await run("AfterTool", { hook: "tool.execute.after", input, output });
     },
   };
@@ -109,8 +109,8 @@ async function invokeNams(event, payload) {
   });
 }
 
-function logDiagnostic(client, message) {
+async function logDiagnostic(client, message) {
   try {
-    client?.app?.log?.({ body: { service: "nams-hooks", level: "warn", message } });
+    await client?.app?.log?.({ body: { service: "nams-hooks", level: "warn", message } });
   } catch {}
 }
