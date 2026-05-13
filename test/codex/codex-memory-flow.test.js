@@ -1211,10 +1211,17 @@ test("Codex afterTool missing config and failed NAMS calls allow and log sanitiz
     assert.match(missingConfigLog, /NAMS_API_KEY missing/);
     assert.doesNotMatch(missingConfigLog, /Authorization|Bearer|test-api-key/);
 
-    const nams = createNamsFetchMock().reasoningStep({ error: "Bearer test-api-key rejected" }, 503);
+    const nams = createNamsFetchMock().reasoningStep(
+      {
+        error: "plain-secret-value rejected",
+        apiKey: "plain-secret-value",
+        token: "plain-secret-value",
+      },
+      503,
+    );
     const namsFailureResult = await new CodexAdapter({
       env: {
-        NAMS_API_KEY: "test-api-key",
+        NAMS_API_KEY: "plain-secret-value",
         NAMS_BASE_URL: "https://memory.example.test",
       },
       fetch: nams.fetch,
@@ -1238,8 +1245,8 @@ test("Codex afterTool missing config and failed NAMS calls allow and log sanitiz
     assert.match(namsFailureLog, /NAMS request failed/);
     const diagnostics = namsFailureLines.filter((entry) => entry.kind === "diagnostic");
     assert.deepEqual(diagnostics.map((entry) => entry.payload), [{ message: "NAMS request failed" }]);
-    assert.doesNotMatch(JSON.stringify(diagnostics), /Bearer test-api-key rejected|Authorization|Bearer|test-api-key/);
-    assert.doesNotMatch(namsFailureLog, /Authorization|Bearer|test-api-key/);
+    assert.doesNotMatch(JSON.stringify(diagnostics), /plain-secret-value|Authorization|Bearer|apiKey|token/);
+    assert.doesNotMatch(namsFailureLog, /plain-secret-value|Authorization|Bearer|apiKey|token/);
   } finally {
     await rm(missingConfigDir, { recursive: true, force: true });
     await rm(namsFailureDir, { recursive: true, force: true });

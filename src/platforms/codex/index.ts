@@ -253,7 +253,7 @@ export class CodexAdapter implements PlatformAdapter {
     return new NamsMemoryService({
       ...config,
       ...(this.options.fetch !== undefined ? { fetch: this.options.fetch } : {}),
-      onRequest: (event) => appendNamsRequestLog(invocation, projectDirectory, state, event),
+      onRequest: (event) => appendNamsRequestLog(invocation, projectDirectory, state, event, config.apiKey),
     });
   }
 }
@@ -411,6 +411,7 @@ async function appendNamsRequestLog(
   projectDirectory: string,
   state: SessionState,
   payload: NamsRequestEvent,
+  apiKey: string,
 ): Promise<void> {
   try {
     await appendPlatformLog({
@@ -418,7 +419,7 @@ async function appendNamsRequestLog(
       event: invocation.event,
       kind: "nams.request",
       projectDirectory,
-      payload: sanitizeNamsRequestLogPayload(payload) as Record<string, unknown>,
+      payload: sanitizeNamsRequestLogPayload(payload, apiKey) as Record<string, unknown>,
       sessionCreatedAt: state.createdAt,
       sessionKey: state.sessionKey,
     });
@@ -427,12 +428,15 @@ async function appendNamsRequestLog(
   }
 }
 
-function sanitizeNamsRequestLogPayload(value: unknown): unknown {
+function sanitizeNamsRequestLogPayload(value: unknown, apiKey: string): unknown {
   if (typeof value === "string") {
-    return /authorization|bearer|api[-_ ]?key/i.test(value) ? "[redacted]" : value;
+    if (/authorization|bearer|api[-_ ]?key/i.test(value)) {
+      return "[redacted]";
+    }
+    return redactSecretValue(value, apiKey);
   }
   if (Array.isArray(value)) {
-    return value.map(sanitizeNamsRequestLogPayload);
+    return value.map((entry) => sanitizeNamsRequestLogPayload(entry, apiKey));
   }
   if (value === null || typeof value !== "object") {
     return value;
@@ -440,12 +444,30 @@ function sanitizeNamsRequestLogPayload(value: unknown): unknown {
 
   const sanitized: Record<string, unknown> = {};
   for (const [key, nestedValue] of Object.entries(value)) {
-    if (key.toLowerCase() === "authorization") {
+    if (isSensitiveLogKey(key)) {
       continue;
     }
-    sanitized[key] = sanitizeNamsRequestLogPayload(nestedValue);
+    sanitized[key] = sanitizeNamsRequestLogPayload(nestedValue, apiKey);
   }
   return sanitized;
+}
+
+function isSensitiveLogKey(key: string): boolean {
+  const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return (
+    normalized === "authorization" ||
+    normalized === "apikey" ||
+    normalized === "xapikey" ||
+    normalized.includes("token") ||
+    normalized.includes("secret")
+  );
+}
+
+function redactSecretValue(value: string, secret: string): string {
+  if (secret === "") {
+    return value;
+  }
+  return value.split(secret).join("[redacted]");
 }
 
 async function appendRawPlatformLog(
