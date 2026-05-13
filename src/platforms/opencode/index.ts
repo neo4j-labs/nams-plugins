@@ -117,7 +117,62 @@ export class OpenCodeAdapter implements PlatformAdapter {
     return allowOutput();
   }
 
-  async afterAgent(_invocation: HookInvocation<"AfterAgent">): Promise<HookResult> {
+  async afterAgent(invocation: HookInvocation<"AfterAgent">): Promise<HookResult> {
+    const payloadInfo = parseOpenCodePayload(invocation.rawPayload, invocation.processCwd);
+    const initialState = createInitialSessionState({
+      platform: invocation.platform,
+      projectDirectory: payloadInfo.projectDirectory,
+      sessionId: payloadInfo.sessionId,
+    });
+    const state =
+      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
+    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
+    state.seenAssistantPartIds ??= [];
+    state.seenAssistantMessageHashes ??= [];
+
+    if (state.conversationId === undefined) {
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      return allowOutput();
+    }
+
+    const assistantText = payloadInfo.assistantText?.trim();
+    if (assistantText === undefined || assistantText === "") {
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      return allowOutput();
+    }
+
+    const config = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
+    if (config === null) {
+      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      return allowOutput();
+    }
+
+    try {
+      const memory = this.createMemoryService(config, invocation, payloadInfo.projectDirectory, state);
+      const assistantPartId = assistantPartKey(payloadInfo);
+      if (assistantPartId !== undefined) {
+        if (state.seenAssistantPartIds.includes(assistantPartId)) {
+          await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+          return allowOutput();
+        }
+
+        await memory.storeAssistantMessage(state.conversationId, assistantText);
+        markSeen(state.seenAssistantPartIds, [assistantPartId]);
+      } else {
+        const assistantHash = assistantMessageHash(invocation.platform, state.sessionKey, assistantText);
+        if (!hasSeenAssistantMessage(state, assistantHash)) {
+          await memory.storeAssistantMessage(state.conversationId, assistantText);
+          markAssistantMessageSeen(state, assistantHash);
+        }
+      }
+    } catch {
+      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      return allowOutput();
+    }
+
+    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
     return allowOutput();
   }
 
@@ -203,6 +258,34 @@ function markUserMessageSeen(
 
 function userMessageHash(platform: HookInvocation["platform"], sessionKey: string, content: string): string {
   return sha256([platform, sessionKey, "user", content.trim()].join("\n"));
+}
+
+function assistantPartKey(payloadInfo: OpenCodePayloadInfo): string | undefined {
+  if (payloadInfo.messageId === undefined || payloadInfo.partId === undefined) {
+    return undefined;
+  }
+  return `${payloadInfo.messageId}:${payloadInfo.partId}`;
+}
+
+function hasSeenAssistantMessage(state: SessionState, messageHash: string): boolean {
+  return state.lastAssistantMessageHash === messageHash || state.seenAssistantMessageHashes.includes(messageHash);
+}
+
+function markAssistantMessageSeen(state: SessionState, messageHash: string): void {
+  state.lastAssistantMessageHash = messageHash;
+  markSeen(state.seenAssistantMessageHashes, [messageHash]);
+}
+
+function assistantMessageHash(platform: HookInvocation["platform"], sessionKey: string, content: string): string {
+  return sha256([platform, sessionKey, "assistant", content.trim()].join("\n"));
+}
+
+function markSeen(seen: string[], keys: string[]): void {
+  for (const key of keys) {
+    if (!seen.includes(key)) {
+      seen.push(key);
+    }
+  }
 }
 
 async function appendNamsConfigDiagnostic(

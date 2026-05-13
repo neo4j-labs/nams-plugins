@@ -278,6 +278,85 @@ test("OpenCode chat.message stores same content for distinct message ids", async
   }
 });
 
+test("OpenCode experimental.text.complete stores assistant text", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
+  try {
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    const { OpenCodeAdapter } = await import(opencodeUrl);
+    const adapter = new OpenCodeAdapter({
+      env: { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" },
+      fetch: nams.fetch,
+    });
+
+    await adapter.beforeAgent({
+      platform: "opencode",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: chatMessagePayload(projectDir, "session-1", "user-1", "Say hello."),
+    });
+
+    const result = await adapter.afterAgent({
+      platform: "opencode",
+      event: "AfterAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook: "experimental.text.complete",
+        directory: projectDir,
+        input: { sessionID: "session-1", messageID: "assistant-1", partID: "part-1" },
+        output: { text: "Hello!" },
+      },
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    assert.deepEqual(nams.requestBodies("addMessage").at(-1), {
+      role: "assistant",
+      content: "Hello!",
+    });
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Duplicate OpenCode experimental.text.complete does not store assistant text twice", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
+  try {
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    const { OpenCodeAdapter } = await import(opencodeUrl);
+    const adapter = new OpenCodeAdapter({
+      env: { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" },
+      fetch: nams.fetch,
+    });
+
+    await adapter.beforeAgent({
+      platform: "opencode",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: chatMessagePayload(projectDir, "session-1", "user-1", "Say hello."),
+    });
+    const invocation = {
+      platform: "opencode",
+      event: "AfterAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook: "experimental.text.complete",
+        directory: projectDir,
+        input: { sessionID: "session-1", messageID: "assistant-1", partID: "part-1" },
+        output: { text: "Hello!" },
+      },
+    };
+
+    await adapter.afterAgent(invocation);
+    await adapter.afterAgent(invocation);
+
+    assert.deepEqual(
+      nams.requestBodies("addMessage").filter((body) => body.role === "assistant"),
+      [{ role: "assistant", content: "Hello!" }],
+    );
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 async function readSingleSessionLog(projectDir) {
   const logDir = path.join(projectDir, ".nams", "logs");
   const logFiles = (await readdir(logDir)).filter((fileName) => /^session-.*\.jsonl$/.test(fileName));
