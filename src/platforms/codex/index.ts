@@ -11,6 +11,7 @@ import {
   type SessionState,
 } from "../../runtime/session-state.js";
 import { parseCodexPayload } from "./payload.js";
+import { readCodexTranscript, type CodexTranscriptEntry } from "./transcript.js";
 
 export interface CodexAdapterOptions {
   env?: Record<string, string | undefined>;
@@ -105,6 +106,55 @@ export class CodexAdapter implements PlatformAdapter {
     return allowOutput(additionalContext);
   }
 
+  async afterAgent(invocation: HookInvocation<"AfterAgent">): Promise<HookResult> {
+    const payloadInfo = parseCodexPayload(invocation.rawPayload, invocation.processCwd);
+    const initialState = createInitialSessionState({
+      platform: invocation.platform,
+      sessionId: payloadInfo.sessionId,
+      projectDirectory: payloadInfo.projectDirectory,
+    });
+    const state =
+      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
+    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
+    state.seenAssistantMessageHashes ??= [];
+    state.seenTranscriptEntryIds ??= [];
+
+    if (state.conversationId === undefined) {
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      return allowOutput();
+    }
+    const conversationId = state.conversationId;
+
+    const config = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
+    if (config === null) {
+      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      return allowOutput();
+    }
+
+    try {
+      const memory = this.createMemoryService(config, invocation, payloadInfo.projectDirectory, state);
+      const response = payloadInfo.lastAssistantMessage?.trim();
+      if (response !== undefined && response !== "") {
+        const responseHash = assistantMessageHash(invocation.platform, state.sessionKey, response);
+        if (!hasSeenAssistantMessage(state, responseHash)) {
+          await memory.storeAssistantMessage(conversationId, response);
+        }
+        markAssistantMessageSeen(state, responseHash);
+      } else if (payloadInfo.transcriptPath !== undefined) {
+        const entries = await readCodexTranscript(payloadInfo.transcriptPath);
+        await storeAssistantMessagesFromTranscript(invocation.platform, conversationId, state, memory, entries);
+      }
+    } catch {
+      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      return allowOutput();
+    }
+
+    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    return allowOutput();
+  }
+
   private createMemoryService(
     config: NamsRuntimeConfig,
     invocation: HookInvocation,
@@ -134,6 +184,58 @@ function allowOutput(additionalContext?: string): HookResult {
         : {}),
     },
   };
+}
+
+type AssistantMessageState = {
+  lastAssistantMessageHash?: string;
+  seenAssistantMessageHashes: string[];
+  seenTranscriptEntryIds: string[];
+  sessionKey: string;
+};
+
+async function storeAssistantMessagesFromTranscript(
+  platform: string,
+  conversationId: string,
+  state: AssistantMessageState,
+  memory: NamsMemoryService,
+  entries: CodexTranscriptEntry[],
+): Promise<void> {
+  for (const entry of entries) {
+    if (entry.kind !== "assistant") {
+      continue;
+    }
+    if (entry.id !== undefined && state.seenTranscriptEntryIds.includes(entry.id)) {
+      continue;
+    }
+
+    const content = entry.content.trim();
+    if (content !== "") {
+      const responseHash = assistantMessageHash(platform, state.sessionKey, content);
+      if (!hasSeenAssistantMessage(state, responseHash)) {
+        await memory.storeAssistantMessage(conversationId, content);
+      }
+      markAssistantMessageSeen(state, responseHash);
+    }
+
+    if (entry.id !== undefined) {
+      state.seenTranscriptEntryIds.push(entry.id);
+    }
+  }
+}
+
+function assistantMessageHash(platform: string, sessionKey: string, content: string): string {
+  return sha256([platform, sessionKey, "assistant", content].join("\n"));
+}
+
+function hasSeenAssistantMessage(state: AssistantMessageState, hash: string): boolean {
+  return state.lastAssistantMessageHash === hash || state.seenAssistantMessageHashes.includes(hash);
+}
+
+function markAssistantMessageSeen(state: AssistantMessageState, hash: string): void {
+  state.lastAssistantMessageHash = hash;
+  if (!state.seenAssistantMessageHashes.includes(hash)) {
+    state.seenAssistantMessageHashes.push(hash);
+  }
 }
 
 async function appendNamsConfigDiagnostic(

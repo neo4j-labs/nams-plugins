@@ -373,6 +373,398 @@ test("Codex message failure returns recalled additional context and fails open",
   }
 });
 
+test("stores Codex Stop last_assistant_message as an assistant message", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
+  try {
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    const { CodexAdapter } = await import(codexUrl);
+    const adapter = new CodexAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: nams.fetch,
+    });
+
+    await adapter.beforeAgent({
+      platform: "codex",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "Say hello.",
+      },
+    });
+
+    const result = await adapter.afterAgent({
+      platform: "codex",
+      event: "AfterAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "Stop",
+        session_id: "session-1",
+        cwd: projectDir,
+        last_assistant_message: "Hello!",
+      },
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    assert.deepEqual(nams.requestBodies("addMessage").at(-1), {
+      role: "assistant",
+      content: "Hello!",
+    });
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("stores Codex transcript assistant message when last_assistant_message is absent", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
+  try {
+    const transcriptPath = path.join(projectDir, "codex-transcript.jsonl");
+    await writeFile(
+      transcriptPath,
+      [
+        JSON.stringify({
+          type: "response_item",
+          item: {
+            id: "assistant-1",
+            type: "message",
+            role: "assistant",
+            content: [{ text: "Transcript fallback response." }],
+          },
+        }),
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    const { CodexAdapter } = await import(codexUrl);
+    const adapter = new CodexAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: nams.fetch,
+    });
+
+    await adapter.beforeAgent({
+      platform: "codex",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "Use transcript fallback.",
+      },
+    });
+
+    const result = await adapter.afterAgent({
+      platform: "codex",
+      event: "AfterAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "Stop",
+        session_id: "session-1",
+        cwd: projectDir,
+        transcript_path: transcriptPath,
+      },
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    assert.deepEqual(nams.requestBodies("addMessage").at(-1), {
+      role: "assistant",
+      content: "Transcript fallback response.",
+    });
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("repeated Codex Stop last_assistant_message stores once", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
+  try {
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    const { CodexAdapter } = await import(codexUrl);
+    const adapter = new CodexAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: nams.fetch,
+    });
+
+    await adapter.beforeAgent({
+      platform: "codex",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "Create a conversation.",
+      },
+    });
+
+    const invocation = {
+      platform: "codex",
+      event: "AfterAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "Stop",
+        session_id: "session-1",
+        cwd: projectDir,
+        last_assistant_message: "Store this once.",
+      },
+    };
+
+    await adapter.afterAgent(invocation);
+    await adapter.afterAgent(invocation);
+
+    const assistantMessages = nams.requestBodies("addMessage").filter((body) => body.role === "assistant");
+    assert.deepEqual(assistantMessages, [{ role: "assistant", content: "Store this once." }]);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Codex transcript fallback does not duplicate an entry id", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
+  try {
+    const transcriptPath = path.join(projectDir, "codex-transcript.jsonl");
+    await writeFile(
+      transcriptPath,
+      [
+        JSON.stringify({
+          type: "response_item",
+          item: { id: "assistant-1", type: "message", role: "assistant", content: "Only once." },
+        }),
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    const { CodexAdapter } = await import(codexUrl);
+    const adapter = new CodexAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: nams.fetch,
+    });
+
+    await adapter.beforeAgent({
+      platform: "codex",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "Create a conversation.",
+      },
+    });
+
+    const invocation = {
+      platform: "codex",
+      event: "AfterAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "Stop",
+        session_id: "session-1",
+        cwd: projectDir,
+        transcript_path: transcriptPath,
+      },
+    };
+
+    await adapter.afterAgent(invocation);
+    await adapter.afterAgent(invocation);
+
+    const assistantMessages = nams.requestBodies("addMessage").filter((body) => body.role === "assistant");
+    assert.deepEqual(assistantMessages, [{ role: "assistant", content: "Only once." }]);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Codex transcript fallback does not duplicate same assistant content when id changes", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
+  try {
+    const transcriptPath = path.join(projectDir, "codex-transcript.jsonl");
+    await writeFile(
+      transcriptPath,
+      [
+        JSON.stringify({
+          type: "response_item",
+          item: { id: "assistant-1", type: "message", role: "assistant", content: "Same content." },
+        }),
+        JSON.stringify({
+          type: "response_item",
+          item: { id: "assistant-2", type: "message", role: "assistant", content: "Same content." },
+        }),
+        JSON.stringify({
+          type: "response_item",
+          item: { type: "message", role: "assistant", content: "Same content." },
+        }),
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    const { CodexAdapter } = await import(codexUrl);
+    const adapter = new CodexAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: nams.fetch,
+    });
+
+    await adapter.beforeAgent({
+      platform: "codex",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "Create a conversation.",
+      },
+    });
+
+    await adapter.afterAgent({
+      platform: "codex",
+      event: "AfterAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "Stop",
+        session_id: "session-1",
+        cwd: projectDir,
+        transcript_path: transcriptPath,
+      },
+    });
+
+    const assistantMessages = nams.requestBodies("addMessage").filter((body) => body.role === "assistant");
+    assert.deepEqual(assistantMessages, [{ role: "assistant", content: "Same content." }]);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Codex afterAgent with no conversationId returns allow output and does not call NAMS", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
+  try {
+    const nams = createNamsFetchMock().all({ error: "unexpected NAMS call" }, 500);
+    const { CodexAdapter } = await import(codexUrl);
+    const { loadSessionState } = await import(stateUrl);
+    const adapter = new CodexAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: nams.fetch,
+    });
+
+    const result = await adapter.afterAgent({
+      platform: "codex",
+      event: "AfterAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "Stop",
+        session_id: "session-1",
+        cwd: projectDir,
+        last_assistant_message: "No conversation yet.",
+      },
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    assert.equal(nams.calls().length, 0);
+    const state = await loadSessionState(projectDir, "codex", "session-1");
+    assert.notEqual(state, null);
+    assert.equal(state.conversationId, undefined);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Codex afterAgent missing config and failed NAMS calls allow and log sanitized diagnostics", async () => {
+  const missingConfigDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
+  const namsFailureDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
+  try {
+    const { CodexAdapter } = await import(codexUrl);
+    const { createInitialSessionState, saveSessionState } = await import(stateUrl);
+
+    const missingConfigState = createInitialSessionState({
+      platform: "codex",
+      sessionId: "session-1",
+      projectDirectory: missingConfigDir,
+    });
+    missingConfigState.conversationId = "conversation-1";
+    await saveSessionState(missingConfigDir, "codex", missingConfigState.sessionKey, missingConfigState);
+
+    const missingConfigResult = await new CodexAdapter({ env: {} }).afterAgent({
+      platform: "codex",
+      event: "AfterAgent",
+      processCwd: missingConfigDir,
+      rawPayload: {
+        hook_event_name: "Stop",
+        session_id: "session-1",
+        cwd: missingConfigDir,
+        last_assistant_message: "Config is missing.",
+      },
+    });
+
+    assert.deepEqual(missingConfigResult.stdout, { continue: true, suppressOutput: true });
+    const { log: missingConfigLog } = await readSingleSessionLog(missingConfigDir);
+    assert.match(missingConfigLog, /NAMS_API_KEY missing/);
+    assert.doesNotMatch(missingConfigLog, /Authorization|Bearer|key/);
+
+    const namsFailureState = createInitialSessionState({
+      platform: "codex",
+      sessionId: "session-1",
+      projectDirectory: namsFailureDir,
+    });
+    namsFailureState.conversationId = "conversation-1";
+    await saveSessionState(namsFailureDir, "codex", namsFailureState.sessionKey, namsFailureState);
+
+    const nams = createNamsFetchMock().message({ error: "assistant write unavailable" }, 503);
+    const namsFailureResult = await new CodexAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: nams.fetch,
+    }).afterAgent({
+      platform: "codex",
+      event: "AfterAgent",
+      processCwd: namsFailureDir,
+      rawPayload: {
+        hook_event_name: "Stop",
+        session_id: "session-1",
+        cwd: namsFailureDir,
+        last_assistant_message: "NAMS is unavailable.",
+      },
+    });
+
+    assert.deepEqual(namsFailureResult.stdout, { continue: true, suppressOutput: true });
+    const { lines: namsFailureLines, log: namsFailureLog } = await readSingleSessionLog(namsFailureDir);
+    assert.match(namsFailureLog, /NAMS request failed/);
+    const diagnostics = namsFailureLines.filter((entry) => entry.kind === "diagnostic");
+    assert.deepEqual(diagnostics.map((entry) => entry.payload), [{ message: "NAMS request failed" }]);
+    assert.doesNotMatch(JSON.stringify(diagnostics), /assistant write unavailable|Authorization|Bearer|key/);
+    assert.doesNotMatch(namsFailureLog, /Authorization|Bearer|key/);
+  } finally {
+    await rm(missingConfigDir, { recursive: true, force: true });
+    await rm(namsFailureDir, { recursive: true, force: true });
+  }
+});
+
 test("raw Codex hook logs are session-scoped and include raw UserPromptSubmit payload fields", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
   try {
