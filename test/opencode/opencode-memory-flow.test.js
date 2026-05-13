@@ -134,6 +134,16 @@ test("OpenCode system transform returns and consumes pending memory context", as
       rawPayload: systemTransformPayload(projectDir, "session-1"),
     });
     assert.deepEqual(second.stdout, { continue: true, suppressOutput: true });
+
+    const { lines } = await readSingleSessionLog(projectDir);
+    assert.ok(
+      lines.some(
+        (line) =>
+          line.kind === "hook.event" &&
+          line.event === "BeforeAgent" &&
+          line.payload.hook === "experimental.chat.system.transform",
+      ),
+    );
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }

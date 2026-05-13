@@ -4,7 +4,7 @@
   "description": "Neo4j Agent Memory Service hooks for agent harnesses.",
   "type": "module",
   "bin": {
-    "nams-hooks": "./dist/cli.js"
+    "nams-hooks": "./dist/bin/cli.js"
   },
   "files": [
     "dist/",

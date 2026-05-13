@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -13,6 +13,7 @@ async function main() {
   await mkdir(distDir, { recursive: true });
 
   await cp(path.join(compileDir), path.join(distDir, "bin"), { recursive: true });
+  await chmod(path.join(distDir, "bin", "cli.js"), 0o755);
   await cp(path.join(root, "templates", "gemini", "gemini-extension.json"), path.join(distDir, "gemini-extension.json"));
   await cp(path.join(root, "templates", "gemini", "hooks"), path.join(distDir, "hooks"), { recursive: true });
   await cp(path.join(root, "docs", "nams-openapi.json"), path.join(distDir, "docs", "nams-openapi.json"));

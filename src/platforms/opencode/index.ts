@@ -293,6 +293,7 @@ async function consumePendingContext(
   });
   const state =
     (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
+  await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
 
   const pendingContext = state.pendingMemoryContext;
   if (pendingContext === undefined) {
