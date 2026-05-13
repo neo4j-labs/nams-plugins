@@ -1,7 +1,7 @@
 import type { HookInvocation, HookResult, PlatformAdapter } from "../../interfaces.js";
 import type { NamsRequestEvent } from "../../generated/nams-client.js";
 import { loadNamsConfig, type NamsRuntimeConfig } from "../../runtime/config.js";
-import { sha256 } from "../../runtime/hashing.js";
+import { sha256, stableJsonHash } from "../../runtime/hashing.js";
 import { appendPlatformLog } from "../../runtime/logging.js";
 import { combineMemoryContexts, NamsMemoryService } from "../../runtime/memory-service.js";
 import { createInitialSessionState, loadSessionState, saveSessionState } from "../../runtime/session-state.js";
@@ -181,7 +181,86 @@ export class OpenCodeAdapter implements PlatformAdapter {
     return allowOutput();
   }
 
-  async afterTool(_invocation: HookInvocation<"AfterTool">): Promise<HookResult> {
+  async afterTool(invocation: HookInvocation<"AfterTool">): Promise<HookResult> {
+    const payloadInfo = parseOpenCodePayload(invocation.rawPayload, invocation.processCwd);
+    const initialState = createInitialSessionState({
+      platform: invocation.platform,
+      projectDirectory: payloadInfo.projectDirectory,
+      sessionId: payloadInfo.sessionId,
+    });
+    const state =
+      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
+    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
+    state.seenToolCallIds ??= [];
+    state.seenReasoningStepHashes ??= [];
+    state.reasoningStepIdsByHash ??= {};
+
+    if (state.conversationId === undefined) {
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      return allowOutput();
+    }
+
+    if (payloadInfo.hookName !== "tool.execute.after") {
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      return allowOutput();
+    }
+
+    if (payloadInfo.toolName === undefined || payloadInfo.toolName.trim() === "") {
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      return allowOutput();
+    }
+
+    const config = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
+    if (config === null) {
+      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      return allowOutput();
+    }
+
+    try {
+      const dedupeKey = opencodeToolCallDedupeKey(
+        state.sessionKey,
+        payloadInfo.toolCallId,
+        payloadInfo.toolName,
+        payloadInfo.toolInput,
+      );
+      if (!state.seenToolCallIds.includes(dedupeKey)) {
+        const memory = this.createMemoryService(config, invocation, payloadInfo.projectDirectory, state);
+        const reasoningStep = {
+          conversationId: state.conversationId,
+          reasoning: `OpenCode invoked ${payloadInfo.toolName} with the provided tool input.`,
+          actionTaken: `Ran ${payloadInfo.toolName}`,
+          ...(payloadInfo.toolTitle !== undefined ? { result: payloadInfo.toolTitle } : {}),
+        };
+        const reasoningStepHash = stableJsonHash({
+          sessionKey: state.sessionKey,
+          ...reasoningStep,
+        });
+        let stepId: string | undefined = state.reasoningStepIdsByHash[reasoningStepHash];
+        if (!state.seenReasoningStepHashes.includes(reasoningStepHash)) {
+          stepId = await memory.recordReasoningStep(reasoningStep);
+          state.seenReasoningStepHashes.push(reasoningStepHash);
+          if (stepId !== undefined) {
+            state.reasoningStepIdsByHash[reasoningStepHash] = stepId;
+          }
+        }
+
+        await memory.recordToolCall({
+          ...(stepId !== undefined ? { stepId } : {}),
+          toolName: payloadInfo.toolName,
+          input: payloadInfo.toolInput,
+          ...(payloadInfo.toolOutput !== undefined ? { output: payloadInfo.toolOutput } : {}),
+          status: payloadInfo.toolStatus ?? "completed",
+        });
+        markSeen(state.seenToolCallIds, [dedupeKey]);
+      }
+    } catch {
+      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      return allowOutput();
+    }
+
+    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
     return allowOutput();
   }
 
@@ -283,6 +362,18 @@ function markAssistantMessageSeen(state: SessionState, messageHash: string): voi
 
 function assistantMessageHash(platform: HookInvocation["platform"], sessionKey: string, content: string): string {
   return sha256([platform, sessionKey, "assistant", content.trim()].join("\n"));
+}
+
+function opencodeToolCallDedupeKey(
+  sessionKey: string,
+  toolCallId: string | undefined,
+  toolName: string,
+  toolInput: unknown,
+): string {
+  if (toolCallId !== undefined && toolCallId.trim() !== "") {
+    return `opencode-call-id:${stableJsonHash({ sessionKey, toolCallId })}`;
+  }
+  return stableJsonHash({ sessionKey, toolName, toolInput });
 }
 
 function markSeen(seen: string[], keys: string[]): void {

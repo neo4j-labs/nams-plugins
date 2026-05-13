@@ -393,6 +393,112 @@ test("Duplicate OpenCode experimental.text.complete does not store assistant tex
   }
 });
 
+test("OpenCode tool.execute.after records sanitized tool metadata", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
+  try {
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message()
+      .reasoningStep({ id: "step-1" })
+      .toolCall();
+    const { OpenCodeAdapter } = await import(opencodeUrl);
+    const adapter = new OpenCodeAdapter({
+      env: { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" },
+      fetch: nams.fetch,
+    });
+
+    await adapter.beforeAgent({
+      platform: "opencode",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: chatMessagePayload(projectDir, "session-1", "user-1", "Run tests."),
+    });
+
+    const result = await adapter.afterTool({
+      platform: "opencode",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: {
+        hook: "tool.execute.after",
+        directory: projectDir,
+        input: {
+          sessionID: "session-1",
+          callID: "call-1",
+          tool: "bash",
+          args: { command: "npm test", output: "must be sanitized", keep: "metadata" },
+        },
+        output: { title: "npm test", output: "69 tests pass", metadata: { exit: 0 } },
+      },
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    assert.deepEqual(nams.requestBody("addReasoningStep"), {
+      conversationId: "conversation-1",
+      reasoning: "OpenCode invoked bash with the provided tool input.",
+      actionTaken: "Ran bash",
+      result: "npm test",
+    });
+
+    const toolBodies = nams.requestBodies("addToolCall");
+    assert.equal(toolBodies.length, 1);
+    assert.equal(toolBodies[0].toolName, "bash");
+    assert.equal(toolBodies[0].stepId, "step-1");
+    assert.equal(toolBodies[0].status, "completed");
+    assert.equal(toolBodies[0].output, "69 tests pass");
+    assert.match(toolBodies[0].input, /"command":"npm test"/);
+    assert.match(toolBodies[0].input, /"keep":"metadata"/);
+    assert.doesNotMatch(toolBodies[0].input, /"output"|must be sanitized/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Duplicate OpenCode tool.execute.after does not store tool metadata twice", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
+  try {
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message()
+      .reasoningStep({ id: "step-1" })
+      .toolCall();
+    const { OpenCodeAdapter } = await import(opencodeUrl);
+    const adapter = new OpenCodeAdapter({
+      env: { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" },
+      fetch: nams.fetch,
+    });
+
+    await adapter.beforeAgent({
+      platform: "opencode",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: chatMessagePayload(projectDir, "session-1", "user-1", "Run tests."),
+    });
+
+    const invocation = {
+      platform: "opencode",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: {
+        hook: "tool.execute.after",
+        directory: projectDir,
+        input: { sessionID: "session-1", callID: "call-1", tool: "bash", args: { command: "npm test" } },
+        output: { title: "npm test", output: "69 tests pass" },
+      },
+    };
+
+    await adapter.afterTool(invocation);
+    await adapter.afterTool(invocation);
+
+    assert.equal(nams.calls("addToolCall").length, 1);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("OpenCode assistant part dedupe does not collide on raw delimiters", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
   try {
