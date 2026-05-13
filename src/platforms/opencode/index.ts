@@ -130,6 +130,11 @@ export class OpenCodeAdapter implements PlatformAdapter {
     state.seenAssistantPartIds ??= [];
     state.seenAssistantMessageHashes ??= [];
 
+    if (payloadInfo.hookName !== "experimental.text.complete") {
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      return allowOutput();
+    }
+
     if (state.conversationId === undefined) {
       await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
       return allowOutput();
@@ -264,7 +269,7 @@ function assistantPartKey(payloadInfo: OpenCodePayloadInfo): string | undefined 
   if (payloadInfo.messageId === undefined || payloadInfo.partId === undefined) {
     return undefined;
   }
-  return `${payloadInfo.messageId}:${payloadInfo.partId}`;
+  return JSON.stringify([payloadInfo.messageId, payloadInfo.partId]);
 }
 
 function hasSeenAssistantMessage(state: SessionState, messageHash: string): boolean {

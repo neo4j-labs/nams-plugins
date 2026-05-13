@@ -317,6 +317,42 @@ test("OpenCode experimental.text.complete stores assistant text", async () => {
   }
 });
 
+test("OpenCode AfterAgent ignores non text-complete output text", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
+  try {
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    const { OpenCodeAdapter } = await import(opencodeUrl);
+    const adapter = new OpenCodeAdapter({
+      env: { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" },
+      fetch: nams.fetch,
+    });
+
+    await adapter.beforeAgent({
+      platform: "opencode",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: chatMessagePayload(projectDir, "session-1", "user-1", "Say hello."),
+    });
+
+    const result = await adapter.afterAgent({
+      platform: "opencode",
+      event: "AfterAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook: "custom.assistant.surface",
+        directory: projectDir,
+        input: { sessionID: "session-1", messageID: "assistant-1", partID: "part-1" },
+        output: { text: "Not an assistant completion." },
+      },
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    assert.deepEqual(nams.requestBodies("addMessage"), [{ role: "user", content: "Say hello." }]);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("Duplicate OpenCode experimental.text.complete does not store assistant text twice", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
   try {
@@ -351,6 +387,58 @@ test("Duplicate OpenCode experimental.text.complete does not store assistant tex
     assert.deepEqual(
       nams.requestBodies("addMessage").filter((body) => body.role === "assistant"),
       [{ role: "assistant", content: "Hello!" }],
+    );
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("OpenCode assistant part dedupe does not collide on raw delimiters", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
+  try {
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    const { OpenCodeAdapter } = await import(opencodeUrl);
+    const adapter = new OpenCodeAdapter({
+      env: { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" },
+      fetch: nams.fetch,
+    });
+
+    await adapter.beforeAgent({
+      platform: "opencode",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: chatMessagePayload(projectDir, "session-1", "user-1", "Say hello."),
+    });
+
+    await adapter.afterAgent({
+      platform: "opencode",
+      event: "AfterAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook: "experimental.text.complete",
+        directory: projectDir,
+        input: { sessionID: "session-1", messageID: "assistant-1:a", partID: "b" },
+        output: { text: "First assistant part." },
+      },
+    });
+    await adapter.afterAgent({
+      platform: "opencode",
+      event: "AfterAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook: "experimental.text.complete",
+        directory: projectDir,
+        input: { sessionID: "session-1", messageID: "assistant-1", partID: "a:b" },
+        output: { text: "Second assistant part." },
+      },
+    });
+
+    assert.deepEqual(
+      nams.requestBodies("addMessage").filter((body) => body.role === "assistant"),
+      [
+        { role: "assistant", content: "First assistant part." },
+        { role: "assistant", content: "Second assistant part." },
+      ],
     );
   } finally {
     await rm(projectDir, { recursive: true, force: true });
