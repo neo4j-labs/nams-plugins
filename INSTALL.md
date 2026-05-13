@@ -38,27 +38,27 @@ Placeholder: installation instructions for linking or installing directly from a
 
 ## OpenCode
 
+````markdown
+## OpenCode
+
 OpenCode loads project plugins from `.opencode/plugins/`.
 
-````bash
+```bash
 npm install -g @neo4j-labs/nams-hooks
 mkdir -p .opencode/plugins
 cp templates/opencode/plugins/nams-hooks.js .opencode/plugins/nams-hooks.js
-````
+```
 
 For local development from this repository:
 
-````bash
+```bash
 npm install
 npm run build
 mkdir -p /path/to/project/.opencode/plugins
 cp templates/opencode/plugins/nams-hooks.js /path/to/project/.opencode/plugins/nams-hooks.js
-````
+```
 
 If `nams-hooks` is not on OpenCode's `PATH`, set `NAMS_HOOKS_COMMAND` to the executable path before starting OpenCode.
 
-The plugin listens for OpenCode events and routes them through the CLI gateway, for example:
-
-````bash
-nams-hooks run opencode --event SessionStart
+The plugin listens for OpenCode events and routes them through the CLI gateway, for example `nams-hooks run opencode --event SessionStart`.
 ````
