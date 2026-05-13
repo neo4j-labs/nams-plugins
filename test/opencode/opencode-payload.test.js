@@ -60,6 +60,34 @@ test("extracts OpenCode chat message prompt from non-ignored text parts", async 
   });
 });
 
+test("extracts OpenCode chat message id from real template input shape", async () => {
+  const { parseOpenCodePayload } = await import(payloadUrl);
+  const info = parseOpenCodePayload(
+    {
+      hook: "chat.message",
+      directory: "/project",
+      input: {
+        sessionID: "session-1",
+        message: {
+          id: "message-from-input",
+          sessionID: "session-1",
+          parts: [{ type: "text", text: "Template prompt" }],
+        },
+      },
+      output: {},
+    },
+    "/fallback",
+  );
+
+  assert.deepEqual(info, {
+    hookName: "chat.message",
+    sessionId: "session-1",
+    messageId: "message-from-input",
+    projectDirectory: "/project",
+    userPrompt: "Template prompt",
+  });
+});
+
 test("extracts OpenCode assistant text completion metadata", async () => {
   const { parseOpenCodePayload } = await import(payloadUrl);
   const info = parseOpenCodePayload(

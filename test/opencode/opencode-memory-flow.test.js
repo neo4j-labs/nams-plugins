@@ -288,6 +288,40 @@ test("OpenCode chat.message stores same content for distinct message ids", async
   }
 });
 
+test("OpenCode chat.message stores repeated template-shaped input for distinct message ids", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
+  try {
+    const prompt = "Same template-shaped user prompt.";
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    const { OpenCodeAdapter } = await import(opencodeUrl);
+    const adapter = new OpenCodeAdapter({
+      env: { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" },
+      fetch: nams.fetch,
+    });
+
+    await adapter.beforeAgent({
+      platform: "opencode",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: chatMessageTemplatePayload(projectDir, "session-1", "user-1", prompt),
+    });
+    await adapter.beforeAgent({
+      platform: "opencode",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: chatMessageTemplatePayload(projectDir, "session-1", "user-2", prompt),
+    });
+
+    assert.equal(nams.calls("addMessage").length, 2);
+    assert.deepEqual(nams.requestBodies("addMessage"), [
+      { role: "user", content: prompt },
+      { role: "user", content: prompt },
+    ]);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("OpenCode experimental.text.complete stores assistant text", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
   try {
@@ -641,6 +675,23 @@ function chatMessagePayload(projectDir, sessionID, messageID, text) {
       message: { id: messageID, sessionID, role: "user" },
       parts: [{ id: "part-1", sessionID, messageID, type: "text", text }],
     },
+  };
+}
+
+function chatMessageTemplatePayload(projectDir, sessionID, messageID, text) {
+  return {
+    hook: "chat.message",
+    directory: projectDir,
+    input: {
+      sessionID,
+      message: {
+        id: messageID,
+        sessionID,
+        role: "user",
+        parts: [{ id: "part-1", sessionID, messageID, type: "text", text }],
+      },
+    },
+    output: {},
   };
 }
 

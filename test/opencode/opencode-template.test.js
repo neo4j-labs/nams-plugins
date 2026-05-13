@@ -28,9 +28,10 @@ test("chat.message handler sends real two-argument input and output to nams-hook
     const input = { message: { id: "message-1", parts: [{ type: "text", text: "hello" }] } };
     const output = { ok: true };
 
-    await plugin["chat.message"](input, output);
+    const result = await plugin["chat.message"](input, output);
 
     const calls = await readCalls(fixture.callsPath);
+    assert.equal(result, undefined);
     assert.equal(calls.length, 1);
     assert.deepEqual(calls[0].args, ["run", "opencode", "--event", "BeforeAgent"]);
     assert.equal(calls[0].payload.hook, "chat.message");
@@ -93,9 +94,10 @@ test("experimental.text.complete handler sends assistant completion payload to A
     const input = { sessionID: "session-1", messageID: "assistant-1", partID: "part-1" };
     const output = { text: "Hello!" };
 
-    await plugin["experimental.text.complete"](input, output);
+    const result = await plugin["experimental.text.complete"](input, output);
 
     const calls = await readCalls(fixture.callsPath);
+    assert.equal(result, undefined);
     assert.equal(calls.length, 1);
     assert.deepEqual(calls[0].args, ["run", "opencode", "--event", "AfterAgent"]);
     assert.equal(calls[0].payload.hook, "experimental.text.complete");
@@ -114,9 +116,10 @@ test("tool.execute.after handler sends tool payload to AfterTool", async () => {
     const input = { sessionID: "session-1", callID: "call-1", tool: "bash", args: { command: "npm test" } };
     const output = { title: "npm test", output: "100 tests pass" };
 
-    await plugin["tool.execute.after"](input, output);
+    const result = await plugin["tool.execute.after"](input, output);
 
     const calls = await readCalls(fixture.callsPath);
+    assert.equal(result, undefined);
     assert.equal(calls.length, 1);
     assert.deepEqual(calls[0].args, ["run", "opencode", "--event", "AfterTool"]);
     assert.equal(calls[0].payload.hook, "tool.execute.after");

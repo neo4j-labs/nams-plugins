@@ -34,7 +34,7 @@ export function parseOpenCodePayload(payload: Record<string, unknown>, processCw
     eventProperties?.sessionID,
     eventInfo?.id,
   );
-  const messageId = firstString(input?.messageID, input?.messageId, outputMessage?.id);
+  const messageId = firstString(input?.messageID, input?.messageId, outputMessage?.id, inputMessage?.id, message?.id);
   const partId = firstString(input?.partID, input?.partId);
   const projectDirectory =
     firstString(payload.directory, payload.cwd, eventInfo?.directory, payload.worktree) ?? processCwd;

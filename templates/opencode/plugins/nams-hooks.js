@@ -22,7 +22,7 @@ export const NamsHooks = async ({ client, directory, project, worktree }) => {
     },
 
     "chat.message": async (input, output) => {
-      return await run("BeforeAgent", { hook: "chat.message", input, output });
+      await run("BeforeAgent", { hook: "chat.message", input, output });
     },
 
     "experimental.chat.system.transform": async (input, output) => {
@@ -38,11 +38,11 @@ export const NamsHooks = async ({ client, directory, project, worktree }) => {
     },
 
     "experimental.text.complete": async (input, output) => {
-      return await run("AfterAgent", { hook: "experimental.text.complete", input, output });
+      await run("AfterAgent", { hook: "experimental.text.complete", input, output });
     },
 
     "tool.execute.after": async (input, output) => {
-      return await run("AfterTool", { hook: "tool.execute.after", input, output });
+      await run("AfterTool", { hook: "tool.execute.after", input, output });
     },
   };
 };
