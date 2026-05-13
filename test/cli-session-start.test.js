@@ -82,7 +82,7 @@ for (const harness of ["gemini", "claude", "codex"]) {
       });
 
       const logPath =
-        harness === "gemini"
+        harness === "gemini" || harness === "codex"
           ? await singleSessionLogPath(projectDir)
           : path.join(projectDir, ".nams", "logs", `${harness}-session-start.jsonl`);
       const lines = (await readFile(logPath, "utf8")).trim().split("\n");
@@ -91,6 +91,10 @@ for (const harness of ["gemini", "claude", "codex"]) {
       assert.equal(entry.harness, harness);
       assert.equal(entry.event, "SessionStart");
       assert.deepEqual(entry.payload, payload);
+      if (harness === "codex") {
+        const logFiles = await readdir(path.join(projectDir, ".nams", "logs"));
+        assert.ok(!logFiles.includes("codex-session-start.jsonl"));
+      }
     } finally {
       await rm(projectDir, { recursive: true, force: true });
     }
