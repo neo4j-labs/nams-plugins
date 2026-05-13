@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { createNamsFetchMock } from "../support/nams-fetch-mock.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const opencodeUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "platforms", "opencode", "index.js")).href;
@@ -50,12 +51,227 @@ test("initializes OpenCode session state on session.created without creating a c
   }
 });
 
+test("OpenCode chat.message creates conversation, recalls memory, and stores user prompt", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
+  try {
+    const prompt = "Remember fixture tests.";
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context({ observations: [{ content: "User prefers fixture-driven tests." }] })
+      .searchEntities({ entities: [{ name: "Fixtures", description: "User prefers fixture-driven tests." }] })
+      .message();
+    const { OpenCodeAdapter } = await import(opencodeUrl);
+    const { loadSessionState } = await import(stateUrl);
+    const adapter = new OpenCodeAdapter({
+      env: { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" },
+      fetch: nams.fetch,
+    });
+
+    const result = await adapter.beforeAgent({
+      platform: "opencode",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: chatMessagePayload(projectDir, "session-1", "user-1", prompt),
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    assert.deepEqual(nams.requestBody("createConversation"), {
+      metadata: { harness: "opencode", projectDirectory: projectDir },
+    });
+    assert.deepEqual(nams.requestBody("searchEntities"), {
+      query: prompt,
+      limit: 5,
+    });
+    assert.deepEqual(nams.requestBody("addMessage"), {
+      role: "user",
+      content: prompt,
+    });
+
+    const state = await loadSessionState(projectDir, "opencode", "session-1");
+    assert.match(state.pendingMemoryContext.content, /User prefers fixture-driven tests\./);
+    assert.equal(state.pendingMemoryContext.messageId, "user-1");
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("OpenCode system transform returns and consumes pending memory context", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
+  try {
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context({ observations: [{ content: "User wants concise answers." }] })
+      .searchEntities()
+      .message();
+    const { OpenCodeAdapter } = await import(opencodeUrl);
+    const adapter = new OpenCodeAdapter({
+      env: { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" },
+      fetch: nams.fetch,
+    });
+
+    await adapter.beforeAgent({
+      platform: "opencode",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: chatMessagePayload(projectDir, "session-1", "user-1", "Hello."),
+    });
+
+    const first = await adapter.beforeAgent({
+      platform: "opencode",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: systemTransformPayload(projectDir, "session-1"),
+    });
+    assert.equal(first.stdout.continue, true);
+    assert.equal(first.stdout.suppressOutput, true);
+    assert.equal(first.stdout.hookSpecificOutput.hookEventName, "BeforeAgent");
+    assert.match(first.stdout.hookSpecificOutput.additionalContext, /User wants concise answers\./);
+
+    const second = await adapter.beforeAgent({
+      platform: "opencode",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: systemTransformPayload(projectDir, "session-1"),
+    });
+    assert.deepEqual(second.stdout, { continue: true, suppressOutput: true });
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("OpenCode BeforeAgent continues when NAMS_API_KEY is missing", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
+  try {
+    const { OpenCodeAdapter } = await import(opencodeUrl);
+    const adapter = new OpenCodeAdapter({ env: {} });
+
+    const result = await adapter.beforeAgent({
+      platform: "opencode",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: chatMessagePayload(projectDir, "session-1", "user-1", "Hello"),
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    const { log } = await readSingleSessionLog(projectDir);
+    assert.match(log, /NAMS_API_KEY missing/);
+    assert.doesNotMatch(log, /Bearer|key/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("OpenCode BeforeAgent continues when NAMS request fails", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
+  try {
+    const { OpenCodeAdapter } = await import(opencodeUrl);
+    const adapter = new OpenCodeAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: createNamsFetchMock().all({ error: "service unavailable" }, 503).fetch,
+    });
+
+    const result = await adapter.beforeAgent({
+      platform: "opencode",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: chatMessagePayload(projectDir, "session-1", "user-1", "Hello"),
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    const { log } = await readSingleSessionLog(projectDir);
+    assert.match(log, /NAMS request failed/);
+    assert.doesNotMatch(log, /Bearer|key/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("OpenCode NAMS failure diagnostics do not include arbitrary error text", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
+  try {
+    const { OpenCodeAdapter } = await import(opencodeUrl);
+    const adapter = new OpenCodeAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: createNamsFetchMock()
+        .throws(new Error('Authorization: Bearer secret NAMS_API_KEY {"prompt":"do not log me"}'))
+        .fetch,
+    });
+
+    const result = await adapter.beforeAgent({
+      platform: "opencode",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: chatMessagePayload(projectDir, "session-1", "user-1", "Hello"),
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    const { log } = await readSingleSessionLog(projectDir);
+    assert.match(log, /NAMS request failed/);
+    assert.doesNotMatch(log, /Authorization|Bearer|NAMS_API_KEY|do not log me/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Duplicate OpenCode chat.message does not store user prompt twice", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
+  try {
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    const { OpenCodeAdapter } = await import(opencodeUrl);
+    const adapter = new OpenCodeAdapter({
+      env: { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" },
+      fetch: nams.fetch,
+    });
+    const invocation = {
+      platform: "opencode",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: chatMessagePayload(projectDir, "session-1", "user-1", "Remember this once."),
+    };
+
+    await adapter.beforeAgent(invocation);
+    await adapter.beforeAgent(invocation);
+
+    assert.equal(nams.calls("addMessage").length, 1);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 async function readSingleSessionLog(projectDir) {
   const logDir = path.join(projectDir, ".nams", "logs");
   const logFiles = (await readdir(logDir)).filter((fileName) => /^session-.*\.jsonl$/.test(fileName));
   assert.equal(logFiles.length, 1, `expected one session log file, got ${logFiles.join(", ")}`);
   const log = await readFile(path.join(logDir, logFiles[0]), "utf8");
   return {
+    log,
     lines: log.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line)),
+  };
+}
+
+function chatMessagePayload(projectDir, sessionID, messageID, text) {
+  return {
+    hook: "chat.message",
+    directory: projectDir,
+    input: { sessionID, messageID },
+    output: {
+      message: { id: messageID, sessionID, role: "user" },
+      parts: [{ id: "part-1", sessionID, messageID, type: "text", text }],
+    },
+  };
+}
+
+function systemTransformPayload(projectDir, sessionID) {
+  return {
+    hook: "experimental.chat.system.transform",
+    directory: projectDir,
+    input: { sessionID },
+    output: { system: [] },
   };
 }
