@@ -1,43 +1,116 @@
 import { spawn } from "node:child_process";
-import process from "node:process";
 
-export const NamsHooksPlugin = async ({ directory, worktree }) => {
+const command = process.env.NAMS_HOOKS_COMMAND ?? "nams-hooks";
+
+export const NamsHooks = async ({ client, directory, project, worktree }) => {
+  async function run(event, payload) {
+    try {
+      return await invokeNams(event, { directory, project, worktree, ...payload });
+    } catch {
+      logDiagnostic(client, `NAMS OpenCode hook ${event} failed`);
+      return undefined;
+    }
+  }
+
   return {
     event: async ({ event }) => {
       if (event.type !== "session.created") {
         return;
       }
 
-      await runNamsHook({
-        event,
-        cwd: directory,
-        directory,
-        worktree,
-      });
+      await run("SessionStart", { hook: "event", event });
+    },
+
+    "chat.message": async ({ input, output }) => {
+      return await run("BeforeAgent", { hook: "chat.message", input, output });
+    },
+
+    "experimental.chat.system.transform": async ({ input, output }) => {
+      const result = await run("BeforeAgent", { hook: "experimental.chat.system.transform", input, output });
+      const additionalContext = result?.hookSpecificOutput?.additionalContext;
+      if (typeof additionalContext === "string" && additionalContext.trim() !== "") {
+        if (!Array.isArray(output.system)) {
+          output.system = [];
+        }
+        output.system.push(additionalContext);
+      }
+      return output;
+    },
+
+    "experimental.text.complete": async ({ input, output }) => {
+      return await run("AfterAgent", { hook: "experimental.text.complete", input, output });
+    },
+
+    "tool.execute.after": async ({ input, output }) => {
+      return await run("AfterTool", { hook: "tool.execute.after", input, output });
     },
   };
 };
 
-async function runNamsHook(payload) {
-  await new Promise((resolve) => {
-    const child = spawn("nams-hooks", ["run", "opencode", "--event", "SessionStart"], {
-      env: process.env,
-      stdio: ["pipe", "ignore", "ignore"],
-    });
+export default NamsHooks;
 
-    child.on("error", () => {
-      resolve();
+async function invokeNams(event, payload) {
+  return await new Promise((resolve, reject) => {
+    const child = spawn(command, ["run", "opencode", "--event", event], {
+      stdio: ["pipe", "pipe", "pipe"],
     });
-    child.on("close", () => {
-      resolve();
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+
+    function finish(error, value) {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve(value);
+    }
+
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
     });
-    child.stdin.on("error", () => {
-      resolve();
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
     });
+    child.on("error", (error) => {
+      finish(error);
+    });
+    child.on("close", (code) => {
+      if (code !== 0) {
+        finish(new Error(stderr.trim() || `nams-hooks exited with status ${code}`));
+        return;
+      }
+
+      const trimmed = stdout.trim();
+      if (trimmed === "") {
+        finish(undefined, undefined);
+        return;
+      }
+
+      try {
+        finish(undefined, JSON.parse(trimmed));
+      } catch (error) {
+        finish(error);
+      }
+    });
+    child.stdin.on("error", () => {});
+
     try {
       child.stdin.end(`${JSON.stringify(payload)}\n`);
-    } catch {
-      resolve();
+    } catch (error) {
+      finish(error);
     }
   });
+}
+
+function logDiagnostic(client, message) {
+  try {
+    client?.app?.log?.({ body: { service: "nams-hooks", level: "warn", message } });
+  } catch {}
 }
