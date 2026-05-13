@@ -89,7 +89,7 @@ export type CodexTranscriptEntry =
 - Modify: `test/cli-session-start.test.js`
 - Modify: `templates/codex/hooks.json`
 
-- [ ] **Step 1: Add routing tests**
+- [x] **Step 1: Add routing tests**
 
 Append tests that prove Codex uses generic NAMS events and does not route from payload `hook_event_name`:
 
@@ -129,7 +129,7 @@ test("rejects Codex native hook names as NAMS events", async () => {
 });
 ```
 
-- [ ] **Step 2: Verify generic routing behavior**
+- [x] **Step 2: Verify generic routing behavior**
 
 Run:
 
@@ -139,7 +139,7 @@ npm run build && node --test test/cli-session-start.test.js
 
 Expected: generic Codex event routing passes and native Codex hook names are rejected as `--event` values.
 
-- [ ] **Step 3: Preserve the working Codex hook template and extend it**
+- [x] **Step 3: Preserve the working Codex hook template and extend it**
 
 Before adding memory events, make sure `templates/codex/hooks.json` uses the known-working walking-skeleton shape:
 
@@ -216,7 +216,7 @@ Then extend that shape for new Codex memory events. Do not reintroduce the stale
 }
 ```
 
-- [ ] **Step 4: Verify green and commit**
+- [x] **Step 4: Verify green and commit**
 
 Run:
 
@@ -240,7 +240,7 @@ git commit -m "feat: map codex hooks to nams events" -m "Co-authored-by: Codex <
 - Create: `src/platforms/codex/payload.ts`
 - Create: `test/codex/codex-payload.test.js`
 
-- [ ] **Step 1: Write failing parser tests**
+- [x] **Step 1: Write failing parser tests**
 
 Create tests covering the current Codex input fields:
 
@@ -308,7 +308,7 @@ test("falls back to process cwd and ignores blank strings", async () => {
 });
 ```
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run:
 
@@ -318,7 +318,7 @@ npm run build && node --test test/codex/codex-payload.test.js
 
 Expected: fails because `src/platforms/codex/payload.ts` does not exist.
 
-- [ ] **Step 3: Implement parser**
+- [x] **Step 3: Implement parser**
 
 Create `src/platforms/codex/payload.ts`:
 
@@ -391,7 +391,7 @@ function firstDefined(...values: unknown[]): unknown {
 }
 ```
 
-- [ ] **Step 4: Verify green and commit**
+- [x] **Step 4: Verify green and commit**
 
 Run:
 
@@ -415,7 +415,7 @@ git commit -m "feat: parse codex hook payloads" -m "Co-authored-by: Codex <codex
 - Create: `src/platforms/codex/transcript.ts`
 - Create: `test/codex/codex-transcript.test.js`
 
-- [ ] **Step 1: Write failing transcript tests**
+- [x] **Step 1: Write failing transcript tests**
 
 Create `test/codex/codex-transcript.test.js` with fixtures that reflect Codex rollout message shapes and a nested fallback:
 
@@ -452,7 +452,7 @@ test("reads user and assistant messages from Codex rollout JSONL", async () => {
 });
 ```
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run:
 
@@ -462,7 +462,7 @@ npm run build && node --test test/codex/codex-transcript.test.js
 
 Expected: fails because `src/platforms/codex/transcript.ts` does not exist.
 
-- [ ] **Step 3: Implement transcript reader**
+- [x] **Step 3: Implement transcript reader**
 
 Create `src/platforms/codex/transcript.ts`:
 
@@ -544,7 +544,7 @@ function record(value: unknown): Record<string, unknown> | undefined {
 }
 ```
 
-- [ ] **Step 4: Verify green and commit**
+- [x] **Step 4: Verify green and commit**
 
 Run:
 
@@ -568,7 +568,7 @@ git commit -m "feat: read codex rollout transcript messages" -m "Co-authored-by:
 - Modify: `src/platforms/codex/index.ts`
 - Create: `test/codex/codex-memory-flow.test.js`
 
-- [ ] **Step 1: Write failing core flow tests**
+- [x] **Step 1: Write failing core flow tests**
 
 Create tests matching Gemini's flow style:
 
@@ -635,7 +635,7 @@ test("creates Codex conversation, recalls memory, and stores UserPromptSubmit pr
 });
 ```
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run:
 
@@ -645,7 +645,7 @@ npm run build && node --test test/codex/codex-memory-flow.test.js
 
 Expected: fails because `CodexAdapter` has no `beforeAgent` memory implementation.
 
-- [ ] **Step 3: Implement `SessionStart` state and NAMS `BeforeAgent` from Codex `UserPromptSubmit`**
+- [x] **Step 3: Implement `SessionStart` state and NAMS `BeforeAgent` from Codex `UserPromptSubmit`**
 
 In `src/platforms/codex/index.ts`, mirror the Gemini structure with Codex parser imports:
 
@@ -688,7 +688,7 @@ Implement `beforeAgent` with this order:
 8. Hash and persist the prompt if new.
 9. Save state and return Codex `UserPromptSubmit` additional context when present. Even though the NAMS event is `BeforeAgent`, Codex hook output must use `hookSpecificOutput.hookEventName: "UserPromptSubmit"` because that is the native hook that consumes `additionalContext`.
 
-- [ ] **Step 4: Add duplicate and failure tests**
+- [x] **Step 4: Add duplicate and failure tests**
 
 Add tests:
 
@@ -699,7 +699,7 @@ Add tests:
 
 Use Gemini tests as the local reference, changing the invocation event to `BeforeAgent`, the payload `hook_event_name` to `UserPromptSubmit`, and the expected `hookSpecificOutput.hookEventName` to `UserPromptSubmit`.
 
-- [ ] **Step 5: Verify green and commit**
+- [x] **Step 5: Verify green and commit**
 
 Run:
 
@@ -723,7 +723,7 @@ git commit -m "feat: persist codex user prompts" -m "Co-authored-by: Codex <code
 - Modify: `src/platforms/codex/index.ts`
 - Modify: `test/codex/codex-memory-flow.test.js`
 
-- [ ] **Step 1: Write failing assistant persistence tests**
+- [x] **Step 1: Write failing assistant persistence tests**
 
 Add tests:
 
@@ -773,11 +773,11 @@ test("stores Codex Stop last_assistant_message as an assistant message on AfterA
 });
 ```
 
-- [ ] **Step 2: Add transcript fallback test**
+- [x] **Step 2: Add transcript fallback test**
 
 Add a test where NAMS `AfterAgent` from Codex `Stop` has no `last_assistant_message`, `transcript_path` points to a fixture with one assistant entry, and the adapter stores that assistant message once.
 
-- [ ] **Step 3: Verify red**
+- [x] **Step 3: Verify red**
 
 Run:
 
@@ -787,7 +787,7 @@ npm run build && node --test test/codex/codex-memory-flow.test.js
 
 Expected: fails because `afterAgent` is not implemented for Codex assistant persistence.
 
-- [ ] **Step 4: Implement `afterAgent`**
+- [x] **Step 4: Implement `afterAgent`**
 
 In `src/platforms/codex/index.ts`:
 
@@ -834,7 +834,7 @@ async afterAgent(invocation: HookInvocation<"AfterAgent">): Promise<HookResult> 
 
 Add small local helpers equivalent to Gemini's assistant hash helpers. Do not import from Gemini.
 
-- [ ] **Step 5: Add dedupe and failure tests**
+- [x] **Step 5: Add dedupe and failure tests**
 
 Add tests:
 
@@ -842,7 +842,7 @@ Add tests:
 - transcript fallback does not duplicate an entry id.
 - missing config and failed NAMS calls allow Codex to continue.
 
-- [ ] **Step 6: Verify green and commit**
+- [x] **Step 6: Verify green and commit**
 
 Run:
 
@@ -868,7 +868,7 @@ git commit -m "feat: persist codex assistant responses" -m "Co-authored-by: Code
 - Modify: `test/memory-service.test.js`
 - Modify: `test/codex/codex-memory-flow.test.js`
 
-- [ ] **Step 1: Add tool-output serialization test**
+- [x] **Step 1: Add tool-output serialization test**
 
 If `NamsMemoryService` does not already cap tool output, add a test in `test/memory-service.test.js`:
 
@@ -895,7 +895,7 @@ test("recordToolCall caps exposed tool output", async () => {
 });
 ```
 
-- [ ] **Step 2: Implement safe output serialization**
+- [x] **Step 2: Implement safe output serialization**
 
 In `src/runtime/memory-service.ts`, add:
 
@@ -916,7 +916,7 @@ Then change `recordToolCall`:
 output: serializeToolOutput(input.output ?? ""),
 ```
 
-- [ ] **Step 3: Write failing Codex PostToolUse test through NAMS AfterTool**
+- [x] **Step 3: Write failing Codex PostToolUse test through NAMS AfterTool**
 
 Add a test:
 
@@ -983,7 +983,7 @@ test("records Codex PostToolUse as reasoning step and tool call on AfterTool", a
 });
 ```
 
-- [ ] **Step 4: Verify red**
+- [x] **Step 4: Verify red**
 
 Run:
 
@@ -993,7 +993,7 @@ npm run build && node --test test/memory-service.test.js test/codex/codex-memory
 
 Expected: fails because output capping and Codex `afterTool` metadata persistence are not implemented.
 
-- [ ] **Step 5: Implement `afterTool`**
+- [x] **Step 5: Implement `afterTool`**
 
 In `src/platforms/codex/index.ts`:
 
@@ -1049,7 +1049,7 @@ async afterTool(invocation: HookInvocation<"AfterTool">): Promise<HookResult> {
 
 Implement `codexToolCallDedupeKeys`, `hasSeenAny`, `markSeen`, and `serializeCodexToolResponse` locally. `serializeCodexToolResponse` should return strings unchanged and JSON-stringify non-strings.
 
-- [ ] **Step 6: Add dedupe/failure tests**
+- [x] **Step 6: Add dedupe/failure tests**
 
 Add tests:
 
@@ -1058,7 +1058,7 @@ Add tests:
 - missing config and failed NAMS calls allow Codex to continue.
 - raw hook payload and NAMS request logs do not contain `Authorization`, `Bearer`, or the test API key.
 
-- [ ] **Step 7: Verify green and commit**
+- [x] **Step 7: Verify green and commit**
 
 Run:
 
@@ -1083,7 +1083,7 @@ git commit -m "feat: record codex tool metadata" -m "Co-authored-by: Codex <code
   - `scripts/build-dist.mjs`
   - `scripts/check-dist.mjs`
 
-- [ ] **Step 1: Run package verification**
+- [x] **Step 1: Run package verification**
 
 Run:
 
@@ -1098,11 +1098,11 @@ Expected:
 - `npm run dist:check` passes.
 - Generated `dist/bin/platforms/codex/` includes `index.js`, `payload.js`, and `transcript.js`.
 
-- [ ] **Step 2: Inspect dist if verification fails**
+- [x] **Step 2: Inspect dist if verification fails**
 
 If Codex files are missing from `dist/`, update `scripts/build-dist.mjs` using the existing platform copy pattern. Do not hand-edit `dist/`.
 
-- [ ] **Step 3: Run targeted smoke command**
+- [x] **Step 3: Run targeted smoke command**
 
 After `npm run build`, run:
 
@@ -1118,7 +1118,7 @@ Expected without `NAMS_API_KEY`:
 
 Also verify `.nams/logs/` is not created under the repository worktree by this smoke test. If it is created, remove it from the worktree before committing and adjust the smoke command to use an OS temp project directory.
 
-- [ ] **Step 4: Final commit**
+- [x] **Step 4: Final commit**
 
 If Task 7 required changes:
 
@@ -1133,11 +1133,11 @@ Otherwise no commit is needed for this task.
 
 ## Self-Review Checklist
 
-- [ ] Every spec requirement maps to a task.
-- [ ] No Codex platform module imports Gemini platform modules.
-- [ ] `src/cli.ts` still ignores platform payload fields for routing.
-- [ ] Tests use OS temp directories and clean them up.
-- [ ] No runtime npm dependency was added.
-- [ ] No `.nams/`, `dist/`, or generated local artifacts are committed from `devel`.
-- [ ] `npm run check` passes.
-- [ ] `npm run package:check` passes or the exact blocker is documented.
+- [x] Every spec requirement maps to a task.
+- [x] No Codex platform module imports Gemini platform modules.
+- [x] `src/cli.ts` still ignores platform payload fields for routing.
+- [x] Tests use OS temp directories and clean them up.
+- [x] No runtime npm dependency was added.
+- [x] No `.nams/`, `dist/`, or generated local artifacts are committed from `devel`.
+- [x] `npm run check` passes.
+- [x] `npm run package:check` passes or the exact blocker is documented.
