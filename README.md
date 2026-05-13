@@ -20,7 +20,7 @@ It ensures deterministic memory persistence and context recall across different 
   - [Claude Code](https://code.claude.com/docs/en/hooks)
   - [Gemini CLI](https://github.com/google-gemini/gemini-cli)
   - Codex
-  - [OpenCode](https://opencode.ai/docs/plugins)
+  - [OpenCode](https://opencode.ai/docs/) via a project-local `.opencode/plugins/` plugin shim
 
 ## Architecture
 
@@ -56,7 +56,7 @@ npm run openapi:test
 
 ### Runtime Logs
 
-Gemini writes local JSONL diagnostics under the project `.nams/logs/` directory. Events for one Gemini session are kept in a single file named like:
+Gemini and OpenCode write local session-scoped JSONL diagnostics under the project `.nams/logs/` directory. Events for one session are kept in a single file named like:
 
 ```text
 .nams/logs/session-2026-05-11T15-40-1b11dfee.jsonl
