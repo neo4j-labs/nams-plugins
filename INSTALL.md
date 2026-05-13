@@ -7,6 +7,7 @@
 - Node.js 20 or newer
 - A NAMS API key
 - Gemini CLI, for the Gemini local extension path
+- OpenCode, for the OpenCode project plugin path
 
 ## Configure NAMS
 
@@ -38,16 +39,16 @@ Placeholder: installation instructions for linking or installing directly from a
 
 ## OpenCode
 
-````markdown
-## OpenCode
-
 OpenCode loads project plugins from `.opencode/plugins/`.
+
+Install the package so `nams-hooks` is on `PATH`:
 
 ```bash
 npm install -g @neo4j-labs/nams-hooks
 mkdir -p .opencode/plugins
-cp templates/opencode/plugins/nams-hooks.js .opencode/plugins/nams-hooks.js
 ```
+
+Until an installer or packaged template command exists, copy the plugin shim from a repository checkout or release artifact into the target project.
 
 For local development from this repository:
 
@@ -61,4 +62,3 @@ cp templates/opencode/plugins/nams-hooks.js /path/to/project/.opencode/plugins/n
 If `nams-hooks` is not on OpenCode's `PATH`, set `NAMS_HOOKS_COMMAND` to the executable path before starting OpenCode.
 
 The plugin listens for OpenCode events and routes them through the CLI gateway, for example `nams-hooks run opencode --event SessionStart`.
-````
