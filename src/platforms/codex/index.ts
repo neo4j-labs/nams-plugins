@@ -3,7 +3,11 @@ import type { NamsRequestEvent } from "../../generated/nams-client.js";
 import { loadNamsConfig, type NamsRuntimeConfig } from "../../runtime/config.js";
 import { sha256 } from "../../runtime/hashing.js";
 import { appendPlatformLog } from "../../runtime/logging.js";
-import { combineMemoryContexts, NamsMemoryService } from "../../runtime/memory-service.js";
+import {
+  combineMemoryContexts,
+  NamsMemoryService,
+  serializeToolInput,
+} from "../../runtime/memory-service.js";
 import {
   createInitialSessionState,
   loadSessionState,
@@ -155,6 +159,83 @@ export class CodexAdapter implements PlatformAdapter {
     return allowOutput();
   }
 
+  async afterTool(invocation: HookInvocation<"AfterTool">): Promise<HookResult> {
+    const payloadInfo = parseCodexPayload(invocation.rawPayload, invocation.processCwd);
+    const initialState = createInitialSessionState({
+      platform: invocation.platform,
+      sessionId: payloadInfo.sessionId,
+      projectDirectory: payloadInfo.projectDirectory,
+    });
+    const state =
+      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
+    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
+    state.seenToolCallIds ??= [];
+    state.seenReasoningStepHashes ??= [];
+    state.reasoningStepIdsByHash ??= {};
+
+    const conversationId = state.conversationId;
+    const toolName = payloadInfo.toolName;
+    if (conversationId === undefined || toolName === undefined) {
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      return allowOutput();
+    }
+
+    const config = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
+    if (config === null) {
+      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      return allowOutput();
+    }
+
+    const toolInput = payloadInfo.toolInput ?? {};
+    const toolCallId = codexToolCallId({
+      sessionKey: state.sessionKey,
+      toolName,
+      turnId: payloadInfo.turnId,
+      toolUseId: payloadInfo.toolUseId,
+      toolInput,
+    });
+    if (state.seenToolCallIds.includes(toolCallId)) {
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      return allowOutput();
+    }
+
+    const reasoningHash = codexReasoningStepHash({
+      sessionKey: state.sessionKey,
+      toolName,
+      turnId: payloadInfo.turnId,
+    });
+
+    try {
+      const memory = this.createMemoryService(config, invocation, payloadInfo.projectDirectory, state);
+      let stepId: string | undefined = state.reasoningStepIdsByHash[reasoningHash];
+      if (!state.seenReasoningStepHashes.includes(reasoningHash)) {
+        stepId = await memory.recordReasoningStep({
+          conversationId,
+          reasoning: `Codex ran ${toolName} for the current turn.`,
+          actionTaken: `Ran ${toolName}`,
+          ...(payloadInfo.toolResponse !== undefined ? { result: "Codex exposed post-tool output." } : {}),
+        });
+        markReasoningStepSeen(state, reasoningHash, stepId);
+      }
+
+      await memory.recordToolCall({
+        ...(stepId !== undefined ? { stepId } : {}),
+        toolName,
+        input: toolInput,
+        ...(payloadInfo.toolResponse !== undefined ? { output: payloadInfo.toolResponse } : {}),
+      });
+      markToolCallSeen(state, toolCallId);
+    } catch {
+      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      return allowOutput();
+    }
+
+    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    return allowOutput();
+  }
+
   private createMemoryService(
     config: NamsRuntimeConfig,
     invocation: HookInvocation,
@@ -241,6 +322,40 @@ function markAssistantMessageSeen(state: AssistantMessageState, hash: string): v
   }
 }
 
+function codexToolCallId(input: {
+  sessionKey: string;
+  toolName: string;
+  turnId?: string;
+  toolUseId?: string;
+  toolInput: unknown;
+}): string {
+  if (input.toolUseId !== undefined) {
+    return `codex-tool-use-id:${input.toolUseId}`;
+  }
+  return `codex-tool-fallback:${sha256(
+    [input.sessionKey, input.turnId ?? "", input.toolName, serializeToolInput(input.toolInput)].join("\n"),
+  )}`;
+}
+
+function codexReasoningStepHash(input: { sessionKey: string; toolName: string; turnId?: string }): string {
+  return sha256([input.sessionKey, "codex-reasoning-step", input.turnId ?? "", input.toolName].join("\n"));
+}
+
+function markReasoningStepSeen(state: SessionState, hash: string, stepId: string | undefined): void {
+  if (!state.seenReasoningStepHashes.includes(hash)) {
+    state.seenReasoningStepHashes.push(hash);
+  }
+  if (stepId !== undefined) {
+    state.reasoningStepIdsByHash[hash] = stepId;
+  }
+}
+
+function markToolCallSeen(state: SessionState, toolCallId: string): void {
+  if (!state.seenToolCallIds.includes(toolCallId)) {
+    state.seenToolCallIds.push(toolCallId);
+  }
+}
+
 async function appendNamsConfigDiagnostic(
   invocation: HookInvocation,
   projectDirectory: string,
@@ -281,13 +396,34 @@ async function appendNamsRequestLog(
       event: invocation.event,
       kind: "nams.request",
       projectDirectory,
-      payload: { ...payload },
+      payload: sanitizeNamsRequestLogPayload(payload) as Record<string, unknown>,
       sessionCreatedAt: state.createdAt,
       sessionKey: state.sessionKey,
     });
   } catch {
     // Codex hooks must not fail because observability writes failed.
   }
+}
+
+function sanitizeNamsRequestLogPayload(value: unknown): unknown {
+  if (typeof value === "string") {
+    return /authorization|bearer|api[-_ ]?key/i.test(value) ? "[redacted]" : value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(sanitizeNamsRequestLogPayload);
+  }
+  if (value === null || typeof value !== "object") {
+    return value;
+  }
+
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, nestedValue] of Object.entries(value)) {
+    if (key.toLowerCase() === "authorization") {
+      continue;
+    }
+    sanitized[key] = sanitizeNamsRequestLogPayload(nestedValue);
+  }
+  return sanitized;
 }
 
 async function appendRawPlatformLog(

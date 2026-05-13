@@ -889,6 +889,347 @@ test("Codex afterAgent missing config and failed NAMS calls allow and log saniti
   }
 });
 
+test("records Codex PostToolUse as reasoning step and tool call", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
+  try {
+    const nams = createNamsFetchMock().reasoningStep({ id: "step-1" }).toolCall();
+    const { CodexAdapter } = await import(codexUrl);
+    await seedCodexConversation(projectDir);
+    const adapter = new CodexAdapter({
+      env: {
+        NAMS_API_KEY: "test-api-key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: nams.fetch,
+    });
+
+    const result = await adapter.afterTool({
+      platform: "codex",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "PostToolUse",
+        session_id: "session-1",
+        turn_id: "turn-1",
+        cwd: projectDir,
+        tool_name: "shell",
+        tool_use_id: "tool-use-1",
+        tool_input: { command: "pwd" },
+        tool_response: "printed working directory",
+      },
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    assert.deepEqual(nams.requestBody("addReasoningStep"), {
+      conversationId: "conversation-1",
+      reasoning: "Codex ran shell for the current turn.",
+      actionTaken: "Ran shell",
+      result: "Codex exposed post-tool output.",
+    });
+    assert.deepEqual(nams.requestBody("addToolCall"), {
+      stepId: "step-1",
+      toolName: "shell",
+      input: JSON.stringify({ command: "pwd" }),
+      output: "printed working directory",
+    });
+
+    const { lines, log } = await readSingleSessionLog(projectDir);
+    assert.equal(lines[0].kind, "hook.event");
+    assert.equal(lines[0].event, "AfterTool");
+    assert.equal(lines[0].payload.hook_event_name, "PostToolUse");
+    assert.deepEqual(
+      lines.filter((entry) => entry.kind === "nams.request").map((entry) => entry.payload.operation),
+      ["recordReasoningStep", "recordToolCall"],
+    );
+    assert.doesNotMatch(log, /Authorization|Bearer|test-api-key/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Codex afterTool sanitizes output-like fields from tool input", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
+  try {
+    const nams = createNamsFetchMock().reasoningStep({ id: "step-1" }).toolCall();
+    const { CodexAdapter } = await import(codexUrl);
+    await seedCodexConversation(projectDir);
+    const adapter = new CodexAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: nams.fetch,
+    });
+
+    await adapter.afterTool({
+      platform: "codex",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "PostToolUse",
+        session_id: "session-1",
+        cwd: projectDir,
+        tool_name: "shell",
+        tool_use_id: "tool-use-1",
+        tool_input: {
+          command: "cat package.json",
+          output: "raw output",
+          result: "raw result",
+          nested: {
+            responseBody: "raw response body",
+            keep: "metadata",
+          },
+        },
+        tool_response: "done",
+      },
+    });
+
+    const body = nams.requestBody("addToolCall");
+    assert.match(body.input, /"command":"cat package\.json"/);
+    assert.match(body.input, /"keep":"metadata"/);
+    assert.doesNotMatch(body.input, /raw output|raw result|raw response body/);
+    assert.doesNotMatch(body.input, /"output"|"result"|"responseBody"/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("repeated Codex afterTool with same tool_use_id records one tool call", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
+  try {
+    const nams = createNamsFetchMock().reasoningStep({ id: "step-1" }).toolCall();
+    const { CodexAdapter } = await import(codexUrl);
+    await seedCodexConversation(projectDir);
+    const adapter = new CodexAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: nams.fetch,
+    });
+    const invocation = {
+      platform: "codex",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "PostToolUse",
+        session_id: "session-1",
+        cwd: projectDir,
+        tool_name: "shell",
+        tool_use_id: "tool-use-1",
+        tool_input: { command: "pwd" },
+        tool_response: "done",
+      },
+    };
+
+    await adapter.afterTool(invocation);
+    await adapter.afterTool(invocation);
+
+    assert.equal(nams.calls("addReasoningStep").length, 1);
+    assert.equal(nams.calls("addToolCall").length, 1);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Codex afterTool without tool_use_id dedupes by fallback hash", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
+  try {
+    const nams = createNamsFetchMock().reasoningStep({ id: "step-1" }).toolCall();
+    const { CodexAdapter } = await import(codexUrl);
+    await seedCodexConversation(projectDir);
+    const adapter = new CodexAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: nams.fetch,
+    });
+    const invocation = {
+      platform: "codex",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "PostToolUse",
+        session_id: "session-1",
+        turn_id: "turn-1",
+        cwd: projectDir,
+        tool_name: "shell",
+        tool_input: { command: "pwd", result: "do not hash raw result" },
+        tool_response: "done",
+      },
+    };
+
+    await adapter.afterTool(invocation);
+    await adapter.afterTool(invocation);
+
+    assert.equal(nams.calls("addReasoningStep").length, 1);
+    assert.equal(nams.calls("addToolCall").length, 1);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Codex afterTool records distinct tool_use_id values with same input", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
+  try {
+    const nams = createNamsFetchMock().reasoningStep({ id: "step-1" }).toolCall();
+    const { CodexAdapter } = await import(codexUrl);
+    await seedCodexConversation(projectDir);
+    const adapter = new CodexAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: nams.fetch,
+    });
+    const basePayload = {
+      hook_event_name: "PostToolUse",
+      session_id: "session-1",
+      turn_id: "turn-1",
+      cwd: projectDir,
+      tool_name: "shell",
+      tool_input: { command: "pwd" },
+      tool_response: "done",
+    };
+
+    await adapter.afterTool({
+      platform: "codex",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: { ...basePayload, tool_use_id: "tool-use-1" },
+    });
+    await adapter.afterTool({
+      platform: "codex",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: { ...basePayload, tool_use_id: "tool-use-2" },
+    });
+
+    assert.equal(nams.calls("addReasoningStep").length, 1);
+    assert.equal(nams.calls("addToolCall").length, 2);
+    assert.deepEqual(
+      nams.requestBodies("addToolCall").map((body) => body.stepId),
+      ["step-1", "step-1"],
+    );
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Codex afterTool missing config and failed NAMS calls allow and log sanitized diagnostics", async () => {
+  const missingConfigDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
+  const namsFailureDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
+  try {
+    const { CodexAdapter } = await import(codexUrl);
+    await seedCodexConversation(missingConfigDir);
+    await seedCodexConversation(namsFailureDir);
+
+    const missingConfigResult = await new CodexAdapter({ env: {} }).afterTool({
+      platform: "codex",
+      event: "AfterTool",
+      processCwd: missingConfigDir,
+      rawPayload: {
+        hook_event_name: "PostToolUse",
+        session_id: "session-1",
+        cwd: missingConfigDir,
+        tool_name: "shell",
+        tool_use_id: "tool-use-1",
+        tool_input: { command: "pwd" },
+        tool_response: "done",
+      },
+    });
+
+    assert.deepEqual(missingConfigResult.stdout, { continue: true, suppressOutput: true });
+    const { log: missingConfigLog } = await readSingleSessionLog(missingConfigDir);
+    assert.match(missingConfigLog, /NAMS_API_KEY missing/);
+    assert.doesNotMatch(missingConfigLog, /Authorization|Bearer|test-api-key/);
+
+    const nams = createNamsFetchMock().reasoningStep({ error: "Bearer test-api-key rejected" }, 503);
+    const namsFailureResult = await new CodexAdapter({
+      env: {
+        NAMS_API_KEY: "test-api-key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: nams.fetch,
+    }).afterTool({
+      platform: "codex",
+      event: "AfterTool",
+      processCwd: namsFailureDir,
+      rawPayload: {
+        hook_event_name: "PostToolUse",
+        session_id: "session-1",
+        cwd: namsFailureDir,
+        tool_name: "shell",
+        tool_use_id: "tool-use-1",
+        tool_input: { command: "pwd" },
+        tool_response: "done",
+      },
+    });
+
+    assert.deepEqual(namsFailureResult.stdout, { continue: true, suppressOutput: true });
+    const { lines: namsFailureLines, log: namsFailureLog } = await readSingleSessionLog(namsFailureDir);
+    assert.match(namsFailureLog, /NAMS request failed/);
+    const diagnostics = namsFailureLines.filter((entry) => entry.kind === "diagnostic");
+    assert.deepEqual(diagnostics.map((entry) => entry.payload), [{ message: "NAMS request failed" }]);
+    assert.doesNotMatch(JSON.stringify(diagnostics), /Bearer test-api-key rejected|Authorization|Bearer|test-api-key/);
+    assert.doesNotMatch(namsFailureLog, /Authorization|Bearer|test-api-key/);
+  } finally {
+    await rm(missingConfigDir, { recursive: true, force: true });
+    await rm(namsFailureDir, { recursive: true, force: true });
+  }
+});
+
+test("Codex afterTool without conversationId or toolName saves state and does not call NAMS", async () => {
+  const noConversationDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
+  const noToolNameDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
+  try {
+    const nams = createNamsFetchMock().all({ error: "unexpected NAMS call" }, 500);
+    const { CodexAdapter } = await import(codexUrl);
+    await seedCodexConversation(noToolNameDir);
+    const adapter = new CodexAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: nams.fetch,
+    });
+
+    const noConversationResult = await adapter.afterTool({
+      platform: "codex",
+      event: "AfterTool",
+      processCwd: noConversationDir,
+      rawPayload: {
+        hook_event_name: "PostToolUse",
+        session_id: "session-1",
+        cwd: noConversationDir,
+        tool_name: "shell",
+        tool_use_id: "tool-use-1",
+        tool_input: { command: "pwd" },
+      },
+    });
+    const noToolNameResult = await adapter.afterTool({
+      platform: "codex",
+      event: "AfterTool",
+      processCwd: noToolNameDir,
+      rawPayload: {
+        hook_event_name: "PostToolUse",
+        session_id: "session-1",
+        cwd: noToolNameDir,
+        tool_use_id: "tool-use-1",
+        tool_input: { command: "pwd" },
+      },
+    });
+
+    assert.deepEqual(noConversationResult.stdout, { continue: true, suppressOutput: true });
+    assert.deepEqual(noToolNameResult.stdout, { continue: true, suppressOutput: true });
+    assert.equal(nams.calls().length, 0);
+  } finally {
+    await rm(noConversationDir, { recursive: true, force: true });
+    await rm(noToolNameDir, { recursive: true, force: true });
+  }
+});
+
 test("raw Codex hook logs are session-scoped and include raw UserPromptSubmit payload fields", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
   try {
@@ -978,6 +1319,18 @@ async function readSingleSessionLog(projectDir) {
     .filter((line) => line.trim() !== "")
     .map((line) => JSON.parse(line));
   return { fileName, lines, log };
+}
+
+async function seedCodexConversation(projectDir, sessionId = "session-1", conversationId = "conversation-1") {
+  const { createInitialSessionState, saveSessionState } = await import(stateUrl);
+  const state = createInitialSessionState({
+    platform: "codex",
+    sessionId,
+    projectDirectory: projectDir,
+  });
+  state.conversationId = conversationId;
+  await saveSessionState(projectDir, "codex", state.sessionKey, state);
+  return state;
 }
 
 function escapeRegExp(value) {

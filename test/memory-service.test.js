@@ -103,3 +103,26 @@ test("recordToolCall serializes sanitized capped input and sends explicit tool o
     /"result"|"output"|"tool_output"|"response"|"responseBody"|"body"|"resultDisplay"|"functionResponse"/,
   );
 });
+
+test("recordToolCall serializes capped explicit tool output", async () => {
+  const requests = [];
+  const { NamsMemoryService } = await import(serviceUrl);
+  const service = new NamsMemoryService({
+    apiKey: "key",
+    baseUrl: "https://memory.example.test",
+    fetch: async (url, init) => {
+      requests.push({ url, init });
+      return new Response(JSON.stringify({ id: "tool-call-1" }), { status: 201 });
+    },
+  });
+
+  await service.recordToolCall({
+    toolName: "shell",
+    input: {},
+    output: "x".repeat(5000),
+  });
+
+  const body = JSON.parse(requests[0].init.body);
+  assert.equal(body.output.length, 4000);
+  assert.match(body.output, /\.\.\.\[truncated\]$/);
+});
