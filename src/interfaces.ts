@@ -1,4 +1,4 @@
-export const platforms = ["gemini", "claude", "codex"] as const;
+export const platforms = ["gemini", "claude", "codex", "opencode"] as const;
 export type Platform = (typeof platforms)[number];
 
 export const hookEvents = ["SessionStart", "BeforeAgent", "AfterAgent", "AfterTool"] as const;

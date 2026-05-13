@@ -62,7 +62,7 @@ function runCliWithoutEvent(harness, payload, cwd) {
   });
 }
 
-for (const harness of ["gemini", "claude", "codex"]) {
+for (const harness of ["gemini", "claude", "codex", "opencode"]) {
   test(`logs ${harness} session-start JSON payload`, async () => {
     const projectDir = await mkdtemp(path.join(tmpdir(), "nams-hooks-"));
     try {

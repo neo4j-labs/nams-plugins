@@ -9,7 +9,7 @@ It ensures deterministic memory persistence and context recall across different 
 - **Deterministic Memory**: Automatically persists user and assistant messages to NAMS.
 - **Memory Recall**: Searches and injects relevant past context before the agent responds.
 - **Tool Logging**: Records tool-call metadata (name, input, status, duration) for observability.
-- **Platform Aware**: Native support for **Claude Code**, **Gemini CLI**, and **Codex** via a clean adapter architecture.
+- **Platform Aware**: Native support for **Claude Code**, **Gemini CLI**, **Codex**, and **OpenCode** via a clean adapter architecture.
 - **Zero Runtime Dependencies**: The hook runtime and generated distribution use only Node.js built-in modules, so target projects do not need extra package installs for transitive runtime libraries.
 - **Local-First Configuration**: Stores secrets and state in a local `.nams/` directory.
 
@@ -20,11 +20,12 @@ It ensures deterministic memory persistence and context recall across different 
   - [Claude Code](https://code.claude.com/docs/en/hooks)
   - [Gemini CLI](https://github.com/google-gemini/gemini-cli)
   - [Codex](https://chatgpt.com/codex/)
+  - [OpenCode](https://opencode.ai/docs/plugins)
 
 ## Architecture
 
 - `src/cli.ts`: Entry point that dispatches events to platform adapters.
-- `src/platforms/`: Contains adapter logic for Claude, Gemini, and Codex.
+- `src/platforms/`: Contains adapter logic for Claude, Gemini, Codex, and OpenCode.
 - `src/interfaces.ts`: Shared contracts and hook event definitions.
 - `templates/`: Configuration templates for various harnesses.
 

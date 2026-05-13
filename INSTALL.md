@@ -35,3 +35,18 @@ This builds the generated Gemini extension tree under `dist/` and links it into 
 ### From Repository
 
 Placeholder: installation instructions for linking or installing directly from a repository-hosted release will be added once the external distribution path is defined.
+
+## OpenCode
+
+OpenCode loads project plugins from `.opencode/plugins/`. For the walking skeleton, install the package so `nams-hooks` is on `PATH`, then copy the plugin template into the target project:
+
+```bash
+mkdir -p .opencode/plugins
+cp /path/to/nams-hooks/templates/opencode/plugins/nams-hooks.js .opencode/plugins/nams-hooks.js
+```
+
+The plugin listens for OpenCode `session.created` events and routes them through:
+
+```bash
+nams-hooks run opencode --event SessionStart
+```
