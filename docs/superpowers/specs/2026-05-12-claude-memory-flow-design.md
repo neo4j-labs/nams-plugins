@@ -8,7 +8,7 @@ Repository: nams-hooks
 
 This design brings Claude Code to the same integration level as the current Gemini CLI implementation on `devel`. Claude gets deterministic NAMS conversation creation, first-turn recall, user prompt persistence, assistant response persistence, tool-call metadata, raw local observability logs, and local session state under `.nams/`.
 
-The Claude path should use Claude Code hook payload fields directly. Unlike Gemini, Claude does not need a transcript-first or transcript-fallback path for v1 because the supported hooks expose the required current-turn data: `UserPromptSubmit.prompt`, `PostToolUse.tool_name`, `PostToolUse.tool_input`, `PostToolUse.tool_response`, `PostToolUse.tool_use_id`, `PostToolUse.duration_ms`, and `Stop.last_assistant_message`.
+The Claude path should use Claude Code hook payload fields directly, while translating Claude hook names to the existing NAMS lifecycle events used by the shared CLI. Unlike Gemini, Claude does not need a transcript-first or transcript-fallback path for v1 because the supported hooks expose the required current-turn data: `UserPromptSubmit.prompt`, `PostToolUse.tool_name`, `PostToolUse.tool_input`, `PostToolUse.tool_response`, `PostToolUse.tool_use_id`, `PostToolUse.duration_ms`, and `Stop.last_assistant_message`.
 
 ## Source Inputs
 
@@ -36,16 +36,16 @@ Claude currently has only the walking-skeleton adapter in `src/platforms/claude/
 ## Goals
 
 - Add Claude Code memory flow parity with Gemini's implemented level.
-- Keep `src/cli.ts` as a typed gateway; do not infer events from `hook_event_name`.
+- Keep `src/cli.ts` platform-agnostic by accepting typed NAMS events; do not add Claude-native events or infer events from `hook_event_name`.
 - Keep Claude-specific parsing and orchestration under `src/platforms/claude/`.
 - Use the existing generated `NamsClient` through `NamsMemoryService`.
 - Use Claude `session_id` as the primary local session key, with cwd fallback.
-- Create NAMS conversations lazily on first `UserPromptSubmit`, not on `SessionStart`.
+- Create NAMS conversations lazily on the first Claude `UserPromptSubmit` translated to NAMS `BeforeAgent`, not on `SessionStart`.
 - Recall memory before Claude's first model response for the session and inject it as Claude `additionalContext`.
 - Persist every Claude user prompt observed through `UserPromptSubmit`.
 - Persist Claude assistant responses from `Stop.last_assistant_message`.
 - Record successful Claude `PostToolUse` events as a safe operational reasoning step plus NAMS tool-call metadata.
-- Store exposed tool output from `tool_response`, serialized and capped, because Claude provides it explicitly in the hook payload.
+- Store exposed tool output from `tool_response`, serialized without truncation, because Claude provides it explicitly in the hook payload.
 - Keep hooks non-blocking on missing config, NAMS failures, and local log failures.
 
 ## Non-Goals
@@ -64,13 +64,13 @@ Claude currently has only the walking-skeleton adapter in `src/platforms/claude/
 
 Extend shared hook events with Claude's native event names: `UserPromptSubmit`, `PostToolUse`, and `Stop`. Add optional adapter methods for those events and implement them only in `ClaudeAdapter`.
 
-This is the recommended approach. It preserves typed explicit events, keeps platform payload fields in the platform adapter, and avoids renaming Claude events into Gemini concepts.
+This preserves each platform's vocabulary, but it makes `src/cli.ts` and `src/interfaces.ts` grow platform-native event names. That weakens the gateway's role as a platform-agnostic NAMS event router.
 
 ### Option 2: Normalize Claude Events To Gemini-Like Events
 
 Map Claude `UserPromptSubmit` to a shared `BeforeAgent` behavior, Claude `PostToolUse` to `AfterTool`, and Claude `Stop` to `AfterAgent`.
 
-This creates less interface surface, but it blurs platform behavior. Claude's `UserPromptSubmit` output shape is not the same as Gemini's `BeforeAgent` output, and future bug reports would have two platform names hiding behind one event.
+This is the recommended approach. Treat `BeforeAgent`, `AfterTool`, and `AfterAgent` as NAMS lifecycle events, not Gemini-only events. Platform templates translate native hook names into those NAMS events before invoking the CLI, and platform adapters translate NAMS event handling back into platform-specific output where needed.
 
 ### Option 3: Generic Adapter `handle()` Method
 
@@ -80,33 +80,22 @@ This simplifies CLI routing but weakens TypeScript coverage. New events would no
 
 ## Recommended Design
 
-Use Option 1. Add native Claude events to `src/interfaces.ts` and route them through `src/cli.ts` while leaving existing Gemini behavior intact.
+Use Option 2. Keep the existing shared NAMS event names in `src/interfaces.ts` and `src/cli.ts`; add Claude behavior by implementing `beforeAgent`, `afterTool`, and `afterAgent` in `ClaudeAdapter`.
 
-The adapter contract grows deliberately:
+The adapter contract does not gain Claude-native methods:
 
 ```ts
-export const hookEvents = [
-  "SessionStart",
-  "BeforeAgent",
-  "AfterAgent",
-  "AfterTool",
-  "UserPromptSubmit",
-  "PostToolUse",
-  "Stop",
-] as const;
+export const hookEvents = ["SessionStart", "BeforeAgent", "AfterAgent", "AfterTool"] as const;
 
 export interface PlatformAdapter {
   startConversation(invocation: HookInvocation<"SessionStart">): Promise<HookResult>;
   beforeAgent?(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult>;
   afterAgent?(invocation: HookInvocation<"AfterAgent">): Promise<HookResult>;
   afterTool?(invocation: HookInvocation<"AfterTool">): Promise<HookResult>;
-  userPromptSubmit?(invocation: HookInvocation<"UserPromptSubmit">): Promise<HookResult>;
-  postToolUse?(invocation: HookInvocation<"PostToolUse">): Promise<HookResult>;
-  stop?(invocation: HookInvocation<"Stop">): Promise<HookResult>;
 }
 ```
 
-Platforms that do not implement a method continue to return allow output. This keeps Codex and Gemini stable while Claude gains its native hook events.
+Platforms that do not implement a NAMS event method continue to return allow output. This keeps `src/cli.ts` platform-agnostic and lets each template describe its own native hook translation.
 
 ## Claude Components
 
@@ -114,17 +103,28 @@ Platforms that do not implement a method continue to return allow output. This k
 
 Create `src/platforms/claude/payload.ts`.
 
-It extracts only Claude fields needed by the adapter:
+It extracts only Claude fields needed by the adapter. The parser reads native Claude payload fields, but the `HookInvocation.event` passed to the adapter is the translated NAMS event:
 
 - `session_id` as `sessionId`
 - `cwd` as `projectDirectory`, falling back to `processCwd`
 - `transcript_path` as diagnostic metadata only
 - `source` for `SessionStart` logging metadata
-- `prompt` for `UserPromptSubmit`
-- `tool_name`, `tool_input`, `tool_response`, `tool_use_id`, and `duration_ms` for `PostToolUse`
-- `last_assistant_message` for `Stop`
+- `prompt` for Claude `UserPromptSubmit`, handled as NAMS `BeforeAgent`
+- `tool_name`, `tool_input`, `tool_response`, `tool_use_id`, and `duration_ms` for Claude `PostToolUse`, handled as NAMS `AfterTool`
+- `last_assistant_message` for Claude `Stop`, handled as NAMS `AfterAgent`
 
-The parser must not trust `hook_event_name` for routing. That field stays in raw logs only.
+The parser must not trust `hook_event_name` for routing. That field stays in raw logs only; template commands provide the authoritative NAMS event via `--event`.
+
+### NAMS Event Translation
+
+Claude hook templates translate native Claude hooks to NAMS lifecycle events:
+
+| Claude hook | NAMS event | Purpose |
+|---|---|---|
+| `SessionStart` | `SessionStart` | Initialize or reuse Claude local session state and append the raw startup/resume payload without creating a NAMS conversation. |
+| `UserPromptSubmit` | `BeforeAgent` | Recall relevant memory before Claude responds, inject Claude `additionalContext`, and persist the user prompt. |
+| `PostToolUse` | `AfterTool` | Record successful tool metadata and exposed tool output after Claude completes a tool call. |
+| `Stop` | `AfterAgent` | Persist the final assistant response exposed as `last_assistant_message`. |
 
 ### Claude Adapter
 
@@ -138,17 +138,15 @@ The parser must not trust `hook_event_name` for routing. That field stays in raw
 - save state before returning
 - catch config, NAMS, and log errors so Claude continues
 
+The Claude adapter implements `startConversation`, `beforeAgent`, `afterTool`, and `afterAgent`. It does not add Claude-native adapter methods.
+
 ### Shared Runtime Changes
 
-`NamsMemoryService.recordToolCall()` currently serializes input and accepts an output string. Claude should add output serialization and capping so structured `tool_response` objects can be persisted safely:
+`NamsMemoryService.recordToolCall()` currently serializes input and accepts an output string. Claude should add output serialization so structured `tool_response` objects can be persisted without truncation:
 
 ```ts
 export function serializeToolOutput(output: unknown): string {
-  const serialized = typeof output === "string" ? output : JSON.stringify(output ?? {});
-  if (serialized.length <= 4000) {
-    return serialized;
-  }
-  return `${serialized.slice(0, 3986)}...[truncated]`;
+  return typeof output === "string" ? output : JSON.stringify(output ?? {});
 }
 ```
 
@@ -168,11 +166,11 @@ Flow:
 4. Save state without creating a NAMS conversation.
 5. Return `{ "continue": true, "suppressOutput": true }`.
 
-No memory recall happens here. `UserPromptSubmit` has the actual user prompt and is the better deterministic recall point.
+No memory recall happens here. Claude `UserPromptSubmit`, translated to NAMS `BeforeAgent`, has the actual user prompt and is the better deterministic recall point.
 
-### UserPromptSubmit
+### BeforeAgent (Claude UserPromptSubmit)
 
-Claude `UserPromptSubmit` fires after the user submits a prompt and before Claude processes it.
+Claude `UserPromptSubmit` fires after the user submits a prompt and before Claude processes it. The Claude template invokes the CLI with `--event BeforeAgent`.
 
 Flow:
 
@@ -200,11 +198,11 @@ Flow:
 }
 ```
 
-The adapter must not return top-level `additionalContext`. The Claude docs show `additionalContext` inside `hookSpecificOutput` for structured output, and that mirrors Gemini's explicit event-specific output shape.
+The adapter must not return top-level `additionalContext`. The invocation uses NAMS `BeforeAgent`, but the structured output returned to Claude uses Claude's native `hookEventName: "UserPromptSubmit"`.
 
-### PostToolUse
+### AfterTool (Claude PostToolUse)
 
-Claude `PostToolUse` fires after a tool succeeds. It provides `tool_name`, `tool_input`, `tool_response`, `tool_use_id`, and optional `duration_ms`.
+Claude `PostToolUse` fires after a tool succeeds. The Claude template invokes the CLI with `--event AfterTool`. The payload provides `tool_name`, `tool_input`, `tool_response`, `tool_use_id`, and optional `duration_ms`.
 
 Flow:
 
@@ -230,7 +228,7 @@ Flow:
   "stepId": "<step-id if available>",
   "toolName": "<toolName>",
   "input": "<sanitized serialized input>",
-  "output": "<serialized capped tool_response>",
+  "output": "<serialized full tool_response>",
   "status": "success",
   "durationMs": 12
 }
@@ -239,9 +237,9 @@ Flow:
 8. Mark the tool call seen only after the NAMS write succeeds.
 9. Save state and allow.
 
-### Stop
+### AfterAgent (Claude Stop)
 
-Claude `Stop` fires when the main Claude Code agent finishes responding. It exposes `last_assistant_message`.
+Claude `Stop` fires when the main Claude Code agent finishes responding. The Claude template invokes the CLI with `--event AfterAgent`. The payload exposes `last_assistant_message`.
 
 Flow:
 
@@ -310,11 +308,20 @@ The adapter must not log raw thrown error text because errors can contain secret
 Update `templates/claude/settings.local.json`:
 
 - Keep `SessionStart` matcher `startup|resume|clear|compact`.
-- Add `UserPromptSubmit`.
-- Add `PostToolUse` with matcher `"*"`.
-- Add `Stop`.
+- Add Claude `UserPromptSubmit` translated to NAMS `BeforeAgent`.
+- Add Claude `PostToolUse` translated to NAMS `AfterTool`.
+- Add Claude `Stop` translated to NAMS `AfterAgent`.
 
-Each command uses `nams-hooks run claude --event <TypedEvent>`.
+Template command mapping:
+
+| Claude hook | NAMS event | Purpose |
+|---|---|---|
+| `SessionStart` | `SessionStart` | Initialize Claude session state without creating a NAMS conversation. |
+| `UserPromptSubmit` | `BeforeAgent` | Recall memory, inject `additionalContext`, and persist the user prompt. |
+| `PostToolUse` | `AfterTool` | Persist successful tool-call metadata and exposed output. |
+| `Stop` | `AfterAgent` | Persist the exposed assistant response. |
+
+Each command uses `nams-hooks run claude --event <NAMS event>`.
 
 ## Error Handling
 
@@ -330,7 +337,7 @@ Claude hooks remain non-blocking:
 ## Privacy Rules
 
 - Persist user prompts and assistant responses as the canonical memory stream.
-- Persist Claude `tool_response` only because it is explicit hook output; serialize and cap it.
+- Persist Claude `tool_response` only because it is explicit hook output; serialize it without truncation.
 - Sanitize tool input with the existing `serializeToolInput()` behavior before sending it to NAMS.
 - Do not parse Claude transcript internals for hidden reasoning in v1.
 - Do not create entities directly.
@@ -341,16 +348,16 @@ Claude hooks remain non-blocking:
 
 Fixture-driven tests cover:
 
-- CLI routes Claude `UserPromptSubmit`, `PostToolUse`, and `Stop` only from typed `--event`.
+- CLI routes only typed NAMS events; the Claude template maps native hooks to those events.
 - Claude parser extracts session, cwd, prompt, tool, duration, and assistant fields.
 - `SessionStart` initializes local state and does not call NAMS.
-- `UserPromptSubmit` creates conversation lazily, recalls memory, injects Claude `additionalContext`, and stores the user prompt.
-- `UserPromptSubmit` deduplicates repeated prompts.
+- NAMS `BeforeAgent` for Claude `UserPromptSubmit` creates conversation lazily, recalls memory, injects Claude `additionalContext`, and stores the user prompt.
+- NAMS `BeforeAgent` deduplicates repeated prompts.
 - Missing config and NAMS failures allow Claude to continue and log sanitized diagnostics.
-- `Stop` stores `last_assistant_message`.
-- `Stop` deduplicates assistant messages.
-- `PostToolUse` records reasoning step and tool call with sanitized input, serialized output, status, and duration.
-- `PostToolUse` deduplicates repeated `tool_use_id`.
+- NAMS `AfterAgent` for Claude `Stop` stores `last_assistant_message`.
+- NAMS `AfterAgent` deduplicates assistant messages.
+- NAMS `AfterTool` for Claude `PostToolUse` records reasoning step and tool call with sanitized input, serialized full output, status, and duration.
+- NAMS `AfterTool` deduplicates repeated `tool_use_id`.
 - Claude session logs keep all hook events and NAMS request records together.
 - Architecture tests still prevent platform cross-imports and runtime upstream imports.
 
@@ -366,4 +373,4 @@ Run `npm run check` before claiming completion.
 
 ## Approval Notes
 
-This design intentionally follows the current Gemini implementation's shape while using Claude's native hook names and output contracts. The main implementation risk is output privacy for `tool_response`; v1 mitigates that by accepting only explicit hook output, serializing it as a capped string, and continuing to sanitize inputs separately.
+This design intentionally follows the current Gemini implementation's shape while translating Claude's native hook names into NAMS lifecycle events. The main implementation risk is output privacy for `tool_response`; v1 mitigates that by accepting only explicit hook output, serializing it without truncation for NAMS memory, and continuing to sanitize inputs separately.

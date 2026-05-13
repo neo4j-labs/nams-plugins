@@ -4,7 +4,7 @@
 
 **Goal:** Build Claude Code NAMS integration parity with the current Gemini implementation: lazy conversation creation, first-turn recall, user and assistant message persistence, and successful tool-call trace recording.
 
-**Architecture:** `src/cli.ts` stays a typed gateway. Claude-native hook events are added to shared interfaces and dispatched through optional adapter methods. Claude-specific payload parsing and orchestration live under `src/platforms/claude/`, while shared runtime modules continue to own config, local state, hashing, logging, and NAMS REST calls through the generated client.
+**Architecture:** `src/cli.ts` stays a platform-agnostic typed NAMS event gateway. Claude hook templates translate native hooks to existing NAMS events (`UserPromptSubmit` -> `BeforeAgent`, `PostToolUse` -> `AfterTool`, `Stop` -> `AfterAgent`). Claude-specific payload parsing and orchestration live under `src/platforms/claude/`, while shared runtime modules continue to own config, local state, hashing, logging, and NAMS REST calls through the generated client.
 
 **Tech Stack:** TypeScript, Node.js built-ins at runtime, generated `NamsClient`, Node's `node:test`, `fetch-mock` test support, and existing ArchUnitTS architecture checks.
 
@@ -16,13 +16,13 @@ This plan implements the approved design in `docs/superpowers/specs/2026-05-12-c
 
 Included:
 
-- Claude typed hook routing for `UserPromptSubmit`, `PostToolUse`, and `Stop`.
+- Claude template mapping from native hooks to existing NAMS events.
 - Claude hook template updates in `templates/claude/settings.local.json`.
 - Claude payload parser module and tests.
 - Claude `SessionStart` state initialization with session-scoped logs.
-- Claude `UserPromptSubmit` conversation creation, recall, context injection, and user prompt persistence.
-- Claude `Stop` assistant response persistence from `last_assistant_message`.
-- Claude `PostToolUse` reasoning step plus tool-call persistence from exposed hook fields.
+- NAMS `BeforeAgent` handling for Claude `UserPromptSubmit`: conversation creation, recall, context injection, and user prompt persistence.
+- NAMS `AfterAgent` handling for Claude `Stop`: assistant response persistence from `last_assistant_message`.
+- NAMS `AfterTool` handling for Claude `PostToolUse`: reasoning step plus tool-call persistence from exposed hook fields.
 - Deduplication for user prompts, assistant messages, and tool calls.
 - Sanitized diagnostics and NAMS request logging.
 
@@ -40,12 +40,15 @@ Create:
 
 Modify:
 
-- `src/interfaces.ts`: add Claude-native typed hook events and optional adapter methods.
-- `src/cli.ts`: route the new typed events and update usage text.
 - `src/platforms/claude/index.ts`: replace walking-skeleton logging with full Claude memory flow.
-- `src/runtime/memory-service.ts`: add serialized, capped tool output handling.
+- `src/runtime/memory-service.ts`: add serialized, untruncated tool output handling.
 - `templates/claude/settings.local.json`: add Claude hook commands.
-- `test/cli-session-start.test.js`: route new Claude events and update Claude log expectations.
+- `test/cli-session-start.test.js`: verify Claude uses existing NAMS event routing and update Claude log expectations.
+
+Do not modify:
+
+- `src/interfaces.ts`: it keeps the existing NAMS event names.
+- `src/cli.ts`: it remains a platform-agnostic NAMS event gateway.
 
 ## Public APIs Introduced
 
@@ -75,31 +78,35 @@ export function serializeToolOutput(output: unknown): string;
 
 ---
 
-### Task 1: Route Claude-Native Hook Events
+### Task 1: Map Claude Hooks To NAMS Events
 
 **Files:**
 
-- Modify: `src/interfaces.ts`
-- Modify: `src/cli.ts`
 - Modify: `templates/claude/settings.local.json`
 - Modify: `test/cli-session-start.test.js`
 
-- [ ] **Step 1: Add failing CLI routing tests**
+- [ ] **Step 1: Add Claude NAMS-event routing tests**
 
 Append to `test/cli-session-start.test.js`:
 
 ```js
-for (const event of ["UserPromptSubmit", "PostToolUse", "Stop"]) {
-  test(`routes claude ${event} hook event`, async () => {
+const claudeHookMappings = [
+  ["UserPromptSubmit", "BeforeAgent"],
+  ["PostToolUse", "AfterTool"],
+  ["Stop", "AfterAgent"],
+];
+
+for (const [claudeHook, namsEvent] of claudeHookMappings) {
+  test(`routes claude ${claudeHook} through NAMS ${namsEvent}`, async () => {
     const projectDir = await mkdtemp(path.join(tmpdir(), "nams-hooks-"));
     try {
       const payload = {
-        session_id: `claude-${event}`,
-        hook_event_name: "WrongEventNameMustNotMatter",
+        session_id: `claude-${namsEvent}`,
+        hook_event_name: claudeHook,
         cwd: projectDir,
       };
 
-      const result = await runCliWithEvent("claude", event, payload, projectDir);
+      const result = await runCliWithEvent("claude", namsEvent, payload, projectDir);
 
       assert.equal(result.code, 0, result.stderr);
       assert.equal(JSON.parse(result.stdout).continue, true);
@@ -110,16 +117,7 @@ for (const event of ["UserPromptSubmit", "PostToolUse", "Stop"]) {
 }
 ```
 
-Change the existing usage assertion to:
-
-```js
-assert.match(
-  result.stderr,
-  /--event <SessionStart\|BeforeAgent\|AfterAgent\|AfterTool\|UserPromptSubmit\|PostToolUse\|Stop>/,
-);
-```
-
-- [ ] **Step 2: Verify red**
+- [ ] **Step 2: Verify routing baseline**
 
 Run:
 
@@ -130,57 +128,9 @@ npm run build && node --test test/cli-session-start.test.js
 Expected:
 
 - Build passes.
-- The new Claude routing tests fail because the CLI rejects the new typed events.
+- The new tests pass against the current platform-agnostic CLI because they use existing NAMS events.
 
-- [ ] **Step 3: Extend shared interfaces**
-
-Change `src/interfaces.ts` to:
-
-```ts
-export const hookEvents = [
-  "SessionStart",
-  "BeforeAgent",
-  "AfterAgent",
-  "AfterTool",
-  "UserPromptSubmit",
-  "PostToolUse",
-  "Stop",
-] as const;
-export type HookEvent = (typeof hookEvents)[number];
-
-export interface PlatformAdapter {
-  startConversation(invocation: HookInvocation<"SessionStart">): Promise<HookResult>;
-  beforeAgent?(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult>;
-  afterAgent?(invocation: HookInvocation<"AfterAgent">): Promise<HookResult>;
-  afterTool?(invocation: HookInvocation<"AfterTool">): Promise<HookResult>;
-  userPromptSubmit?(invocation: HookInvocation<"UserPromptSubmit">): Promise<HookResult>;
-  postToolUse?(invocation: HookInvocation<"PostToolUse">): Promise<HookResult>;
-  stop?(invocation: HookInvocation<"Stop">): Promise<HookResult>;
-}
-```
-
-- [ ] **Step 4: Route new events through the gateway**
-
-Update `src/cli.ts` usage string:
-
-```ts
-process.stderr.write(
-  "Usage: nams-hooks run <gemini|claude|codex> --event <SessionStart|BeforeAgent|AfterAgent|AfterTool|UserPromptSubmit|PostToolUse|Stop>\n",
-);
-```
-
-Extend `routeEvent()`:
-
-```ts
-    case "UserPromptSubmit":
-      return adapter.userPromptSubmit?.({ ...invocation, event: "UserPromptSubmit" }) ?? allowHook();
-    case "PostToolUse":
-      return adapter.postToolUse?.({ ...invocation, event: "PostToolUse" }) ?? allowHook();
-    case "Stop":
-      return adapter.stop?.({ ...invocation, event: "Stop" }) ?? allowHook();
-```
-
-- [ ] **Step 5: Update Claude hook template**
+- [ ] **Step 3: Update Claude hook template**
 
 Replace `templates/claude/settings.local.json` with:
 
@@ -203,7 +153,7 @@ Replace `templates/claude/settings.local.json` with:
         "hooks": [
           {
             "type": "command",
-            "command": "nams-hooks run claude --event UserPromptSubmit"
+            "command": "nams-hooks run claude --event BeforeAgent"
           }
         ]
       }
@@ -214,7 +164,7 @@ Replace `templates/claude/settings.local.json` with:
         "hooks": [
           {
             "type": "command",
-            "command": "nams-hooks run claude --event PostToolUse"
+            "command": "nams-hooks run claude --event AfterTool"
           }
         ]
       }
@@ -224,7 +174,7 @@ Replace `templates/claude/settings.local.json` with:
         "hooks": [
           {
             "type": "command",
-            "command": "nams-hooks run claude --event Stop"
+            "command": "nams-hooks run claude --event AfterAgent"
           }
         ]
       }
@@ -233,7 +183,7 @@ Replace `templates/claude/settings.local.json` with:
 }
 ```
 
-- [ ] **Step 6: Verify green for routing**
+- [ ] **Step 4: Verify template and routing tests**
 
 Run:
 
@@ -245,11 +195,11 @@ Expected:
 
 - All CLI routing tests pass.
 
-- [ ] **Step 7: Commit routing changes**
+- [ ] **Step 5: Commit mapping changes**
 
 ```bash
-git add src/interfaces.ts src/cli.ts templates/claude/settings.local.json test/cli-session-start.test.js
-git commit -m "feat: route claude memory hooks" -m "Co-authored-by: Codex <codex@openai.com>"
+git add templates/claude/settings.local.json test/cli-session-start.test.js
+git commit -m "feat: map claude hooks to nams events" -m "Co-authored-by: Codex <codex@openai.com>"
 ```
 
 ---
@@ -708,19 +658,19 @@ git commit -m "feat: initialize claude session state" -m "Co-authored-by: Codex 
 
 ---
 
-### Task 4: Implement UserPromptSubmit Memory Flow
+### Task 4: Implement NAMS BeforeAgent For Claude UserPromptSubmit
 
 **Files:**
 
 - Modify: `src/platforms/claude/index.ts`
 - Modify: `test/claude/claude-memory-flow.test.js`
 
-- [ ] **Step 1: Add UserPromptSubmit tests**
+- [ ] **Step 1: Add BeforeAgent tests**
 
 Append to `test/claude/claude-memory-flow.test.js`:
 
 ```js
-test("creates Claude conversation, recalls memory, and stores first UserPromptSubmit prompt", async () => {
+test("creates Claude conversation, recalls memory, and stores first UserPromptSubmit prompt through BeforeAgent", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-claude-flow-"));
   try {
     const prompt = "Please remember that I prefer fixture-driven tests.";
@@ -740,12 +690,13 @@ test("creates Claude conversation, recalls memory, and stores first UserPromptSu
       fetch: nams.fetch,
     });
 
-    const result = await adapter.userPromptSubmit({
+    const result = await adapter.beforeAgent({
       platform: "claude",
-      event: "UserPromptSubmit",
+      event: "BeforeAgent",
       processCwd: projectDir,
       rawPayload: {
         session_id: "session-1",
+        hook_event_name: "UserPromptSubmit",
         cwd: projectDir,
         prompt,
       },
@@ -775,7 +726,7 @@ test("creates Claude conversation, recalls memory, and stores first UserPromptSu
   }
 });
 
-test("does not store duplicate Claude UserPromptSubmit prompt twice", async () => {
+test("does not store duplicate Claude UserPromptSubmit prompt twice through BeforeAgent", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-claude-flow-"));
   try {
     const prompt = "Remember this only once.";
@@ -790,17 +741,18 @@ test("does not store duplicate Claude UserPromptSubmit prompt twice", async () =
     });
     const invocation = {
       platform: "claude",
-      event: "UserPromptSubmit",
+      event: "BeforeAgent",
       processCwd: projectDir,
       rawPayload: {
         session_id: "session-1",
+        hook_event_name: "UserPromptSubmit",
         cwd: projectDir,
         prompt,
       },
     };
 
-    await adapter.userPromptSubmit(invocation);
-    await adapter.userPromptSubmit(invocation);
+    await adapter.beforeAgent(invocation);
+    await adapter.beforeAgent(invocation);
 
     assert.equal(nams.calls("addMessage").length, 1);
   } finally {
@@ -808,18 +760,19 @@ test("does not store duplicate Claude UserPromptSubmit prompt twice", async () =
   }
 });
 
-test("Claude UserPromptSubmit continues when NAMS_API_KEY is missing", async () => {
+test("Claude UserPromptSubmit through BeforeAgent continues when NAMS_API_KEY is missing", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-claude-flow-"));
   try {
     const { ClaudeAdapter } = await import(claudeUrl);
     const adapter = new ClaudeAdapter({ env: {} });
 
-    const result = await adapter.userPromptSubmit({
+    const result = await adapter.beforeAgent({
       platform: "claude",
-      event: "UserPromptSubmit",
+      event: "BeforeAgent",
       processCwd: projectDir,
       rawPayload: {
         session_id: "session-1",
+        hook_event_name: "UserPromptSubmit",
         cwd: projectDir,
         prompt: "Hello",
       },
@@ -845,9 +798,9 @@ npm run build && node --test test/claude/claude-memory-flow.test.js
 
 Expected:
 
-- Tests fail because `ClaudeAdapter.userPromptSubmit` is not implemented.
+- Tests fail because `ClaudeAdapter.beforeAgent` is not implemented for Claude.
 
-- [ ] **Step 3: Add imports and UserPromptSubmit method**
+- [ ] **Step 3: Add imports and BeforeAgent method**
 
 Add imports in `src/platforms/claude/index.ts`:
 
@@ -859,7 +812,7 @@ import { combineMemoryContexts } from "../../runtime/memory-service.js";
 Add the method to `ClaudeAdapter`:
 
 ```ts
-  async userPromptSubmit(invocation: HookInvocation<"UserPromptSubmit">): Promise<HookResult> {
+  async beforeAgent(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult> {
     const payloadInfo = parseClaudePayload(invocation.rawPayload, invocation.processCwd);
     const state = await loadOrCreateClaudeState(invocation, payloadInfo.projectDirectory, payloadInfo.sessionId);
     await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
@@ -964,7 +917,7 @@ async function appendClaudeDiagnosticLog(
 }
 ```
 
-- [ ] **Step 4: Verify UserPromptSubmit tests**
+- [ ] **Step 4: Verify BeforeAgent tests**
 
 Run:
 
@@ -974,9 +927,9 @@ npm run build && node --test test/claude/claude-memory-flow.test.js
 
 Expected:
 
-- Claude `SessionStart` and `UserPromptSubmit` tests pass.
+- Claude `SessionStart` and NAMS `BeforeAgent` tests pass.
 
-- [ ] **Step 5: Commit UserPromptSubmit flow**
+- [ ] **Step 5: Commit BeforeAgent flow**
 
 ```bash
 git add src/platforms/claude/index.ts test/claude/claude-memory-flow.test.js
@@ -985,19 +938,19 @@ git commit -m "feat: persist claude user prompts" -m "Co-authored-by: Codex <cod
 
 ---
 
-### Task 5: Store Claude Stop Assistant Messages
+### Task 5: Store Claude Stop Assistant Messages Through NAMS AfterAgent
 
 **Files:**
 
 - Modify: `src/platforms/claude/index.ts`
 - Modify: `test/claude/claude-memory-flow.test.js`
 
-- [ ] **Step 1: Add Stop tests**
+- [ ] **Step 1: Add AfterAgent tests**
 
 Append to `test/claude/claude-memory-flow.test.js`:
 
 ```js
-test("stores Claude Stop last_assistant_message as an assistant message", async () => {
+test("stores Claude Stop last_assistant_message as an assistant message through AfterAgent", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-claude-flow-"));
   try {
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
@@ -1010,23 +963,25 @@ test("stores Claude Stop last_assistant_message as an assistant message", async 
       fetch: nams.fetch,
     });
 
-    await adapter.userPromptSubmit({
+    await adapter.beforeAgent({
       platform: "claude",
-      event: "UserPromptSubmit",
+      event: "BeforeAgent",
       processCwd: projectDir,
       rawPayload: {
         session_id: "session-1",
+        hook_event_name: "UserPromptSubmit",
         cwd: projectDir,
         prompt: "Say hello.",
       },
     });
 
-    const result = await adapter.stop({
+    const result = await adapter.afterAgent({
       platform: "claude",
-      event: "Stop",
+      event: "AfterAgent",
       processCwd: projectDir,
       rawPayload: {
         session_id: "session-1",
+        hook_event_name: "Stop",
         cwd: projectDir,
         last_assistant_message: "Hello!",
       },
@@ -1042,7 +997,7 @@ test("stores Claude Stop last_assistant_message as an assistant message", async 
   }
 });
 
-test("does not duplicate Claude Stop assistant messages", async () => {
+test("does not duplicate Claude Stop assistant messages through AfterAgent", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-claude-flow-"));
   try {
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
@@ -1055,29 +1010,31 @@ test("does not duplicate Claude Stop assistant messages", async () => {
       fetch: nams.fetch,
     });
 
-    await adapter.userPromptSubmit({
+    await adapter.beforeAgent({
       platform: "claude",
-      event: "UserPromptSubmit",
+      event: "BeforeAgent",
       processCwd: projectDir,
       rawPayload: {
         session_id: "session-1",
+        hook_event_name: "UserPromptSubmit",
         cwd: projectDir,
         prompt: "Say hello.",
       },
     });
     const invocation = {
       platform: "claude",
-      event: "Stop",
+      event: "AfterAgent",
       processCwd: projectDir,
       rawPayload: {
         session_id: "session-1",
+        hook_event_name: "Stop",
         cwd: projectDir,
         last_assistant_message: "Hello!",
       },
     };
 
-    await adapter.stop(invocation);
-    await adapter.stop(invocation);
+    await adapter.afterAgent(invocation);
+    await adapter.afterAgent(invocation);
 
     const assistantMessages = nams
       .requestBodies("addMessage")
@@ -1099,14 +1056,14 @@ npm run build && node --test test/claude/claude-memory-flow.test.js
 
 Expected:
 
-- Stop tests fail because `ClaudeAdapter.stop` is not implemented.
+- AfterAgent tests fail because `ClaudeAdapter.afterAgent` is not implemented for Claude.
 
-- [ ] **Step 3: Implement Stop method**
+- [ ] **Step 3: Implement AfterAgent method**
 
 Add to `ClaudeAdapter`:
 
 ```ts
-  async stop(invocation: HookInvocation<"Stop">): Promise<HookResult> {
+  async afterAgent(invocation: HookInvocation<"AfterAgent">): Promise<HookResult> {
     const payloadInfo = parseClaudePayload(invocation.rawPayload, invocation.processCwd);
     const state = await loadOrCreateClaudeState(invocation, payloadInfo.projectDirectory, payloadInfo.sessionId);
     await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
@@ -1165,7 +1122,7 @@ function markAssistantMessageSeen(state: AssistantMessageState, messageHash: str
 }
 ```
 
-- [ ] **Step 4: Verify Stop tests**
+- [ ] **Step 4: Verify AfterAgent tests**
 
 Run:
 
@@ -1175,9 +1132,9 @@ npm run build && node --test test/claude/claude-memory-flow.test.js
 
 Expected:
 
-- Claude assistant persistence and dedupe tests pass.
+- Claude assistant persistence and dedupe tests pass through NAMS `AfterAgent`.
 
-- [ ] **Step 5: Commit Stop flow**
+- [ ] **Step 5: Commit AfterAgent flow**
 
 ```bash
 git add src/platforms/claude/index.ts test/claude/claude-memory-flow.test.js
@@ -1186,7 +1143,7 @@ git commit -m "feat: persist claude assistant responses" -m "Co-authored-by: Cod
 
 ---
 
-### Task 6: Record Claude PostToolUse Traces
+### Task 6: Record Claude PostToolUse Traces Through NAMS AfterTool
 
 **Files:**
 
@@ -1200,22 +1157,21 @@ git commit -m "feat: persist claude assistant responses" -m "Co-authored-by: Cod
 Append to `test/memory-service.test.js`:
 
 ```js
-test("serializeToolOutput serializes and caps structured output", async () => {
+test("serializeToolOutput serializes structured output without truncating", async () => {
   const { serializeToolOutput } = await import(serviceUrl);
 
   assert.equal(serializeToolOutput({ stdout: "ok" }), '{"stdout":"ok"}');
   assert.equal(serializeToolOutput("plain output"), "plain output");
-  assert.match(serializeToolOutput("x".repeat(5000)), /\.\.\.\[truncated\]$/);
-  assert.equal(serializeToolOutput("x".repeat(5000)).length, 4000);
+  assert.equal(serializeToolOutput("x".repeat(5000)).length, 5000);
 });
 ```
 
-- [ ] **Step 2: Add PostToolUse adapter tests**
+- [ ] **Step 2: Add AfterTool adapter tests**
 
 Append to `test/claude/claude-memory-flow.test.js`:
 
 ```js
-test("records Claude PostToolUse payload as a reasoning step with tool output", async () => {
+test("records Claude PostToolUse payload as a reasoning step with tool output through AfterTool", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-claude-flow-"));
   try {
     const nams = createNamsFetchMock()
@@ -1234,23 +1190,25 @@ test("records Claude PostToolUse payload as a reasoning step with tool output", 
       fetch: nams.fetch,
     });
 
-    await adapter.userPromptSubmit({
+    await adapter.beforeAgent({
       platform: "claude",
-      event: "UserPromptSubmit",
+      event: "BeforeAgent",
       processCwd: projectDir,
       rawPayload: {
         session_id: "session-1",
+        hook_event_name: "UserPromptSubmit",
         cwd: projectDir,
         prompt: "Run tests.",
       },
     });
 
-    const result = await adapter.postToolUse({
+    const result = await adapter.afterTool({
       platform: "claude",
-      event: "PostToolUse",
+      event: "AfterTool",
       processCwd: projectDir,
       rawPayload: {
         session_id: "session-1",
+        hook_event_name: "PostToolUse",
         cwd: projectDir,
         tool_use_id: "toolu_1",
         tool_name: "Bash",
@@ -1283,7 +1241,7 @@ test("records Claude PostToolUse payload as a reasoning step with tool output", 
   }
 });
 
-test("does not duplicate Claude PostToolUse metadata for the same tool_use_id", async () => {
+test("does not duplicate Claude PostToolUse metadata for the same tool_use_id through AfterTool", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-claude-flow-"));
   try {
     const nams = createNamsFetchMock()
@@ -1302,12 +1260,13 @@ test("does not duplicate Claude PostToolUse metadata for the same tool_use_id", 
       fetch: nams.fetch,
     });
 
-    await adapter.userPromptSubmit({
+    await adapter.beforeAgent({
       platform: "claude",
-      event: "UserPromptSubmit",
+      event: "BeforeAgent",
       processCwd: projectDir,
       rawPayload: {
         session_id: "session-1",
+        hook_event_name: "UserPromptSubmit",
         cwd: projectDir,
         prompt: "Run tests once.",
       },
@@ -1315,10 +1274,11 @@ test("does not duplicate Claude PostToolUse metadata for the same tool_use_id", 
 
     const invocation = {
       platform: "claude",
-      event: "PostToolUse",
+      event: "AfterTool",
       processCwd: projectDir,
       rawPayload: {
         session_id: "session-1",
+        hook_event_name: "PostToolUse",
         cwd: projectDir,
         tool_use_id: "toolu_1",
         tool_name: "Bash",
@@ -1327,8 +1287,8 @@ test("does not duplicate Claude PostToolUse metadata for the same tool_use_id", 
       },
     };
 
-    await adapter.postToolUse(invocation);
-    await adapter.postToolUse(invocation);
+    await adapter.afterTool(invocation);
+    await adapter.afterTool(invocation);
 
     assert.equal(nams.calls("addToolCall").length, 1);
   } finally {
@@ -1347,7 +1307,7 @@ npm run build && node --test test/memory-service.test.js test/claude/claude-memo
 
 Expected:
 
-- Tests fail because `serializeToolOutput` and `ClaudeAdapter.postToolUse` are not implemented.
+- Tests fail because `serializeToolOutput` and `ClaudeAdapter.afterTool` are not implemented for Claude.
 
 - [ ] **Step 4: Add output serialization**
 
@@ -1361,16 +1321,11 @@ Add the exported helper:
 
 ```ts
 export function serializeToolOutput(output: unknown): string {
-  const serialized = typeof output === "string" ? output : JSON.stringify(output ?? {});
-  if (serialized.length <= 4000) {
-    return serialized;
-  }
-  const suffix = "...[truncated]";
-  return `${serialized.slice(0, 4000 - suffix.length)}${suffix}`;
+  return typeof output === "string" ? output : JSON.stringify(output ?? {});
 }
 ```
 
-- [ ] **Step 5: Implement PostToolUse method**
+- [ ] **Step 5: Implement AfterTool method**
 
 Add imports in `src/platforms/claude/index.ts`:
 
@@ -1381,7 +1336,7 @@ import { stableJsonHash } from "../../runtime/hashing.js";
 Add to `ClaudeAdapter`:
 
 ```ts
-  async postToolUse(invocation: HookInvocation<"PostToolUse">): Promise<HookResult> {
+  async afterTool(invocation: HookInvocation<"AfterTool">): Promise<HookResult> {
     const payloadInfo = parseClaudePayload(invocation.rawPayload, invocation.processCwd);
     const state = await loadOrCreateClaudeState(invocation, payloadInfo.projectDirectory, payloadInfo.sessionId);
     await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
@@ -1488,7 +1443,7 @@ function markSeen(seen: string[], keys: string[]): void {
 }
 ```
 
-- [ ] **Step 6: Verify PostToolUse tests**
+- [ ] **Step 6: Verify AfterTool tests**
 
 Run:
 
@@ -1498,10 +1453,10 @@ npm run build && node --test test/memory-service.test.js test/claude/claude-memo
 
 Expected:
 
-- Tool output serialization tests pass.
-- Claude tool trace tests pass.
+- Tool output serialization tests pass without truncating memory output.
+- Claude tool trace tests pass through NAMS `AfterTool`.
 
-- [ ] **Step 7: Commit PostToolUse flow**
+- [ ] **Step 7: Commit AfterTool flow**
 
 ```bash
 git add src/runtime/memory-service.ts src/platforms/claude/index.ts test/memory-service.test.js test/claude/claude-memory-flow.test.js
@@ -1572,6 +1527,6 @@ git commit -m "docs: plan claude memory flow" -m "Co-authored-by: Codex <codex@o
 - [ ] Hooks never fail Claude work because NAMS is unavailable.
 - [ ] Diagnostics do not include API keys, arbitrary error text, prompts, or tool output.
 - [ ] Tool input is sanitized by `serializeToolInput()`.
-- [ ] Tool output is serialized and capped by `serializeToolOutput()`.
+- [ ] Tool output is serialized without truncation by `serializeToolOutput()`.
 - [ ] No runtime npm dependency was added.
 - [ ] `npm run check` passes before completion is claimed.
