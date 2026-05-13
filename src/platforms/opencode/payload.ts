@@ -39,8 +39,7 @@ export function parseOpenCodePayload(payload: Record<string, unknown>, processCw
   const projectDirectory =
     firstString(payload.directory, payload.cwd, eventInfo?.directory, payload.worktree) ?? processCwd;
   const userPrompt = extractUserPrompt(output?.parts, message?.parts);
-  const assistantText =
-    hookName === "experimental.text.complete" ? firstString(output?.text, outputMessage?.text) : undefined;
+  const assistantText = firstString(output?.text);
   const toolName = firstString(input?.tool);
 
   return {
@@ -84,15 +83,14 @@ function extractUserPrompt(...values: unknown[]): string | undefined {
 }
 
 function extractToolFields(input: Record<string, unknown> | undefined, output: Record<string, unknown> | undefined) {
-  const toolCallId = firstString(input?.toolCallID, input?.toolCallId, input?.callID, input?.callId);
-  const toolInput = input?.args !== undefined ? input.args : input?.parameters;
-  const toolTitle = firstString(output?.title, input?.title);
-  const toolOutput = firstString(output?.output, output?.text);
+  const toolCallId = firstString(input?.callID, input?.callId);
+  const toolTitle = firstString(output?.title);
+  const toolOutput = firstString(output?.output);
   const toolStatus = firstString(output?.status) ?? "completed";
 
   return {
     ...(toolCallId !== undefined ? { toolCallId } : {}),
-    ...(toolInput !== undefined ? { toolInput } : {}),
+    ...(input?.args !== undefined ? { toolInput: input.args } : {}),
     ...(toolTitle !== undefined ? { toolTitle } : {}),
     ...(toolOutput !== undefined ? { toolOutput } : {}),
     toolStatus,

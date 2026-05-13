@@ -88,6 +88,25 @@ test("extracts OpenCode assistant text completion metadata", async () => {
   });
 });
 
+test("extracts assistant text from output text regardless of hook name", async () => {
+  const { parseOpenCodePayload } = await import(payloadUrl);
+  const info = parseOpenCodePayload(
+    {
+      hook: "custom.assistant.surface",
+      output: {
+        text: "Assistant response from generic hook",
+      },
+    },
+    "/fallback",
+  );
+
+  assert.deepEqual(info, {
+    hookName: "custom.assistant.surface",
+    projectDirectory: "/fallback",
+    assistantText: "Assistant response from generic hook",
+  });
+});
+
 test("extracts OpenCode tool execution fields with completed status by default", async () => {
   const { parseOpenCodePayload } = await import(payloadUrl);
   const toolInput = { command: "npm test" };
@@ -117,6 +136,76 @@ test("extracts OpenCode tool execution fields with completed status by default",
     toolInput,
     toolTitle: "Run tests",
     toolOutput: "Tests passed",
+    toolStatus: "completed",
+  });
+});
+
+test("ignores non-spec tool source fields when conflicting fields are present", async () => {
+  const { parseOpenCodePayload } = await import(payloadUrl);
+  const toolInput = { command: "npm test" };
+  const info = parseOpenCodePayload(
+    {
+      hook: "tool.execute.after",
+      input: {
+        sessionID: "session-5",
+        tool: "bash",
+        callID: "call-from-spec",
+        callId: "call-from-camel-spec",
+        toolCallID: "call-from-non-spec",
+        toolCallId: "call-from-non-spec-camel",
+        args: toolInput,
+        parameters: { command: "ignored parameters" },
+        title: "Ignored input title",
+      },
+      output: {
+        title: "Spec title",
+        output: "Spec output",
+        text: "Ignored text output",
+      },
+    },
+    "/fallback",
+  );
+
+  assert.deepEqual(info, {
+    hookName: "tool.execute.after",
+    sessionId: "session-5",
+    projectDirectory: "/fallback",
+    assistantText: "Ignored text output",
+    toolName: "bash",
+    toolCallId: "call-from-spec",
+    toolInput,
+    toolTitle: "Spec title",
+    toolOutput: "Spec output",
+    toolStatus: "completed",
+  });
+});
+
+test("omits tool details that are only present in non-spec source fields", async () => {
+  const { parseOpenCodePayload } = await import(payloadUrl);
+  const info = parseOpenCodePayload(
+    {
+      hook: "tool.execute.after",
+      input: {
+        sessionID: "session-6",
+        tool: "bash",
+        toolCallID: "ignored-call",
+        toolCallId: "ignored-call-camel",
+        parameters: { command: "ignored parameters" },
+        title: "Ignored input title",
+      },
+      output: {
+        text: "Ignored text output",
+      },
+    },
+    "/fallback",
+  );
+
+  assert.deepEqual(info, {
+    hookName: "tool.execute.after",
+    sessionId: "session-6",
+    projectDirectory: "/fallback",
+    assistantText: "Ignored text output",
+    toolName: "bash",
     toolStatus: "completed",
   });
 });
