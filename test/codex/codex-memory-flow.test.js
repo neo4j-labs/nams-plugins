@@ -985,7 +985,8 @@ test("records Codex PostToolUse as reasoning step and tool call", async () => {
       },
     });
 
-    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    assert.deepEqual(result.stdout, { continue: true });
+    assert.equal(Object.hasOwn(result.stdout, "suppressOutput"), false);
     assert.deepEqual(nams.requestBody("addReasoningStep"), {
       conversationId: "conversation-1",
       reasoning: "Codex ran shell for the current turn.",
@@ -1206,7 +1207,7 @@ test("Codex afterTool missing config and failed NAMS calls allow and log sanitiz
       },
     });
 
-    assert.deepEqual(missingConfigResult.stdout, { continue: true, suppressOutput: true });
+    assert.deepEqual(missingConfigResult.stdout, { continue: true });
     const { log: missingConfigLog } = await readSingleSessionLog(missingConfigDir);
     assert.match(missingConfigLog, /NAMS_API_KEY missing/);
     assert.doesNotMatch(missingConfigLog, /Authorization|Bearer|test-api-key/);
@@ -1240,7 +1241,7 @@ test("Codex afterTool missing config and failed NAMS calls allow and log sanitiz
       },
     });
 
-    assert.deepEqual(namsFailureResult.stdout, { continue: true, suppressOutput: true });
+    assert.deepEqual(namsFailureResult.stdout, { continue: true });
     const { lines: namsFailureLines, log: namsFailureLog } = await readSingleSessionLog(namsFailureDir);
     assert.match(namsFailureLog, /NAMS request failed/);
     const diagnostics = namsFailureLines.filter((entry) => entry.kind === "diagnostic");
@@ -1294,8 +1295,8 @@ test("Codex afterTool without conversationId or toolName saves state and does no
       },
     });
 
-    assert.deepEqual(noConversationResult.stdout, { continue: true, suppressOutput: true });
-    assert.deepEqual(noToolNameResult.stdout, { continue: true, suppressOutput: true });
+    assert.deepEqual(noConversationResult.stdout, { continue: true });
+    assert.deepEqual(noToolNameResult.stdout, { continue: true });
     assert.equal(nams.calls().length, 0);
   } finally {
     await rm(noConversationDir, { recursive: true, force: true });

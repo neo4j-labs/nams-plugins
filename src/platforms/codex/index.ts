@@ -185,14 +185,14 @@ export class CodexAdapter implements PlatformAdapter {
     const toolName = payloadInfo.toolName;
     if (conversationId === undefined || toolName === undefined) {
       await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
-      return allowOutput();
+      return allowPostToolUseOutput();
     }
 
     const config = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
     if (config === null) {
       await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state);
       await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
-      return allowOutput();
+      return allowPostToolUseOutput();
     }
 
     const toolInput = payloadInfo.toolInput ?? {};
@@ -205,7 +205,7 @@ export class CodexAdapter implements PlatformAdapter {
     });
     if (state.seenToolCallIds.includes(toolCallId)) {
       await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
-      return allowOutput();
+      return allowPostToolUseOutput();
     }
 
     const reasoningHash = codexReasoningStepHash({
@@ -237,11 +237,11 @@ export class CodexAdapter implements PlatformAdapter {
     } catch {
       await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
       await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
-      return allowOutput();
+      return allowPostToolUseOutput();
     }
 
     await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
-    return allowOutput();
+    return allowPostToolUseOutput();
   }
 
   private createMemoryService(
@@ -273,6 +273,10 @@ function allowOutput(additionalContext?: string): HookResult {
         : {}),
     },
   };
+}
+
+function allowPostToolUseOutput(): HookResult {
+  return { stdout: { continue: true } };
 }
 
 type AssistantMessageState = {

@@ -196,10 +196,10 @@ for (const { nativeHook, namsEvent, statusMessage } of codexNativeHookMappings) 
       const result = await runCliWithEvent("codex", namsEvent, payload, projectDir);
 
       assert.equal(result.code, 0, result.stderr);
-      assert.deepEqual(JSON.parse(result.stdout), {
-        continue: true,
-        suppressOutput: true,
-      });
+      assert.deepEqual(
+        JSON.parse(result.stdout),
+        nativeHook === "PostToolUse" ? { continue: true } : { continue: true, suppressOutput: true },
+      );
     } finally {
       await rm(projectDir, { recursive: true, force: true });
     }
