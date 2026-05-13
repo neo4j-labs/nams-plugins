@@ -181,8 +181,8 @@ function hasSeenUserMessage(
   platform: HookInvocation["platform"],
   content: string,
 ): boolean {
-  if (messageId !== undefined && state.seenUserMessageIds?.includes(messageId) === true) {
-    return true;
+  if (messageId !== undefined) {
+    return state.seenUserMessageIds?.includes(messageId) === true;
   }
   return state.lastUserMessageHash === userMessageHash(platform, state.sessionKey, content);
 }
@@ -196,6 +196,7 @@ function markUserMessageSeen(
   state.seenUserMessageIds ??= [];
   if (messageId !== undefined && !state.seenUserMessageIds.includes(messageId)) {
     state.seenUserMessageIds.push(messageId);
+    return;
   }
   state.lastUserMessageHash = userMessageHash(platform, state.sessionKey, content);
 }

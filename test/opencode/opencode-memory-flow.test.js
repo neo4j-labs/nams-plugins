@@ -244,6 +244,40 @@ test("Duplicate OpenCode chat.message does not store user prompt twice", async (
   }
 });
 
+test("OpenCode chat.message stores same content for distinct message ids", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
+  try {
+    const prompt = "Same content can be a new user turn.";
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    const { OpenCodeAdapter } = await import(opencodeUrl);
+    const adapter = new OpenCodeAdapter({
+      env: { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" },
+      fetch: nams.fetch,
+    });
+
+    await adapter.beforeAgent({
+      platform: "opencode",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: chatMessagePayload(projectDir, "session-1", "user-1", prompt),
+    });
+    await adapter.beforeAgent({
+      platform: "opencode",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: chatMessagePayload(projectDir, "session-1", "user-2", prompt),
+    });
+
+    assert.equal(nams.calls("addMessage").length, 2);
+    assert.deepEqual(nams.requestBodies("addMessage"), [
+      { role: "user", content: prompt },
+      { role: "user", content: prompt },
+    ]);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 async function readSingleSessionLog(projectDir) {
   const logDir = path.join(projectDir, ".nams", "logs");
   const logFiles = (await readdir(logDir)).filter((fileName) => /^session-.*\.jsonl$/.test(fileName));
