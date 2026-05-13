@@ -1,6 +1,6 @@
 # OpenCode Memory Flow Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Build an OpenCode NAMS integration comparable to the existing Gemini memory flow: project-local plugin shim, lazy NAMS conversation creation, first-response recall, user and assistant message persistence, tool metadata capture, session-scoped logs, and no runtime npm dependencies.
 
@@ -64,7 +64,7 @@ Modify:
 - Modify: `test/architecture.test.js`
 - Modify: `test/cli-session-start.test.js`
 
-- [ ] **Step 1: Write failing CLI routing tests**
+- [x] **Step 1: Write failing CLI routing tests**
 
 In `test/cli-session-start.test.js`, extend the harness list and route checks:
 
@@ -137,7 +137,7 @@ const logPath =
     : path.join(projectDir, ".nams", "logs", `${harness}-session-start.jsonl`);
 ```
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run:
 
@@ -147,7 +147,7 @@ npm run build && node --test test/cli-session-start.test.js
 
 Expected: FAIL because `opencode` is not a valid platform.
 
-- [ ] **Step 3: Add OpenCode to shared interfaces**
+- [x] **Step 3: Add OpenCode to shared interfaces**
 
 Change `src/interfaces.ts`:
 
@@ -161,7 +161,7 @@ Do not change `src/cli.ts` routing logic unless TypeScript requires a type-only 
 export const hookEvents = ["SessionStart", "BeforeAgent", "AfterAgent", "AfterTool"] as const;
 ```
 
-- [ ] **Step 4: Add an allow-only OpenCode adapter stub**
+- [x] **Step 4: Add an allow-only OpenCode adapter stub**
 
 Create `src/platforms/opencode/index.ts`:
 
@@ -241,7 +241,7 @@ function firstString(...values: unknown[]): string | undefined {
 }
 ```
 
-- [ ] **Step 5: Register the adapter**
+- [x] **Step 5: Register the adapter**
 
 Modify `src/platforms/index.ts`:
 
@@ -256,7 +256,7 @@ const adapters: Record<Platform, PlatformAdapter> = {
 };
 ```
 
-- [ ] **Step 6: Update architecture tests**
+- [x] **Step 6: Update architecture tests**
 
 In `test/architecture.test.js`, replace each hard-coded platform array with:
 
@@ -266,7 +266,7 @@ const platforms = ["gemini", "claude", "codex", "opencode"];
 
 Add `"src/platforms/opencode/index.ts"` to the `concreteAdapters` set in `importsConcreteAdapter`.
 
-- [ ] **Step 7: Verify green for routing**
+- [x] **Step 7: Verify green for routing**
 
 Run:
 
@@ -276,7 +276,7 @@ npm run build && node --test test/architecture.test.js test/cli-session-start.te
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/interfaces.ts src/platforms/index.ts src/platforms/opencode/index.ts test/architecture.test.js test/cli-session-start.test.js
@@ -292,7 +292,7 @@ git commit -m "feat: route opencode hook events" -m "Co-authored-by: Codex <code
 - Create: `src/platforms/opencode/payload.ts`
 - Create: `test/opencode/opencode-payload.test.js`
 
-- [ ] **Step 1: Write parser tests**
+- [x] **Step 1: Write parser tests**
 
 Create `test/opencode/opencode-payload.test.js` with cases for the five supported OpenCode surfaces:
 
@@ -398,7 +398,7 @@ test("extracts tool metadata from tool.execute.after", async () => {
 });
 ```
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run:
 
@@ -408,7 +408,7 @@ npm run build && node --test test/opencode/opencode-payload.test.js
 
 Expected: FAIL because `payload.ts` does not exist.
 
-- [ ] **Step 3: Implement parser**
+- [x] **Step 3: Implement parser**
 
 Create `src/platforms/opencode/payload.ts`:
 
@@ -500,7 +500,7 @@ function firstString(...values: unknown[]): string | undefined {
 }
 ```
 
-- [ ] **Step 4: Verify parser tests**
+- [x] **Step 4: Verify parser tests**
 
 Run:
 
@@ -510,7 +510,7 @@ npm run build && node --test test/opencode/opencode-payload.test.js
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/platforms/opencode/payload.ts test/opencode/opencode-payload.test.js
@@ -526,7 +526,7 @@ git commit -m "feat: parse opencode hook payloads" -m "Co-authored-by: Codex <co
 - Modify: `src/platforms/opencode/index.ts`
 - Modify: `test/opencode/opencode-memory-flow.test.js`
 
-- [ ] **Step 1: Add SessionStart flow test**
+- [x] **Step 1: Add SessionStart flow test**
 
 Create `test/opencode/opencode-memory-flow.test.js` with the same import pattern used by Gemini tests and add:
 
@@ -570,7 +570,7 @@ test("initializes OpenCode session state on session.created without creating a c
 
 Copy the `readSingleSessionLog` helper from the Gemini test file.
 
-- [ ] **Step 2: Verify red or update stub**
+- [x] **Step 2: Verify red or update stub**
 
 Run:
 
@@ -580,7 +580,7 @@ npm run build && node --test test/opencode/opencode-memory-flow.test.js
 
 Expected: PASS if Task 1 stub already satisfies the test; otherwise FAIL on missing state/log detail.
 
-- [ ] **Step 3: Replace local parsing helpers with `parseOpenCodePayload`**
+- [x] **Step 3: Replace local parsing helpers with `parseOpenCodePayload`**
 
 In `src/platforms/opencode/index.ts`, import:
 
@@ -590,7 +590,7 @@ import { parseOpenCodePayload } from "./payload.js";
 
 Use it in `startConversation()` to resolve project directory and session id. Remove duplicate parser helpers that Task 2 made obsolete.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run:
 
@@ -600,7 +600,7 @@ npm run build && node --test test/opencode/opencode-memory-flow.test.js test/cli
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/platforms/opencode/index.ts test/opencode/opencode-memory-flow.test.js test/cli-session-start.test.js
@@ -617,7 +617,7 @@ git commit -m "feat: initialize opencode session state" -m "Co-authored-by: Code
 - Modify: `src/platforms/opencode/index.ts`
 - Modify: `test/opencode/opencode-memory-flow.test.js`
 
-- [ ] **Step 1: Extend session state type**
+- [x] **Step 1: Extend session state type**
 
 Add optional fields to `SessionState`:
 
@@ -633,7 +633,7 @@ seenAssistantPartIds?: string[];
 
 No migration code is required because these fields are optional.
 
-- [ ] **Step 2: Add failing test for `chat.message`**
+- [x] **Step 2: Add failing test for `chat.message`**
 
 Add a mocked NAMS flow test:
 
@@ -692,7 +692,7 @@ function chatMessagePayload(projectDir, sessionID, messageID, text) {
 }
 ```
 
-- [ ] **Step 3: Add failing test for context injection consumption**
+- [x] **Step 3: Add failing test for context injection consumption**
 
 ```js
 test("OpenCode system transform returns and consumes pending memory context", async () => {
@@ -747,7 +747,7 @@ test("OpenCode system transform returns and consumes pending memory context", as
 });
 ```
 
-- [ ] **Step 4: Implement `beforeAgent` branching**
+- [x] **Step 4: Implement `beforeAgent` branching**
 
 In `OpenCodeAdapter.beforeAgent()`:
 
@@ -777,7 +777,7 @@ Implement `chat.message` logic by following Gemini `beforeAgent`:
 
 Only mark a user message id or hash as seen after `storeUserMessage()` succeeds.
 
-- [ ] **Step 5: Implement `consumePendingContext`**
+- [x] **Step 5: Implement `consumePendingContext`**
 
 Return:
 
@@ -796,7 +796,7 @@ return {
 
 Clear `state.pendingMemoryContext` before saving state.
 
-- [ ] **Step 6: Add missing-config and NAMS-failure tests**
+- [x] **Step 6: Add missing-config and NAMS-failure tests**
 
 Port the Gemini tests for:
 
@@ -810,7 +810,7 @@ Expected diagnostics must be fixed strings:
 - `NAMS_API_KEY missing`
 - `NAMS request failed`
 
-- [ ] **Step 7: Verify**
+- [x] **Step 7: Verify**
 
 Run:
 
@@ -820,7 +820,7 @@ npm run build && node --test test/opencode/opencode-memory-flow.test.js
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/runtime/session-state.ts src/platforms/opencode/index.ts test/opencode/opencode-memory-flow.test.js
@@ -836,7 +836,7 @@ git commit -m "feat: add opencode user memory flow" -m "Co-authored-by: Codex <c
 - Modify: `src/platforms/opencode/index.ts`
 - Modify: `test/opencode/opencode-memory-flow.test.js`
 
-- [ ] **Step 1: Add failing assistant text test**
+- [x] **Step 1: Add failing assistant text test**
 
 ```js
 test("OpenCode experimental.text.complete stores assistant text", async () => {
@@ -879,11 +879,11 @@ test("OpenCode experimental.text.complete stores assistant text", async () => {
 });
 ```
 
-- [ ] **Step 2: Add replay dedupe test**
+- [x] **Step 2: Add replay dedupe test**
 
 Call `afterAgent` twice with the same `messageID`, `partID`, and text. Assert only one assistant `addMessage` request is written.
 
-- [ ] **Step 3: Implement `afterAgent`**
+- [x] **Step 3: Implement `afterAgent`**
 
 Follow Gemini assistant persistence:
 
@@ -900,7 +900,7 @@ Follow Gemini assistant persistence:
 - mark part id/hash as seen only after successful write
 - save state
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run:
 
@@ -910,7 +910,7 @@ npm run build && node --test test/opencode/opencode-memory-flow.test.js
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/platforms/opencode/index.ts test/opencode/opencode-memory-flow.test.js
@@ -926,7 +926,7 @@ git commit -m "feat: store opencode assistant text" -m "Co-authored-by: Codex <c
 - Modify: `src/platforms/opencode/index.ts`
 - Modify: `test/opencode/opencode-memory-flow.test.js`
 
-- [ ] **Step 1: Add failing tool metadata test**
+- [x] **Step 1: Add failing tool metadata test**
 
 ```js
 test("OpenCode tool.execute.after records sanitized tool metadata", async () => {
@@ -995,11 +995,11 @@ test("OpenCode tool.execute.after records sanitized tool metadata", async () => 
 });
 ```
 
-- [ ] **Step 2: Add tool replay dedupe test**
+- [x] **Step 2: Add tool replay dedupe test**
 
 Call `afterTool` twice with the same `callID`. Assert one `addToolCall` request.
 
-- [ ] **Step 3: Implement `afterTool`**
+- [x] **Step 3: Implement `afterTool`**
 
 Follow Gemini `afterTool` but use OpenCode-specific summary text:
 
@@ -1029,7 +1029,7 @@ await memory.recordToolCall({
 });
 ```
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run:
 
@@ -1039,7 +1039,7 @@ npm run build && node --test test/opencode/opencode-memory-flow.test.js
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/platforms/opencode/index.ts test/opencode/opencode-memory-flow.test.js
@@ -1055,7 +1055,7 @@ git commit -m "feat: record opencode tool metadata" -m "Co-authored-by: Codex <c
 - Create: `templates/opencode/plugins/nams-hooks.js`
 - Create: `test/opencode/opencode-template.test.js`
 
-- [ ] **Step 1: Add template tests**
+- [x] **Step 1: Add template tests**
 
 Create `test/opencode/opencode-template.test.js`:
 
@@ -1081,7 +1081,7 @@ test("OpenCode plugin template registers NAMS hook surfaces", async () => {
 });
 ```
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run:
 
@@ -1091,7 +1091,7 @@ node --test test/opencode/opencode-template.test.js
 
 Expected: FAIL because the template does not exist.
 
-- [ ] **Step 3: Create template**
+- [x] **Step 3: Create template**
 
 Create `templates/opencode/plugins/nams-hooks.js`:
 
@@ -1193,7 +1193,7 @@ async function logDiagnostic(client, message) {
 }
 ```
 
-- [ ] **Step 4: Verify template test**
+- [x] **Step 4: Verify template test**
 
 Run:
 
@@ -1203,7 +1203,7 @@ node --test test/opencode/opencode-template.test.js
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add templates/opencode/plugins/nams-hooks.js test/opencode/opencode-template.test.js
@@ -1219,7 +1219,7 @@ git commit -m "feat: add opencode plugin template" -m "Co-authored-by: Codex <co
 - Modify: `README.md`
 - Modify: `INSTALL.md`
 
-- [ ] **Step 1: Update README platform support**
+- [x] **Step 1: Update README platform support**
 
 Add OpenCode to the platform support list and mention that OpenCode support uses a project-local plugin shim:
 
@@ -1229,7 +1229,7 @@ Add OpenCode to the platform support list and mention that OpenCode support uses
 
 In Runtime Logs, mention that OpenCode and Gemini both use session-scoped JSONL logs.
 
-- [ ] **Step 2: Update INSTALL**
+- [x] **Step 2: Update INSTALL**
 
 Add:
 
@@ -1258,7 +1258,7 @@ If `nams-hooks` is not on OpenCode's `PATH`, set `NAMS_HOOKS_COMMAND` to the exe
 
 Keep the outer fence at four backticks so the nested shell snippets render correctly.
 
-- [ ] **Step 3: Run focused tests**
+- [x] **Step 3: Run focused tests**
 
 Run:
 
@@ -1268,7 +1268,7 @@ npm run build && node --test test/opencode/*.test.js test/cli-session-start.test
 
 Expected: PASS.
 
-- [ ] **Step 4: Run full check**
+- [x] **Step 4: Run full check**
 
 Run:
 
@@ -1278,7 +1278,7 @@ npm run check
 
 Expected: PASS.
 
-- [ ] **Step 5: Run package check**
+- [x] **Step 5: Run package check**
 
 Run:
 
@@ -1288,7 +1288,7 @@ npm run package:check
 
 Expected: PASS. This also verifies distribution output still keeps generated runtime code dependency-free.
 
-- [ ] **Step 6: Inspect git status**
+- [x] **Step 6: Inspect git status**
 
 Run:
 
@@ -1298,7 +1298,7 @@ git status --short
 
 Expected: only intended source, template, test, and docs files are modified or added. No `.nams/`, `.build/`, `dist/`, or project-root test artifacts are tracked.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add README.md INSTALL.md

@@ -46,9 +46,10 @@ Install the package so `nams-hooks` is on `PATH`:
 ```bash
 npm install -g @neo4j-labs/nams-hooks
 mkdir -p .opencode/plugins
+cp "$(npm root -g)/@neo4j-labs/nams-hooks/templates/opencode/plugins/nams-hooks.js" .opencode/plugins/nams-hooks.js
 ```
 
-Until an installer or packaged template command exists, copy the plugin shim from a repository checkout or release artifact into the target project.
+If your global npm root is customized, run `npm root -g` first and copy the template from the reported package directory.
 
 For local development from this repository:
 

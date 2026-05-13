@@ -41,6 +41,28 @@ test("chat.message handler sends real two-argument input and output to nams-hook
   }
 });
 
+test("event handler sends session.created payload to SessionStart", async () => {
+  const fixture = await createNamsHooksStub();
+  try {
+    const { NamsHooks } = await importTemplateWithCommand(fixture.commandPath);
+    const plugin = await NamsHooks({ directory: fixture.directory, project: "project-session", worktree: "worktree-session" });
+    const event = { type: "session.created", properties: { info: { id: "session-1" } } };
+
+    await plugin.event({ event });
+
+    const calls = await readCalls(fixture.callsPath);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].args, ["run", "opencode", "--event", "SessionStart"]);
+    assert.equal(calls[0].payload.hook, "event");
+    assert.deepEqual(calls[0].payload.event, event);
+    assert.equal(calls[0].payload.directory, fixture.directory);
+    assert.equal(calls[0].payload.project, "project-session");
+    assert.equal(calls[0].payload.worktree, "worktree-session");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("system transform handler appends returned memory context with two-argument shape", async () => {
   const fixture = await createNamsHooksStub();
   try {
@@ -58,6 +80,48 @@ test("system transform handler appends returned memory context with two-argument
     assert.equal(calls[0].payload.hook, "experimental.chat.system.transform");
     assert.deepEqual(calls[0].payload.input, input);
     assert.deepEqual(calls[0].payload.output, { system: ["existing system"] });
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("experimental.text.complete handler sends assistant completion payload to AfterAgent", async () => {
+  const fixture = await createNamsHooksStub();
+  try {
+    const { NamsHooks } = await importTemplateWithCommand(fixture.commandPath);
+    const plugin = await NamsHooks({ directory: fixture.directory, project: "project-assistant", worktree: "worktree-assistant" });
+    const input = { sessionID: "session-1", messageID: "assistant-1", partID: "part-1" };
+    const output = { text: "Hello!" };
+
+    await plugin["experimental.text.complete"](input, output);
+
+    const calls = await readCalls(fixture.callsPath);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].args, ["run", "opencode", "--event", "AfterAgent"]);
+    assert.equal(calls[0].payload.hook, "experimental.text.complete");
+    assert.deepEqual(calls[0].payload.input, input);
+    assert.deepEqual(calls[0].payload.output, output);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("tool.execute.after handler sends tool payload to AfterTool", async () => {
+  const fixture = await createNamsHooksStub();
+  try {
+    const { NamsHooks } = await importTemplateWithCommand(fixture.commandPath);
+    const plugin = await NamsHooks({ directory: fixture.directory, project: "project-tool", worktree: "worktree-tool" });
+    const input = { sessionID: "session-1", callID: "call-1", tool: "bash", args: { command: "npm test" } };
+    const output = { title: "npm test", output: "100 tests pass" };
+
+    await plugin["tool.execute.after"](input, output);
+
+    const calls = await readCalls(fixture.callsPath);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].args, ["run", "opencode", "--event", "AfterTool"]);
+    assert.equal(calls[0].payload.hook, "tool.execute.after");
+    assert.deepEqual(calls[0].payload.input, input);
+    assert.deepEqual(calls[0].payload.output, output);
   } finally {
     await fixture.cleanup();
   }

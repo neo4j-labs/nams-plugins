@@ -5,10 +5,13 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const generatedClientPath = path.join(root, "dist", "bin", "generated", "nams-client.js");
+const opencodeTemplatePath = path.join(root, "templates", "opencode", "plugins", "nams-hooks.js");
 const rootPackagePath = path.join(root, "package.json");
 const distPackagePath = path.join(root, "dist", "package.json");
 
 await access(generatedClientPath);
+await access(opencodeTemplatePath);
+await verifyRootPackageFiles(rootPackagePath);
 await verifyPackageBin(rootPackagePath, root);
 await verifyPackageBin(distPackagePath, path.join(root, "dist"));
 
@@ -24,4 +27,11 @@ async function verifyPackageBin(packagePath, packageRoot) {
     throw new Error(`${path.relative(root, packagePath)} must define bin.nams-hooks.`);
   }
   await access(path.join(packageRoot, binPath), constants.X_OK);
+}
+
+async function verifyRootPackageFiles(packagePath) {
+  const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
+  if (!Array.isArray(packageJson.files) || !packageJson.files.includes("templates/")) {
+    throw new Error("package.json files must include templates/ for the OpenCode plugin shim.");
+  }
 }
