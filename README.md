@@ -19,7 +19,7 @@ It ensures deterministic memory persistence and context recall across different 
 - **Harnesses**:
   - [Claude Code](https://code.claude.com/docs/en/hooks)
   - [Gemini CLI](https://github.com/google-gemini/gemini-cli)
-  - Codex
+  - [Codex](https://chatgpt.com/codex/)
 
 ## Architecture
 

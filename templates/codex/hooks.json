@@ -2,7 +2,14 @@
   "hooks": {
     "SessionStart": [
       {
-        "command": "nams-hooks run codex --event SessionStart"
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "nams-hooks run codex --event SessionStart",
+            "statusMessage": "Loading session notes"
+          }
+        ]
       }
     ]
   }

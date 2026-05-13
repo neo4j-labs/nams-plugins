@@ -342,6 +342,9 @@ Gemini CLI:
 Codex:
 
 - Use project-level `.codex/hooks.json`.
+- The repository template must use Codex's command-hook group shape for `SessionStart`:
+  `{ "matcher": "startup|resume", "hooks": [{ "type": "command", "command": "nams-hooks run codex --event SessionStart", "statusMessage": "Loading session notes" }] }`.
+  Do not use the stale short-form object that places `command` directly under `SessionStart`.
 - Use `SessionStart`, `UserPromptSubmit`, and `Stop`.
 - Tool-level capture is included only if the installed Codex version exposes supported tool hooks.
 - `doctor` should identify missing or partial Codex hook support and report it clearly.
