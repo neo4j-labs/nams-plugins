@@ -39,13 +39,13 @@ export class OpenCodeAdapter implements PlatformAdapter {
 }
 
 function resolveOpencodeProjectDirectory(invocation: HookInvocation<"SessionStart">): string {
-  const cwd = invocation.rawPayload.cwd;
-  if (typeof cwd === "string" && cwd.trim() !== "") {
-    return cwd;
+  const directory = invocation.rawPayload.directory;
+  if (typeof directory === "string" && directory.trim() !== "") {
+    return directory;
   }
 
-  const directory = invocation.rawPayload.directory;
-  return typeof directory === "string" && directory.trim() !== "" ? directory : invocation.processCwd;
+  const cwd = invocation.rawPayload.cwd;
+  return typeof cwd === "string" && cwd.trim() !== "" ? cwd : invocation.processCwd;
 }
 
 function resolveOpencodeSessionId(payload: Record<string, unknown>): string | undefined {

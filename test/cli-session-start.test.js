@@ -127,6 +127,30 @@ test("writes fallback logs under child process cwd when payload omits cwd", asyn
   }
 });
 
+test("opencode writes session log and state under directory when cwd is also present", async () => {
+  const cwdDir = await mkdtemp(path.join(tmpdir(), "nams-hooks-cwd-"));
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-hooks-project-"));
+  try {
+    const payload = {
+      hook: "session.created",
+      input: { sessionID: "opencode-directory-wins" },
+      cwd: cwdDir,
+      directory: projectDir,
+    };
+
+    const result = await runCli("opencode", payload, cwdDir);
+
+    assert.equal(result.code, 0, result.stderr);
+    const entry = JSON.parse((await readFile(await singleSessionLogPath(projectDir), "utf8")).trim());
+    assert.deepEqual(entry.payload, payload);
+    assert.equal((await sessionStateFiles(projectDir, "opencode")).length, 1);
+    assert.deepEqual(await sessionStateFiles(cwdDir, "opencode"), []);
+  } finally {
+    await rm(cwdDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 for (const event of ["BeforeAgent", "AfterAgent", "AfterTool"]) {
   test(`routes opencode ${event} hook event`, async () => {
     const projectDir = await mkdtemp(path.join(tmpdir(), "nams-hooks-"));
@@ -173,4 +197,15 @@ async function singleSessionLogPath(projectDir) {
   const logFiles = (await readdir(logDir)).filter((fileName) => /^session-.*\.jsonl$/.test(fileName));
   assert.equal(logFiles.length, 1, `expected one session log file, got ${logFiles.join(", ")}`);
   return path.join(logDir, logFiles[0]);
+}
+
+async function sessionStateFiles(projectDir, harness) {
+  try {
+    return await readdir(path.join(projectDir, ".nams", "state", "sessions", harness));
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  }
 }
