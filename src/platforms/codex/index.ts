@@ -140,11 +140,19 @@ export class CodexAdapter implements PlatformAdapter {
       const memory = this.createMemoryService(config, invocation, payloadInfo.projectDirectory, state);
       const response = payloadInfo.lastAssistantMessage?.trim();
       if (response !== undefined && response !== "") {
-        const responseHash = assistantMessageHash(invocation.platform, state.sessionKey, response, payloadInfo.turnId);
-        if (!hasSeenAssistantMessage(state, responseHash)) {
+        const responseDedupeHash = assistantMessageDedupeHash(
+          invocation.platform,
+          state.sessionKey,
+          response,
+          payloadInfo.turnId,
+        );
+        if (!hasSeenAssistantMessage(state, responseDedupeHash)) {
           await memory.storeAssistantMessage(conversationId, response);
         }
-        markAssistantMessageSeen(state, responseHash);
+        markAssistantMessageSeen(
+          state,
+          assistantMessageHashes(invocation.platform, state.sessionKey, response, payloadInfo.turnId),
+        );
       } else if (payloadInfo.transcriptPath !== undefined) {
         const entries = await readCodexTranscript(payloadInfo.transcriptPath);
         await storeAssistantMessagesFromTranscript(invocation.platform, conversationId, state, memory, entries);
@@ -291,11 +299,11 @@ async function storeAssistantMessagesFromTranscript(
 
     const content = entry.content.trim();
     if (content !== "") {
-      const responseHash = assistantMessageHash(platform, state.sessionKey, content);
-      if (entry.id !== undefined || !hasSeenAssistantMessage(state, responseHash)) {
+      const responseHash = assistantContentHash(platform, state.sessionKey, content);
+      if (!hasSeenAssistantMessage(state, responseHash)) {
         await memory.storeAssistantMessage(conversationId, content);
       }
-      markAssistantMessageSeen(state, responseHash);
+      markAssistantMessageSeen(state, [responseHash]);
     }
 
     if (entry.id !== undefined) {
@@ -304,21 +312,35 @@ async function storeAssistantMessagesFromTranscript(
   }
 }
 
-function assistantMessageHash(platform: string, sessionKey: string, content: string, turnId?: string): string {
+function assistantMessageDedupeHash(platform: string, sessionKey: string, content: string, turnId?: string): string {
   if (turnId === undefined) {
-    return sha256([platform, sessionKey, "assistant", content].join("\n"));
+    return assistantContentHash(platform, sessionKey, content);
   }
   return sha256([platform, sessionKey, "assistant", "turn", turnId, content].join("\n"));
+}
+
+function assistantMessageHashes(platform: string, sessionKey: string, content: string, turnId?: string): string[] {
+  const contentHash = assistantContentHash(platform, sessionKey, content);
+  if (turnId === undefined) {
+    return [contentHash];
+  }
+  return [assistantMessageDedupeHash(platform, sessionKey, content, turnId), contentHash];
+}
+
+function assistantContentHash(platform: string, sessionKey: string, content: string): string {
+  return sha256([platform, sessionKey, "assistant", content].join("\n"));
 }
 
 function hasSeenAssistantMessage(state: AssistantMessageState, hash: string): boolean {
   return state.lastAssistantMessageHash === hash || state.seenAssistantMessageHashes.includes(hash);
 }
 
-function markAssistantMessageSeen(state: AssistantMessageState, hash: string): void {
-  state.lastAssistantMessageHash = hash;
-  if (!state.seenAssistantMessageHashes.includes(hash)) {
-    state.seenAssistantMessageHashes.push(hash);
+function markAssistantMessageSeen(state: AssistantMessageState, hashes: string[]): void {
+  state.lastAssistantMessageHash = hashes[0];
+  for (const hash of hashes) {
+    if (!state.seenAssistantMessageHashes.includes(hash)) {
+      state.seenAssistantMessageHashes.push(hash);
+    }
   }
 }
 

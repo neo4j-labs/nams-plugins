@@ -656,7 +656,7 @@ test("Codex transcript fallback does not duplicate an entry id", async () => {
   }
 });
 
-test("Codex transcript fallback stores same assistant content when id changes", async () => {
+test("Codex transcript fallback dedupes same assistant content when id changes", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
   try {
     const transcriptPath = path.join(projectDir, "codex-transcript.jsonl");
@@ -711,10 +711,76 @@ test("Codex transcript fallback stores same assistant content when id changes", 
     });
 
     const assistantMessages = nams.requestBodies("addMessage").filter((body) => body.role === "assistant");
-    assert.deepEqual(assistantMessages, [
-      { role: "assistant", content: "Same content." },
-      { role: "assistant", content: "Same content." },
-    ]);
+    assert.deepEqual(assistantMessages, [{ role: "assistant", content: "Same content." }]);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Codex transcript fallback does not duplicate a direct assistant response", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
+  try {
+    const transcriptPath = path.join(projectDir, "codex-transcript.jsonl");
+    await writeFile(
+      transcriptPath,
+      [
+        JSON.stringify({
+          type: "response_item",
+          item: { id: "assistant-from-transcript", type: "message", role: "assistant", content: "Already stored." },
+        }),
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    const { CodexAdapter } = await import(codexUrl);
+    const adapter = new CodexAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: nams.fetch,
+    });
+
+    await adapter.beforeAgent({
+      platform: "codex",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "Create a conversation.",
+      },
+    });
+
+    await adapter.afterAgent({
+      platform: "codex",
+      event: "AfterAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "Stop",
+        session_id: "session-1",
+        turn_id: "turn-1",
+        cwd: projectDir,
+        last_assistant_message: "Already stored.",
+      },
+    });
+    await adapter.afterAgent({
+      platform: "codex",
+      event: "AfterAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "Stop",
+        session_id: "session-1",
+        cwd: projectDir,
+        transcript_path: transcriptPath,
+      },
+    });
+
+    const assistantMessages = nams.requestBodies("addMessage").filter((body) => body.role === "assistant");
+    assert.deepEqual(assistantMessages, [{ role: "assistant", content: "Already stored." }]);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
