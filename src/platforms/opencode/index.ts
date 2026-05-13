@@ -1,26 +1,28 @@
 import type { HookInvocation, HookResult, PlatformAdapter } from "../../interfaces.js";
 import { appendPlatformLog } from "../../runtime/logging.js";
 import { createInitialSessionState, loadSessionState, saveSessionState } from "../../runtime/session-state.js";
+import { parseOpenCodePayload } from "./payload.js";
 
 export class OpenCodeAdapter implements PlatformAdapter {
   async startConversation(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
-    const projectDirectory = resolveOpencodeProjectDirectory(invocation);
+    const payloadInfo = parseOpenCodePayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({
       platform: invocation.platform,
-      projectDirectory,
-      sessionId: resolveOpencodeSessionId(invocation.rawPayload),
+      projectDirectory: payloadInfo.projectDirectory,
+      sessionId: payloadInfo.sessionId,
     });
-    const state = (await loadSessionState(projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
+    const state =
+      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
 
     await appendPlatformLog({
       platform: invocation.platform,
       event: invocation.event,
       payload: invocation.rawPayload,
-      projectDirectory,
+      projectDirectory: payloadInfo.projectDirectory,
       sessionCreatedAt: state.createdAt,
       sessionKey: state.sessionKey,
     });
-    await saveSessionState(projectDirectory, invocation.platform, state.sessionKey, state);
+    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
 
     return allowOutput();
   }
@@ -36,38 +38,6 @@ export class OpenCodeAdapter implements PlatformAdapter {
   async afterTool(_invocation: HookInvocation<"AfterTool">): Promise<HookResult> {
     return allowOutput();
   }
-}
-
-function resolveOpencodeProjectDirectory(invocation: HookInvocation<"SessionStart">): string {
-  const directory = invocation.rawPayload.directory;
-  if (typeof directory === "string" && directory.trim() !== "") {
-    return directory;
-  }
-
-  const cwd = invocation.rawPayload.cwd;
-  return typeof cwd === "string" && cwd.trim() !== "" ? cwd : invocation.processCwd;
-}
-
-function resolveOpencodeSessionId(payload: Record<string, unknown>): string | undefined {
-  const input = asRecord(payload.input);
-  const event = asRecord(payload.event);
-  const properties = asRecord(event?.properties);
-  const info = asRecord(properties?.info);
-
-  return firstString(input?.sessionID, input?.sessionId, properties?.sessionID, info?.id);
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
-}
-
-function firstString(...values: unknown[]): string | undefined {
-  for (const value of values) {
-    if (typeof value === "string" && value.trim() !== "") {
-      return value;
-    }
-  }
-  return undefined;
 }
 
 function allowOutput(): HookResult {
