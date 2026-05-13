@@ -30,7 +30,6 @@ export class CodexAdapter implements PlatformAdapter {
     const state =
       (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
     await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
-    await appendLegacySessionStartLog(invocation, payloadInfo.projectDirectory);
     await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
 
     return { stdout: { continue: true, suppressOutput: true } };
@@ -203,20 +202,6 @@ async function appendRawPlatformLog(
     });
   } catch {
     // Codex hooks must not fail because observability writes failed.
-  }
-}
-
-async function appendLegacySessionStartLog(invocation: HookInvocation, projectDirectory: string): Promise<void> {
-  try {
-    await appendPlatformLog({
-      platform: invocation.platform,
-      event: invocation.event,
-      kind: "hook.event",
-      payload: invocation.rawPayload,
-      projectDirectory,
-    });
-  } catch {
-    // Compatibility logs are best-effort and must never block a hook response.
   }
 }
 

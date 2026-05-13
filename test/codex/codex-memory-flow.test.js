@@ -32,6 +32,56 @@ test("initializes Codex session state on SessionStart without creating a convers
     assert.notEqual(state, null);
     assert.equal(state.sessionKey, "session-1");
     assert.equal(state.conversationId, undefined);
+
+    const logFileNames = await readdir(path.join(projectDir, ".nams", "logs"));
+    assert.equal(logFileNames.filter((fileName) => fileName.startsWith("session-")).length, 1);
+    assert.equal(logFileNames.includes("codex-session-start.jsonl"), false);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Codex beforeAgent with no prompt saves state, logs raw event, and does not call NAMS", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
+  try {
+    const nams = createNamsFetchMock().all({ error: "unexpected NAMS call" }, 500);
+    const { CodexAdapter } = await import(codexUrl);
+    const { loadSessionState } = await import(stateUrl);
+    const adapter = new CodexAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: nams.fetch,
+    });
+
+    const result = await adapter.beforeAgent({
+      platform: "codex",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "session-1",
+        cwd: projectDir,
+      },
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    const state = await loadSessionState(projectDir, "codex", "session-1");
+    assert.notEqual(state, null);
+    assert.equal(state.sessionKey, "session-1");
+    assert.equal(state.conversationId, undefined);
+    assert.equal(nams.calls().length, 0);
+
+    const { lines } = await readSingleSessionLog(projectDir);
+    assert.equal(lines.length, 1);
+    assert.equal(lines[0].kind, "hook.event");
+    assert.equal(lines[0].event, "BeforeAgent");
+    assert.deepEqual(lines[0].payload, {
+      hook_event_name: "UserPromptSubmit",
+      session_id: "session-1",
+      cwd: projectDir,
+    });
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -226,6 +276,58 @@ test("Codex recall failure still stores prompt and can return entity search cont
     const diagnostics = lines.filter((entry) => entry.kind === "diagnostic");
     assert.deepEqual(diagnostics.map((entry) => entry.payload), [{ message: "NAMS request failed" }]);
     assert.doesNotMatch(JSON.stringify(diagnostics), /context unavailable|Authorization|Bearer|key/);
+    assert.doesNotMatch(log, /Authorization|Bearer|key/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Codex entity search failure still stores prompt and can return conversation recall context", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
+  try {
+    const prompt = "Persist this even if entity search is unavailable.";
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context({ observations: [{ content: "User wants conversation recall to survive partial failures." }] })
+      .searchEntities({ error: "entity search unavailable" }, 503)
+      .message();
+    const { CodexAdapter } = await import(codexUrl);
+    const adapter = new CodexAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: nams.fetch,
+    });
+
+    const result = await adapter.beforeAgent({
+      platform: "codex",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt,
+      },
+    });
+
+    assert.equal(result.stdout.continue, true);
+    assert.equal(result.stdout.suppressOutput, true);
+    assert.match(
+      result.stdout.hookSpecificOutput.additionalContext,
+      /User wants conversation recall to survive partial failures\./,
+    );
+    assert.equal(result.stdout.hookSpecificOutput.hookEventName, "UserPromptSubmit");
+    assert.deepEqual(nams.requestBody("addMessage"), {
+      role: "user",
+      content: prompt,
+    });
+    const { lines, log } = await readSingleSessionLog(projectDir);
+    assert.match(log, /NAMS request failed/);
+    const diagnostics = lines.filter((entry) => entry.kind === "diagnostic");
+    assert.deepEqual(diagnostics.map((entry) => entry.payload), [{ message: "NAMS request failed" }]);
+    assert.doesNotMatch(JSON.stringify(diagnostics), /entity search unavailable|Authorization|Bearer|key/);
     assert.doesNotMatch(log, /Authorization|Bearer|key/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
