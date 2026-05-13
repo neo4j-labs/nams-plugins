@@ -3,7 +3,7 @@ import type { NamsRequestEvent } from "../../generated/nams-client.js";
 import { loadNamsConfig, type NamsRuntimeConfig } from "../../runtime/config.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
 import { appendPlatformLog } from "../../runtime/logging.js";
-import { combineMemoryContexts, NamsMemoryService } from "../../runtime/memory-service.js";
+import { combineMemoryContexts, NamsMemoryService, serializeToolInput } from "../../runtime/memory-service.js";
 import { createInitialSessionState, loadSessionState, saveSessionState } from "../../runtime/session-state.js";
 import type { SessionState } from "../../runtime/session-state.js";
 import { parseOpenCodePayload, type OpenCodePayloadInfo } from "./payload.js";
@@ -373,7 +373,7 @@ function opencodeToolCallDedupeKey(
   if (toolCallId !== undefined && toolCallId.trim() !== "") {
     return `opencode-call-id:${stableJsonHash({ sessionKey, toolCallId })}`;
   }
-  return stableJsonHash({ sessionKey, toolName, toolInput });
+  return stableJsonHash({ sessionKey, toolName, input: serializeToolInput(toolInput) });
 }
 
 function markSeen(seen: string[], keys: string[]): void {

@@ -499,6 +499,66 @@ test("Duplicate OpenCode tool.execute.after does not store tool metadata twice",
   }
 });
 
+test("OpenCode tool.execute.after fallback dedupe uses sanitized input", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
+  try {
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message()
+      .reasoningStep({ id: "step-1" })
+      .toolCall();
+    const { OpenCodeAdapter } = await import(opencodeUrl);
+    const adapter = new OpenCodeAdapter({
+      env: { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" },
+      fetch: nams.fetch,
+    });
+
+    await adapter.beforeAgent({
+      platform: "opencode",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: chatMessagePayload(projectDir, "session-1", "user-1", "Run tests."),
+    });
+
+    await adapter.afterTool({
+      platform: "opencode",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: {
+        hook: "tool.execute.after",
+        directory: projectDir,
+        input: {
+          sessionID: "session-1",
+          tool: "bash",
+          args: { command: "npm test", output: "first output", result: "first result", response: "first response" },
+        },
+        output: { title: "npm test", output: "69 tests pass" },
+      },
+    });
+    await adapter.afterTool({
+      platform: "opencode",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: {
+        hook: "tool.execute.after",
+        directory: projectDir,
+        input: {
+          sessionID: "session-1",
+          tool: "bash",
+          args: { command: "npm test", output: "second output", result: "second result", response: "second response" },
+        },
+        output: { title: "npm test", output: "69 tests pass" },
+      },
+    });
+
+    assert.equal(nams.calls("addToolCall").length, 1);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("OpenCode assistant part dedupe does not collide on raw delimiters", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
   try {
