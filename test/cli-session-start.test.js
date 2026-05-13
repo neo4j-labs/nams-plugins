@@ -81,7 +81,7 @@ for (const harness of ["gemini", "claude", "codex", "opencode"]) {
       });
 
       const logPath =
-        harness === "gemini"
+        harness === "gemini" || harness === "opencode"
           ? await singleSessionLogPath(projectDir)
           : path.join(projectDir, ".nams", "logs", `${harness}-session-start.jsonl`);
       const lines = (await readFile(logPath, "utf8")).trim().split("\n");
@@ -128,6 +128,27 @@ test("writes fallback logs under child process cwd when payload omits cwd", asyn
 });
 
 for (const event of ["BeforeAgent", "AfterAgent", "AfterTool"]) {
+  test(`routes opencode ${event} hook event`, async () => {
+    const projectDir = await mkdtemp(path.join(tmpdir(), "nams-hooks-"));
+    try {
+      const result = await runCliWithEvent(
+        "opencode",
+        event,
+        {
+          hook: "test",
+          input: { sessionID: `opencode-${event}` },
+          directory: projectDir,
+        },
+        projectDir,
+      );
+
+      assert.equal(result.code, 0, result.stderr);
+      assert.equal(JSON.parse(result.stdout).continue, true);
+    } finally {
+      await rm(projectDir, { recursive: true, force: true });
+    }
+  });
+
   test(`routes gemini ${event} hook event`, async () => {
     const projectDir = await mkdtemp(path.join(tmpdir(), "nams-hooks-"));
     try {
