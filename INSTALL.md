@@ -11,11 +11,14 @@
 
 ## Configure NAMS
 
-Create a project-local `.nams/.env` file:
+Create a project-local `.nams/.env` file in the directory where the harness runs:
 
 ```env
 NAMS_API_KEY=your_api_key_here
+NAMS_BASE_URL=https://memory.neo4jlabs.com
 ```
+
+`NAMS_API_KEY` is required. `NAMS_BASE_URL` is optional when using the default service URL, but set it explicitly when testing against another NAMS endpoint.
 
 `.nams/.env` has priority over process environment variables. Keep this file local and do not commit it.
 
@@ -40,6 +43,8 @@ Placeholder: installation instructions for linking or installing directly from a
 ## OpenCode
 
 OpenCode loads project plugins from `.opencode/plugins/`.
+
+OpenCode also reads NAMS settings from the project-local `.nams/.env` described above. If OpenCode logs are written under `/path/to/project/.nams/logs/`, put `NAMS_API_KEY` and optional `NAMS_BASE_URL` in `/path/to/project/.nams/.env`.
 
 Install the package so `nams-hooks` is on `PATH`:
 
