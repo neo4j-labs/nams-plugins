@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { constants } from "node:fs";
 import { access, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -46,6 +47,7 @@ async function checkPackedPackage(packageDir, binTarget) {
   if (packageJson.bin?.["nams-hooks"] !== `./${binTarget}`) {
     throw new Error(`${path.relative(root, packageDir) || "."}/package.json bin must point to ./${binTarget}.`);
   }
+  await assertExecutable(path.join(packageDir, binTarget));
 
   const pack = await npmPackDryRun(packageDir);
   const packedFiles = pack.files.map((file) => file.path);
@@ -55,6 +57,14 @@ async function checkPackedPackage(packageDir, binTarget) {
   }
   if (!packedFiles.includes(binTarget)) {
     throw new Error(`packed package is missing nams-hooks bin target: ${binTarget}`);
+  }
+}
+
+async function assertExecutable(filePath) {
+  try {
+    await access(filePath, constants.X_OK);
+  } catch {
+    throw new Error(`${path.relative(root, filePath)} must be executable.`);
   }
 }
 
