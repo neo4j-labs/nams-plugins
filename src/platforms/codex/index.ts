@@ -122,6 +122,9 @@ export class CodexAdapter implements PlatformAdapter {
     await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
     state.seenAssistantMessageHashes ??= [];
     state.seenTranscriptEntryIds ??= [];
+    state.seenToolCallIds ??= [];
+    state.seenReasoningStepHashes ??= [];
+    state.reasoningStepIdsByHash ??= {};
 
     if (state.conversationId === undefined) {
       await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
@@ -153,9 +156,13 @@ export class CodexAdapter implements PlatformAdapter {
           state,
           assistantMessageHashes(invocation.platform, state.sessionKey, response, payloadInfo.turnId),
         );
-      } else if (payloadInfo.transcriptPath !== undefined) {
+      }
+      if (payloadInfo.transcriptPath !== undefined) {
         const entries = await readCodexTranscript(payloadInfo.transcriptPath);
-        await storeAssistantMessagesFromTranscript(invocation.platform, conversationId, state, memory, entries);
+        if (response === undefined || response === "") {
+          await storeAssistantMessagesFromTranscript(invocation.platform, conversationId, state, memory, entries);
+        }
+        await recordTraceFromTranscript(conversationId, state, memory, entries);
       }
     } catch {
       await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
@@ -286,6 +293,13 @@ type AssistantMessageState = {
   sessionKey: string;
 };
 
+type TraceState = {
+  sessionKey: string;
+  seenReasoningStepHashes: string[];
+  seenToolCallIds: string[];
+  reasoningStepIdsByHash: Record<string, string>;
+};
+
 async function storeAssistantMessagesFromTranscript(
   platform: string,
   conversationId: string,
@@ -313,6 +327,44 @@ async function storeAssistantMessagesFromTranscript(
     if (entry.id !== undefined) {
       state.seenTranscriptEntryIds.push(entry.id);
     }
+  }
+}
+
+async function recordTraceFromTranscript(
+  conversationId: string,
+  state: TraceState,
+  memory: NamsMemoryService,
+  entries: CodexTranscriptEntry[],
+): Promise<void> {
+  for (const entry of entries) {
+    if (entry.kind !== "toolCall") {
+      continue;
+    }
+
+    const toolCallId = codexTranscriptToolCallId(state.sessionKey, entry);
+    if (state.seenToolCallIds.includes(toolCallId)) {
+      continue;
+    }
+
+    const reasoningHash = codexTranscriptReasoningStepHash(state.sessionKey, entry.name, entry.status);
+    let stepId: string | undefined = state.reasoningStepIdsByHash[reasoningHash];
+    if (!state.seenReasoningStepHashes.includes(reasoningHash)) {
+      stepId = await memory.recordReasoningStep({
+        conversationId,
+        reasoning: `Codex exposed ${entry.name} from the session transcript.`,
+        actionTaken: `Ran ${entry.name}`,
+        ...(entry.status !== undefined ? { result: `Codex transcript recorded status: ${entry.status}.` } : {}),
+      });
+      markReasoningStepSeen(state, reasoningHash, stepId);
+    }
+
+    await memory.recordToolCall({
+      ...(stepId !== undefined ? { stepId } : {}),
+      toolName: entry.name,
+      input: entry.args,
+      ...(entry.status !== undefined ? { status: entry.status } : {}),
+    });
+    markToolCallSeen(state, toolCallId);
   }
 }
 
@@ -367,7 +419,23 @@ function codexReasoningStepHash(input: { sessionKey: string; toolName: string; t
   return sha256([input.sessionKey, "codex-reasoning-step", input.turnId ?? "", input.toolName].join("\n"));
 }
 
-function markReasoningStepSeen(state: SessionState, hash: string, stepId: string | undefined): void {
+function codexTranscriptToolCallId(
+  sessionKey: string,
+  entry: Extract<CodexTranscriptEntry, { kind: "toolCall" }>,
+): string {
+  if (entry.id !== undefined) {
+    return `codex-transcript-tool-id:${entry.id}`;
+  }
+  return `codex-transcript-tool-fallback:${sha256(
+    [sessionKey, String(entry.transcriptEntryIndex), entry.name, serializeToolInput(entry.args)].join("\n"),
+  )}`;
+}
+
+function codexTranscriptReasoningStepHash(sessionKey: string, toolName: string, status?: string): string {
+  return sha256([sessionKey, "codex-transcript-reasoning-step", toolName, status ?? ""].join("\n"));
+}
+
+function markReasoningStepSeen(state: TraceState, hash: string, stepId: string | undefined): void {
   if (!state.seenReasoningStepHashes.includes(hash)) {
     state.seenReasoningStepHashes.push(hash);
   }
@@ -376,7 +444,7 @@ function markReasoningStepSeen(state: SessionState, hash: string, stepId: string
   }
 }
 
-function markToolCallSeen(state: SessionState, toolCallId: string): void {
+function markToolCallSeen(state: TraceState, toolCallId: string): void {
   if (!state.seenToolCallIds.includes(toolCallId)) {
     state.seenToolCallIds.push(toolCallId);
   }

@@ -184,6 +184,8 @@ Then it records the tool call through `NamsMemoryService.recordToolCall` with sa
 
 Duplicate suppression uses Codex `tool_use_id` first. If absent, it falls back to a hash of session key, turn id, tool name, and normalized input.
 
+Some Codex built-in tools, including web search in current Codex CLI rollouts, may be exposed as transcript `response_item` records instead of `PostToolUse` hook payloads. The Codex adapter may read `transcript_path` during `AfterAgent` and record conservative tool metadata from clear `web_search_call` response items. These entries use `web_search` as the NAMS tool name, store the exposed `action` object as sanitized input, store exposed status when present, and do not infer or persist page contents that Codex did not expose as tool output.
+
 ### Phase 4: Resume And Doctor Polish
 
 Resume support uses the same `session_id` mapping as normal sessions. If local state exists, a resumed Codex `UserPromptSubmit` mapped to NAMS `BeforeAgent` continues the existing NAMS conversation. If local state is missing, the adapter may create a new conversation and should not guess an old remote `conversationId` from transcript content.
@@ -206,7 +208,7 @@ Adapter methods:
 The Codex adapter owns the mapping from NAMS events back to Codex hook semantics:
 
 - `beforeAgent` expects payloads from Codex `UserPromptSubmit`, reads `prompt`, and returns `hookSpecificOutput.hookEventName: "UserPromptSubmit"` when injecting `additionalContext`.
-- `afterAgent` expects payloads from Codex `Stop` and reads `last_assistant_message`.
+- `afterAgent` expects payloads from Codex `Stop`, reads `last_assistant_message`, and may read clear transcript tool-call records from `transcript_path`.
 - `afterTool` expects payloads from Codex `PostToolUse` and reads `tool_name`, `tool_use_id`, `tool_input`, and `tool_response`.
 
 ### Codex Payload Parser
@@ -233,7 +235,7 @@ The parser can read these fields by name, but it must not decide which NAMS even
 
 ### Codex Transcript Reader
 
-`src/platforms/codex/transcript.ts` reads Codex rollout JSONL only as a fallback. It extracts user and assistant message candidates from clear `ResponseItem::Message` records and uses stable item ids when present. It ignores unsupported or ambiguous records.
+`src/platforms/codex/transcript.ts` reads Codex rollout JSONL conservatively. It extracts user and assistant message candidates from clear `ResponseItem::Message` records and uses stable item ids when present. It also extracts exposed `web_search_call` response items as transcript-derived tool metadata. It ignores unsupported or ambiguous records.
 
 ### Shared Runtime
 
@@ -281,9 +283,11 @@ The existing runtime modules remain shared:
 3. If no `conversationId` exists, save and allow.
 4. Load NAMS config.
 5. Persist `last_assistant_message` unless duplicate suppression says it was seen.
-6. If no assistant message was exposed and `transcript_path` is present, read clear transcript assistant candidates and persist unseen entries.
-7. Save state.
-8. Return allow output.
+6. If `transcript_path` is present, read clear transcript candidates.
+7. If no assistant message was exposed, persist unseen transcript assistant entries.
+8. Persist conservative transcript-derived tool metadata for exposed built-in tool records such as `web_search_call`.
+9. Save state.
+10. Return allow output.
 
 ### AfterTool From Codex PostToolUse
 
@@ -306,6 +310,7 @@ Codex uses the existing local duplicate model:
 - Transcript entry ids: only when present in the rollout JSONL.
 - Tool call ids: Codex `tool_use_id` when present.
 - Tool fallback hash: session key, turn id, tool name, normalized tool input.
+- Transcript tool fallback hash: session key, transcript entry index, tool name, and normalized tool input.
 
 Duplicate suppression is local-only and must not require a NAMS query.
 
@@ -326,6 +331,7 @@ The hook runner should never print API keys or raw secret values to stdout, stde
 - Do not create entities directly.
 - Do not store hidden chain-of-thought.
 - Store Codex `PostToolUse` output only from exposed hook payload fields, with capping.
+- Store transcript-derived Codex tool metadata only from explicit tool-call response items such as `web_search_call`; do not persist encrypted reasoning or infer hidden tool output from UI text.
 - Sanitize tool input with the existing recursive output-field removal before storage.
 - Keep `.nams/.env`, `.nams/state/`, and `.nams/logs/` local and gitignored.
 - Write only Codex hook-compatible JSON to stdout.
@@ -340,6 +346,7 @@ Automated tests are fixture-driven and mocked:
 - NAMS `BeforeAgent` mapped from Codex `UserPromptSubmit` persists the user prompt and deduplicates repeats.
 - NAMS `AfterAgent` mapped from Codex `Stop` persists `last_assistant_message`.
 - NAMS `AfterAgent` mapped from Codex `Stop` falls back to transcript assistant entries when `last_assistant_message` is absent.
+- NAMS `AfterAgent` mapped from Codex `Stop` records exposed transcript `web_search_call` metadata.
 - NAMS `AfterTool` mapped from Codex `PostToolUse` records a reasoning step and tool call.
 - NAMS `AfterTool` mapped from Codex `PostToolUse` deduplicates by `tool_use_id`.
 - NAMS `AfterTool` mapped from Codex `PostToolUse` sanitizes/caps tool input and caps tool output.
@@ -352,6 +359,6 @@ Automated tests are fixture-driven and mocked:
 
 - Codex hooks are still changing. The implementation should keep unsupported events out of v1 and make future doctor checks explicit.
 - Some Codex versions require hook trust or feature flags before hooks run. This design does not solve installer/doctor trust flow.
-- `PostToolUse` may not fire for every internal tool. Tool metadata is best-effort.
+- `PostToolUse` may not fire for every internal tool. Tool metadata is best-effort, with transcript-derived coverage only for clear exposed records currently understood by the adapter.
 - Assistant response capture through `Stop.last_assistant_message` depends on Codex emitting the field consistently.
 - Transcript rollout format is not the primary contract for hooks. Fallback parsing must stay conservative.

@@ -2,64 +2,111 @@ import { readFile } from "node:fs/promises";
 
 export type CodexTranscriptEntry =
   | { kind: "user"; id?: string; content: string }
-  | { kind: "assistant"; id?: string; content: string };
+  | { kind: "assistant"; id?: string; content: string }
+  | {
+      kind: "toolCall";
+      id?: string;
+      transcriptEntryIndex: number;
+      name: string;
+      args: unknown;
+      status?: string;
+    };
 
 export async function readCodexTranscript(transcriptPath: string): Promise<CodexTranscriptEntry[]> {
   const content = await readFile(transcriptPath, "utf8");
   const entries: CodexTranscriptEntry[] = [];
 
+  let rawEntryIndex = 0;
   for (const line of content.split(/\r?\n/)) {
     if (line.trim() === "") {
       continue;
     }
 
     const raw = JSON.parse(line) as unknown;
-    const entry = toEntry(raw);
-    if (entry !== undefined) {
-      entries.push(entry);
-    }
+    entries.push(...toEntries(raw, rawEntryIndex));
+    rawEntryIndex += 1;
   }
 
   return entries;
 }
 
-function toEntry(raw: unknown): CodexTranscriptEntry | undefined {
+function toEntries(raw: unknown, rawEntryIndex: number): CodexTranscriptEntry[] {
   if (!isRecord(raw) || isCompactedSummary(raw)) {
-    return undefined;
+    return [];
   }
 
-  const message = responseItemMessage(raw);
-  if (message === undefined) {
-    return undefined;
+  const item = responseItem(raw);
+  if (item === undefined) {
+    return [];
   }
 
-  const kind = message.role;
+  if (item.type === "web_search_call") {
+    return webSearchToolCallEntry(item, rawEntryIndex);
+  }
+
+  if (item.type !== "message") {
+    return [];
+  }
+
+  const kind = item.role;
   if (kind !== "user" && kind !== "assistant") {
-    return undefined;
+    return [];
   }
 
-  const content = extractText(message.content).trim();
+  const content = extractText(item.content).trim();
   if (content === "") {
-    return undefined;
+    return [];
   }
 
-  return {
-    kind,
-    ...id(message),
-    content,
-  };
+  return [
+    {
+      kind,
+      ...id(item),
+      content,
+    },
+  ];
 }
 
-function responseItemMessage(raw: Record<string, unknown>): Record<string, unknown> | undefined {
-  if (raw.type === "response_item" && isRecord(raw.item) && raw.item.type === "message") {
-    return raw.item;
+function responseItem(raw: Record<string, unknown>): Record<string, unknown> | undefined {
+  if (raw.type === "response_item") {
+    if (isRecord(raw.item)) {
+      return raw.item;
+    }
+    if (isRecord(raw.payload)) {
+      return raw.payload;
+    }
   }
 
-  if (isRecord(raw.item) && raw.item.type === "response_item" && isRecord(raw.item.item) && raw.item.item.type === "message") {
-    return raw.item.item;
+  if (isRecord(raw.item) && raw.item.type === "response_item") {
+    if (isRecord(raw.item.item)) {
+      return raw.item.item;
+    }
+    if (isRecord(raw.item.payload)) {
+      return raw.item.payload;
+    }
   }
 
   return undefined;
+}
+
+function webSearchToolCallEntry(
+  item: Record<string, unknown>,
+  rawEntryIndex: number,
+): Array<Extract<CodexTranscriptEntry, { kind: "toolCall" }>> {
+  if (!isRecord(item.action) || typeof item.action.type !== "string") {
+    return [];
+  }
+
+  return [
+    {
+      kind: "toolCall",
+      ...id(item),
+      transcriptEntryIndex: rawEntryIndex,
+      name: "web_search",
+      args: item.action,
+      ...(typeof item.status === "string" ? { status: item.status } : {}),
+    },
+  ];
 }
 
 function extractText(content: unknown): string {

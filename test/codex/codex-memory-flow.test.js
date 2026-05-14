@@ -847,6 +847,89 @@ test("Codex transcript fallback without entry id still dedupes by assistant cont
   }
 });
 
+test("records Codex transcript web search calls during AfterAgent", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
+  try {
+    const transcriptPath = path.join(projectDir, "codex-transcript.jsonl");
+    const action = {
+      type: "search",
+      query: "Spain register as self-employed autonomo official",
+      queries: ["Spain register as self-employed autonomo official"],
+    };
+    await writeFile(
+      transcriptPath,
+      [
+        JSON.stringify({
+          timestamp: "2026-05-14T17:34:59.108Z",
+          type: "response_item",
+          payload: {
+            type: "web_search_call",
+            status: "completed",
+            action,
+          },
+        }),
+        JSON.stringify({
+          timestamp: "2026-05-14T17:34:59.106Z",
+          type: "event_msg",
+          payload: {
+            type: "web_search_end",
+            call_id: "ws_1",
+            query: action.query,
+            action,
+          },
+        }),
+      ].join("\n"),
+      "utf8",
+    );
+
+    const nams = createNamsFetchMock().message().reasoningStep({ id: "step-1" }).toolCall();
+    const { CodexAdapter } = await import(codexUrl);
+    await seedCodexConversation(projectDir);
+    const adapter = new CodexAdapter({
+      env: {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      },
+      fetch: nams.fetch,
+    });
+
+    const invocation = {
+      platform: "codex",
+      event: "AfterAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "Stop",
+        session_id: "session-1",
+        cwd: projectDir,
+        last_assistant_message: "Final answer.",
+        transcript_path: transcriptPath,
+      },
+    };
+    const result = await adapter.afterAgent(invocation);
+    await adapter.afterAgent(invocation);
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    assert.deepEqual(nams.requestBodies("addMessage"), [{ role: "assistant", content: "Final answer." }]);
+    assert.deepEqual(nams.requestBody("addReasoningStep"), {
+      conversationId: "conversation-1",
+      reasoning: "Codex exposed web_search from the session transcript.",
+      actionTaken: "Ran web_search",
+      result: "Codex transcript recorded status: completed.",
+    });
+    assert.deepEqual(nams.requestBody("addToolCall"), {
+      stepId: "step-1",
+      toolName: "web_search",
+      input: JSON.stringify(action),
+      output: "",
+      status: "completed",
+    });
+    assert.equal(nams.calls("addReasoningStep").length, 1);
+    assert.equal(nams.calls("addToolCall").length, 1);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("Codex afterAgent with no conversationId returns allow output and does not call NAMS", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
   try {
