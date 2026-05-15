@@ -147,9 +147,52 @@ for (const event of ["BeforeAgent", "AfterAgent", "AfterTool"]) {
   });
 }
 
+const claudeHookMappings = [
+  ["UserPromptSubmit", "BeforeAgent"],
+  ["Stop", "AfterAgent"],
+  ["PostToolUse", "AfterTool"],
+];
+
+for (const [claudeHook, namsEvent] of claudeHookMappings) {
+  test(`routes claude ${claudeHook} through NAMS ${namsEvent}`, async () => {
+    const projectDir = await mkdtemp(path.join(tmpdir(), "nams-hooks-"));
+    try {
+      const payload = {
+        session_id: `claude-${namsEvent}`,
+        hook_event_name: claudeHook,
+        cwd: projectDir,
+      };
+
+      const result = await runCliWithEvent("claude", namsEvent, payload, projectDir);
+
+      assert.equal(result.code, 0, result.stderr);
+      assert.deepEqual(JSON.parse(result.stdout), {
+        continue: true,
+        suppressOutput: true,
+      });
+
+      const logPath = path.join(projectDir, ".nams", "logs", `claude-${toKebabCase(namsEvent)}.jsonl`);
+      const entry = JSON.parse((await readFile(logPath, "utf8")).trim());
+      assert.equal(entry.harness, "claude");
+      assert.equal(entry.event, namsEvent);
+      assert.deepEqual(entry.payload, payload);
+    } finally {
+      await rm(projectDir, { recursive: true, force: true });
+    }
+  });
+}
+
 async function singleSessionLogPath(projectDir) {
   const logDir = path.join(projectDir, ".nams", "logs");
   const logFiles = (await readdir(logDir)).filter((fileName) => /^session-.*\.jsonl$/.test(fileName));
   assert.equal(logFiles.length, 1, `expected one session log file, got ${logFiles.join(", ")}`);
   return path.join(logDir, logFiles[0]);
+}
+
+function toKebabCase(value) {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
 }

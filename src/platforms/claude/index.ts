@@ -3,17 +3,40 @@ import { appendPlatformLog } from "../../runtime/logging.js";
 
 export class ClaudeAdapter implements PlatformAdapter {
   async startConversation(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
-    await appendPlatformLog({
-      platform: invocation.platform,
-      event: invocation.event,
-      payload: invocation.rawPayload,
-      projectDirectory: resolveClaudeProjectDirectory(invocation),
-    });
-    return { stdout: { continue: true, suppressOutput: true } };
+    await logClaudeInvocation(invocation);
+    return allowOutput();
+  }
+
+  async beforeAgent(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult> {
+    await logClaudeInvocation(invocation);
+    return allowOutput();
+  }
+
+  async afterAgent(invocation: HookInvocation<"AfterAgent">): Promise<HookResult> {
+    await logClaudeInvocation(invocation);
+    return allowOutput();
+  }
+
+  async afterTool(invocation: HookInvocation<"AfterTool">): Promise<HookResult> {
+    await logClaudeInvocation(invocation);
+    return allowOutput();
   }
 }
 
-function resolveClaudeProjectDirectory(invocation: HookInvocation<"SessionStart">): string {
+async function logClaudeInvocation(invocation: HookInvocation): Promise<void> {
+  await appendPlatformLog({
+    platform: invocation.platform,
+    event: invocation.event,
+    payload: invocation.rawPayload,
+    projectDirectory: resolveClaudeProjectDirectory(invocation),
+  });
+}
+
+function allowOutput(): HookResult {
+  return { stdout: { continue: true, suppressOutput: true } };
+}
+
+function resolveClaudeProjectDirectory(invocation: HookInvocation): string {
   const value = invocation.rawPayload.cwd;
   return typeof value === "string" && value.trim() !== "" ? value : invocation.processCwd;
 }
