@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createNamsFetchMock } from "../support/nams-fetch-mock.js";
+import { readSingleSessionLog as readRuntimeSingleSessionLog } from "../support/runtime-home.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const opencodeUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "platforms", "opencode", "index.js")).href;
@@ -694,13 +695,11 @@ test("OpenCode assistant part dedupe does not collide on raw delimiters", async 
 });
 
 async function readSingleSessionLog(projectDir) {
-  const logDir = path.join(projectDir, ".nams", "logs");
-  const logFiles = (await readdir(logDir)).filter((fileName) => /^session-.*\.jsonl$/.test(fileName));
-  assert.equal(logFiles.length, 1, `expected one session log file, got ${logFiles.join(", ")}`);
-  const log = await readFile(path.join(logDir, logFiles[0]), "utf8");
+  const { logPath, lines } = await readRuntimeSingleSessionLog(testEnv(projectDir).HOME, "opencode");
+  const log = await readFile(logPath, "utf8");
   return {
     log,
-    lines: log.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line)),
+    lines,
   };
 }
 

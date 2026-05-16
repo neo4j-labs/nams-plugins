@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createNamsFetchMock } from "../support/nams-fetch-mock.js";
+import { namsHome, readSingleSessionLog as readRuntimeSingleSessionLog } from "../support/runtime-home.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const geminiUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "platforms", "gemini", "index.js")).href;
@@ -593,7 +594,9 @@ test("Gemini hooks continue when observability log writes fail", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
     await mkdir(path.join(projectDir, ".nams"), { recursive: true });
-    await writeFile(path.join(projectDir, ".nams", "logs"), "not a directory", "utf8");
+    const homeDir = testEnv(projectDir).HOME;
+    await mkdir(namsHome(homeDir), { recursive: true });
+    await writeFile(path.join(namsHome(homeDir), "logs"), "not a directory", "utf8");
 
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
@@ -1692,15 +1695,12 @@ test("deduplicates repeated parent transcript tool id despite changed status and
 });
 
 async function readSingleSessionLog(projectDir) {
-  const logDir = path.join(projectDir, ".nams", "logs");
-  const logFiles = (await readdir(logDir)).filter((fileName) => /^session-.*\.jsonl$/.test(fileName));
-  assert.equal(logFiles.length, 1, `expected one session log file, got ${logFiles.join(", ")}`);
-  const fileName = logFiles[0];
-  const log = await readFile(path.join(logDir, fileName), "utf8");
+  const { logPath, lines } = await readRuntimeSingleSessionLog(testEnv(projectDir).HOME, "gemini");
+  const log = await readFile(logPath, "utf8");
   return {
-    fileName,
+    fileName: path.basename(logPath),
     log,
-    lines: log.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line)),
+    lines,
   };
 }
 

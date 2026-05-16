@@ -5,6 +5,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createNamsFetchMock } from "../support/nams-fetch-mock.js";
+import { namsHome, readSingleSessionLog as readRuntimeSingleSessionLog } from "../support/runtime-home.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const codexUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "platforms", "codex", "index.js")).href;
@@ -37,7 +38,7 @@ test("initializes Codex session state on SessionStart without creating a convers
     assert.equal(state.sessionKey, "session-1");
     assert.equal(state.conversationId, undefined);
 
-    const logFileNames = await readdir(path.join(projectDir, ".nams", "logs"));
+    const logFileNames = await readdir(path.join(namsHome(testEnv(projectDir).HOME), "logs", "codex"));
     assert.equal(logFileNames.filter((fileName) => fileName.startsWith("session-")).length, 1);
     assert.equal(logFileNames.includes("codex-session-start.jsonl"), false);
   } finally {
@@ -1489,8 +1490,9 @@ test("raw Codex hook logs are session-scoped and include raw UserPromptSubmit pa
 test("Codex observability log write failure does not block response", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
   try {
-    await mkdir(path.join(projectDir, ".nams"), { recursive: true });
-    await writeFile(path.join(projectDir, ".nams", "logs"), "not a directory", "utf8");
+    const homeDir = testEnv(projectDir).HOME;
+    await mkdir(namsHome(homeDir), { recursive: true });
+    await writeFile(path.join(namsHome(homeDir), "logs"), "not a directory", "utf8");
 
     const { CodexAdapter } = await import(codexUrl);
     const adapter = new CodexAdapter({ env: testEnv(projectDir) });
@@ -1514,18 +1516,9 @@ test("Codex observability log write failure does not block response", async () =
 });
 
 async function readSingleSessionLog(projectDir) {
-  const logDir = path.join(projectDir, ".nams", "logs");
-  const fileNames = await readdir(logDir);
-  const sessionFileNames = fileNames.filter((fileName) => fileName.startsWith("session-"));
-  assert.equal(sessionFileNames.length, 1);
-  const fileName = sessionFileNames[0];
-  const log = await readFile(path.join(logDir, fileName), "utf8");
-  const lines = log
-    .trim()
-    .split("\n")
-    .filter((line) => line.trim() !== "")
-    .map((line) => JSON.parse(line));
-  return { fileName, lines, log };
+  const { logPath, lines } = await readRuntimeSingleSessionLog(testEnv(projectDir).HOME, "codex");
+  const log = await readFile(logPath, "utf8");
+  return { fileName: path.basename(logPath), lines, log };
 }
 
 async function seedCodexConversation(projectDir, sessionId = "session-1", conversationId = "conversation-1") {

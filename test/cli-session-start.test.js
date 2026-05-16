@@ -1,20 +1,21 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import { namsHome, runtimeEnv, sessionStateFiles, singleSessionLogPath } from "./support/runtime-home.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cliPath = path.join(repoRoot, ".build", "tsc", "cli.js");
 const codexHooksTemplatePath = path.join(repoRoot, "templates", "codex", "hooks.json");
 
-function runCliWithEvent(harness, event, payload, cwd) {
+function runCliWithEvent(harness, event, payload, cwd, homeDir = testHome(cwd)) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [cliPath, "run", harness, "--event", event], {
       cwd,
-      env: { ...process.env, HOME: testHome(cwd) },
+      env: runtimeEnv(homeDir, process.env),
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
@@ -35,15 +36,15 @@ function runCliWithEvent(harness, event, payload, cwd) {
   });
 }
 
-function runCli(harness, payload, cwd) {
-  return runCliWithEvent(harness, "SessionStart", payload, cwd);
+function runCli(harness, payload, cwd, homeDir) {
+  return runCliWithEvent(harness, "SessionStart", payload, cwd, homeDir);
 }
 
-function runCliWithoutEvent(harness, payload, cwd) {
+function runCliWithoutEvent(harness, payload, cwd, homeDir = testHome(cwd)) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [cliPath, "run", harness], {
       cwd,
-      env: { ...process.env, HOME: testHome(cwd) },
+      env: runtimeEnv(homeDir, process.env),
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
@@ -87,10 +88,11 @@ for (const harness of ["gemini", "claude", "codex", "opencode"]) {
         suppressOutput: true,
       });
 
+      const homeDir = testHome(projectDir);
       const logPath =
         harness === "gemini" || harness === "codex" || harness === "opencode"
-          ? await singleSessionLogPath(projectDir)
-          : path.join(projectDir, ".nams", "logs", `${harness}-session-start.jsonl`);
+          ? await singleSessionLogPath(homeDir, harness)
+          : path.join(namsHome(homeDir), "logs", harness, `${harness}-session-start.jsonl`);
       const lines = (await readFile(logPath, "utf8")).trim().split("\n");
       assert.equal(lines.length, 1);
       const entry = JSON.parse(lines[0]);
@@ -98,8 +100,7 @@ for (const harness of ["gemini", "claude", "codex", "opencode"]) {
       assert.equal(entry.event, "SessionStart");
       assert.deepEqual(entry.payload, payload);
       if (harness === "codex") {
-        const logFiles = await readdir(path.join(projectDir, ".nams", "logs"));
-        assert.ok(!logFiles.includes("codex-session-start.jsonl"));
+        await assert.rejects(readFile(path.join(namsHome(homeDir), "logs", "codex", "codex-session-start.jsonl")));
       }
     } finally {
       await rm(projectDir, { recursive: true, force: true });
@@ -130,7 +131,7 @@ test("writes fallback logs under child process cwd when payload omits cwd", asyn
     const result = await runCli("gemini", payload, projectDir);
 
     assert.equal(result.code, 0, result.stderr);
-    const logPath = await singleSessionLogPath(projectDir);
+    const logPath = await singleSessionLogPath(testHome(projectDir), "gemini");
     const entry = JSON.parse((await readFile(logPath, "utf8")).trim());
     assert.deepEqual(entry.payload, payload);
   } finally {
@@ -152,7 +153,7 @@ test("opencode writes session log under directory and state under HOME when cwd 
     const result = await runCli("opencode", payload, cwdDir);
 
     assert.equal(result.code, 0, result.stderr);
-    const entry = JSON.parse((await readFile(await singleSessionLogPath(projectDir), "utf8")).trim());
+    const entry = JSON.parse((await readFile(await singleSessionLogPath(testHome(cwdDir), "opencode"), "utf8")).trim());
     assert.deepEqual(entry.payload, payload);
     assert.equal((await sessionStateFiles(testHome(cwdDir), "opencode")).length, 1);
   } finally {
@@ -274,22 +275,4 @@ for (const nativeHook of ["UserPromptSubmit", "Stop", "PostToolUse"]) {
       await rm(projectDir, { recursive: true, force: true });
     }
   });
-}
-
-async function singleSessionLogPath(projectDir) {
-  const logDir = path.join(projectDir, ".nams", "logs");
-  const logFiles = (await readdir(logDir)).filter((fileName) => /^session-.*\.jsonl$/.test(fileName));
-  assert.equal(logFiles.length, 1, `expected one session log file, got ${logFiles.join(", ")}`);
-  return path.join(logDir, logFiles[0]);
-}
-
-async function sessionStateFiles(projectDir, harness) {
-  try {
-    return await readdir(path.join(projectDir, ".nams", "state", harness));
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      return [];
-    }
-    throw error;
-  }
 }

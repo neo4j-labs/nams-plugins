@@ -40,7 +40,7 @@ export class CodexAdapter implements PlatformAdapter {
     const state =
       (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey, this.options.env)) ??
       initialState;
-    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
+    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state, this.options.env);
     await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
 
     return { stdout: { continue: true, suppressOutput: true } };
@@ -56,7 +56,7 @@ export class CodexAdapter implements PlatformAdapter {
     const state =
       (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey, this.options.env)) ??
       initialState;
-    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
+    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state, this.options.env);
 
     if (payloadInfo.prompt === undefined) {
       await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
@@ -65,7 +65,7 @@ export class CodexAdapter implements PlatformAdapter {
 
     const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
     if (!configResult.ok) {
-      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult);
+      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult, this.options.env);
       await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowOutput();
     }
@@ -89,12 +89,12 @@ export class CodexAdapter implements PlatformAdapter {
         try {
           recallContexts.push(await memory.recall(conversationId));
         } catch {
-          await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
+          await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state, this.options.env);
         }
         try {
           recallContexts.push(await memory.searchEntities(payloadInfo.prompt));
         } catch {
-          await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
+          await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state, this.options.env);
         }
         state.lastRecallAt = new Date().toISOString();
         const recalledContext = combineMemoryContexts(recallContexts);
@@ -109,7 +109,7 @@ export class CodexAdapter implements PlatformAdapter {
         state.lastUserMessageHash = promptHash;
       }
     } catch {
-      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
+      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state, this.options.env);
       await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowOutput(additionalContext);
     }
@@ -128,7 +128,7 @@ export class CodexAdapter implements PlatformAdapter {
     const state =
       (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey, this.options.env)) ??
       initialState;
-    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
+    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state, this.options.env);
     state.seenAssistantMessageHashes ??= [];
     state.seenTranscriptEntryIds ??= [];
     state.seenToolCallIds ??= [];
@@ -143,7 +143,7 @@ export class CodexAdapter implements PlatformAdapter {
 
     const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
     if (!configResult.ok) {
-      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult);
+      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult, this.options.env);
       await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowOutput();
     }
@@ -175,7 +175,7 @@ export class CodexAdapter implements PlatformAdapter {
         await recordTraceFromTranscript(conversationId, state, memory, entries);
       }
     } catch {
-      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
+      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state, this.options.env);
       await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowOutput();
     }
@@ -194,7 +194,7 @@ export class CodexAdapter implements PlatformAdapter {
     const state =
       (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey, this.options.env)) ??
       initialState;
-    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
+    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state, this.options.env);
     state.seenToolCallIds ??= [];
     state.seenReasoningStepHashes ??= [];
     state.reasoningStepIdsByHash ??= {};
@@ -208,7 +208,7 @@ export class CodexAdapter implements PlatformAdapter {
 
     const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
     if (!configResult.ok) {
-      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult);
+      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult, this.options.env);
       await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowPostToolUseOutput();
     }
@@ -254,7 +254,7 @@ export class CodexAdapter implements PlatformAdapter {
       });
       markToolCallSeen(state, toolCallId);
     } catch {
-      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
+      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state, this.options.env);
         await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowPostToolUseOutput();
     }
@@ -272,7 +272,7 @@ export class CodexAdapter implements PlatformAdapter {
     return new NamsMemoryService({
       ...config,
       ...(this.options.fetch !== undefined ? { fetch: this.options.fetch } : {}),
-      onRequest: (event) => appendNamsRequestLog(invocation, projectDirectory, state, event, config.apiKey),
+      onRequest: (event) => appendNamsRequestLog(invocation, projectDirectory, state, event, config.apiKey, this.options.env),
     });
   }
 }
@@ -467,6 +467,7 @@ async function appendNamsConfigDiagnostic(
   projectDirectory: string,
   state: SessionState,
   result: NamsConfigLoadResult,
+  env: Record<string, string | undefined> | undefined,
 ): Promise<void> {
   await appendCodexDiagnosticLog({
     platform: invocation.platform,
@@ -474,6 +475,7 @@ async function appendNamsConfigDiagnostic(
     projectDirectory,
     state,
     payload: configDiagnosticPayload(result),
+    env,
   });
 }
 
@@ -481,6 +483,7 @@ async function appendNamsFailureDiagnostic(
   invocation: HookInvocation,
   projectDirectory: string,
   state: SessionState,
+  env: Record<string, string | undefined> | undefined,
 ): Promise<void> {
   await appendCodexDiagnosticLog({
     platform: invocation.platform,
@@ -488,6 +491,7 @@ async function appendNamsFailureDiagnostic(
     projectDirectory,
     state,
     payload: { message: "NAMS request failed" },
+    env,
   });
 }
 
@@ -497,6 +501,7 @@ async function appendNamsRequestLog(
   state: SessionState,
   payload: NamsRequestEvent,
   apiKey: string,
+  env: Record<string, string | undefined> | undefined,
 ): Promise<void> {
   try {
     await appendPlatformLog({
@@ -505,6 +510,7 @@ async function appendNamsRequestLog(
       kind: "nams.request",
       projectDirectory,
       payload: sanitizeNamsRequestLogPayload(payload, apiKey) as Record<string, unknown>,
+      env,
       sessionCreatedAt: state.createdAt,
       sessionKey: state.sessionKey,
     });
@@ -559,6 +565,7 @@ async function appendRawPlatformLog(
   invocation: HookInvocation,
   projectDirectory: string,
   state: SessionState,
+  env: Record<string, string | undefined> | undefined,
 ): Promise<void> {
   try {
     await appendPlatformLog({
@@ -566,6 +573,7 @@ async function appendRawPlatformLog(
       event: invocation.event,
       kind: "hook.event",
       payload: invocation.rawPayload,
+      env,
       projectDirectory,
       sessionCreatedAt: state.createdAt,
       sessionKey: state.sessionKey,
@@ -581,6 +589,7 @@ async function appendCodexDiagnosticLog(entry: {
   projectDirectory: string;
   state: SessionState;
   payload: Record<string, unknown>;
+  env: Record<string, string | undefined> | undefined;
 }): Promise<void> {
   try {
     await appendPlatformLog({
@@ -589,6 +598,7 @@ async function appendCodexDiagnosticLog(entry: {
       kind: "diagnostic",
       projectDirectory: entry.projectDirectory,
       payload: entry.payload,
+      env: entry.env,
       sessionCreatedAt: entry.state.createdAt,
       sessionKey: entry.state.sessionKey,
     });
