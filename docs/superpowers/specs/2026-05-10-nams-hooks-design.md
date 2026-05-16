@@ -6,7 +6,7 @@ Repository: nams-hooks
 
 ## Summary
 
-`nams-hooks` is a standalone Node.js integration layer that connects local agent harness hooks to the Neo4j Agent Memory Service (NAMS) REST API. Its hook runtime and generated release artifacts have zero runtime npm dependencies and use Node.js built-ins only, while the source repository may use dev-only build, generation, and test tooling. The first iteration supports macOS for Codex, Claude Code, and Gemini CLI. OpenCode has a SessionStart walking skeleton through a project-level plugin. Codex, Claude, and OpenCode use project-level installs; Gemini uses extension distribution while keeping runtime state and logs project-local.
+`nams-hooks` is a standalone Node.js integration layer that connects local agent harness hooks to the Neo4j Agent Memory Service (NAMS) REST API. Its hook runtime and generated release artifacts have zero runtime npm dependencies and use Node.js built-ins only, while the source repository may use dev-only build, generation, and test tooling. The first iteration supports macOS for Codex, Claude Code, and Gemini CLI. OpenCode has a SessionStart walking skeleton through a project-level plugin. Codex, Claude, and OpenCode use project-level installs; Gemini uses extension distribution. Runtime configuration, state, and logs live under user-level `~/.nams/`, with optional project overrides in `.nams/config.json`.
 
 The hook runner owns deterministic memory persistence. Agents receive recalled context, but they are not responsible for deciding whether to write memory. The runner stores conversation messages, recalls relevant memory before agent work, and records limited tool metadata through NAMS REST endpoints.
 
@@ -24,18 +24,18 @@ The hook runner owns deterministic memory persistence. Agents receive recalled c
 
 - Provide deterministic memory behavior through harness hooks and REST API calls.
 - Support Codex, Claude Code, Gemini CLI, and an OpenCode SessionStart walking skeleton on macOS in v1.
-- Keep runtime state, logs, and harness configuration project-scoped wherever the platform supports it.
+- Keep runtime configuration, state, and logs under user-level `~/.nams/`, while preserving project-scoped harness installation and optional project config overrides.
 - Use plain Node.js built-in modules only in runtime code and generated release artifacts. No runtime npm dependencies.
 - Allow dev-only dependencies for TypeScript compilation, code generation, architecture checks, and test support when they do not create additional runtime package installation requirements or runtime imports.
 - Persist standard user and assistant messages as the primary memory stream.
 - Recall memory before agent responses and inject concise context plus a short operating instruction.
 - Store tool-call metadata and exposed tool output when the harness provides it cleanly.
-- Keep secrets and state local to `.nams/`.
+- Keep secrets, state, and logs local to the user's machine and out of source-controlled harness configs.
 
 ## Non-Goals For v1
 
 - Windows support.
-- Global-only installation with shared state across projects.
+- Global-only harness installation that removes project-level hook setup.
 - MCP-driven memory writes.
 - Explicit entity creation from hook logic.
 - Full raw tool input/output capture.
@@ -103,21 +103,34 @@ Installed project layout:
 ```text
 target-project/
   .nams/
-    .env
-    .env.example
-    state/
-      sessions/
-        claude/
-        codex/
-        gemini/
-        opencode/
-    logs/
+    config.json        # optional project override
   .claude/settings.local.json
   .codex/hooks.json
   .opencode/plugins/nams-hooks.js
 ```
 
-Gemini v1 distribution is an extension install rather than a project `.gemini/settings.json` template. Gemini still writes hook runtime state and logs into the project-local `.nams/` directory when the extension runs from that project.
+User runtime layout:
+
+```text
+~/.nams/
+  config.json          # default user configuration
+  logs/
+    gemini/
+      session-2026-05-16T12-40-1b11dfee.jsonl
+    claude/
+    codex/
+    opencode/
+  state/
+    gemini/
+      <session-hash>.json
+    claude/
+    codex/
+    opencode/
+```
+
+Logs are session-scoped only. There is no top-level aggregate `nams-hooks.jsonl`.
+
+Gemini v1 distribution is an extension install rather than a project `.gemini/settings.json` template. Gemini writes hook runtime state and logs into the user-level `~/.nams/` directory while still allowing a project-local `.nams/config.json` override when it runs from a project.
 
 ## Build And Distribution
 
@@ -199,33 +212,51 @@ Rules:
 
 ## Configuration
 
-Configuration is loaded from `.nams/.env` first. Real environment variables are used as fallback for missing values.
+Persistent configuration is JSON. The runtime reads `~/.nams/config.json` first, overlays `<project>/.nams/config.json` when present, and finally overlays supported environment variables when they are set. Environment variables are the highest-precedence operational override.
+
+Supported JSON keys:
+
+- `apiKey`: NAMS workspace API key, sent as `Authorization: Bearer <key>`.
+- `baseUrl`: optional NAMS base URL, defaulting to `https://memory.neo4jlabs.com`.
+
+Example:
+
+```json
+{
+  "apiKey": "nams-api-key",
+  "baseUrl": "https://memory.neo4jlabs.com"
+}
+```
+
+Supported environment overrides:
+
+- `NAMS_API_KEY`: overrides `apiKey`.
+- `NAMS_BASE_URL`: overrides `baseUrl`.
 
 Required:
 
-- `NAMS_API_KEY`: NAMS workspace API key, sent as `Authorization: Bearer <key>`.
+- `apiKey`, from either JSON config or `NAMS_API_KEY`.
 
 Optional:
 
-- `NAMS_BASE_URL`: defaults to `https://memory.neo4jlabs.com`.
-- `NAMS_USER_ID`: optional user identifier for conversation creation.
-- `NAMS_CREATE_CONVERSATION_ON_SESSION_START`: defaults to false; otherwise conversation is created on first prompt.
-- `NAMS_CONTEXT_LIMIT`: maximum recalled context size for injected context.
-- `NAMS_TOOL_INPUT_LIMIT`: maximum serialized tool input size.
-- `NAMS_LOG_LEVEL`: default `info`.
+- `baseUrl`, from either JSON config or `NAMS_BASE_URL`.
 
-Secrets remain outside committed harness configs. The installer adds `.nams/.env`, `.nams/state/`, and `.nams/logs/` to `.gitignore`.
+Environment overrides are limited to `NAMS_API_KEY` and `NAMS_BASE_URL` unless a future design explicitly adds more. The runtime records a sanitized config-source diagnostic in the session log, for example `apiKey: "env:NAMS_API_KEY"`, `baseUrl: "project:.nams/config.json"`, or `baseUrl: "default"`. It never logs secret values or full config objects.
+
+`.env` files are not part of the target configuration model. Secrets remain outside committed harness configs. The installer ensures project `.nams/config.json` stays local and gitignored when it creates or modifies a project override.
 
 ## Session State
 
 Do not rely on the agent harness as a mutable variable store. Harness IDs are keys, not storage.
 
-The runtime persists session state under `.nams/state/sessions/<harness>/<session-key>.json`:
+The runtime persists session state under `~/.nams/state/<harness>/<session-hash>.json`. The path is platform-scoped and hash-based to avoid unsafe filenames and leaking raw session IDs through filenames. The state file itself keeps the readable project directory and resolved session key for debugging:
 
 ```json
 {
   "harness": "claude",
   "harnessSessionId": "abc123",
+  "sessionKey": "abc123",
+  "projectDirectory": "/path/to/project",
   "conversationId": "nams-conversation-uuid",
   "createdAt": "2026-05-10T09:00:00.000Z",
   "lastPromptHash": "sha256",
@@ -249,7 +280,7 @@ REST calls go through the generated `NamsClient` from `src/generated/nams-client
 Conversation creation:
 
 - `POST /v1/conversations`
-- Body: `{ "userId": "<NAMS_USER_ID if configured>", "metadata": {} }`
+- Body: `{ "metadata": {} }`
 - Client method: `createConversation`
 
 Message persistence:
@@ -329,7 +360,7 @@ Assistant complete or stop:
 
 Session end:
 
-- Flush local logs/state.
+- Do not flush runtime logs or state.
 - Do not delete remote NAMS data.
 
 ## Harness Notes
@@ -380,7 +411,7 @@ Hooks are non-blocking by default.
 
 If NAMS is unavailable, the API key is missing, or a REST call fails:
 
-- log the failure under `.nams/logs/`
+- log the failure under `~/.nams/logs/<harness>/`
 - do not expose API keys or secrets in logs
 - return normal allow or empty JSON to the harness
 - let agent work continue
@@ -391,7 +422,9 @@ Installer errors are stricter. The installer should refuse unsafe overwrites and
 
 ## Security And Privacy
 
-- `.nams/.env`, `.nams/state/`, and `.nams/logs/` are local and gitignored.
+- `~/.nams/config.json`, `~/.nams/state/`, and `~/.nams/logs/` are user-local runtime files.
+- Project `.nams/config.json` is an optional local override and must be gitignored.
+- `.env` files are not supported by the target configuration model.
 - API keys are never printed to stdout or logs.
 - Tool outputs are not stored in v1.
 - Tool inputs are serialized conservatively and capped.
@@ -404,12 +437,12 @@ Installer errors are stricter. The installer should refuse unsafe overwrites and
 
 The installer:
 
-- creates `.nams/state/` and `.nams/logs/`
-- creates `.nams/.env.example`
-- ensures `.nams/.env`, `.nams/state/`, and `.nams/logs/` are gitignored
+- creates `~/.nams/config.json` when the user chooses global configuration
+- creates project `.nams/config.json` only when the user chooses a project override
+- ensures project `.nams/config.json` is gitignored
 - writes or merges harness hook configs
 - backs up existing config files before changing them
-- prints next steps for setting `NAMS_API_KEY`
+- prints next steps for setting `apiKey` or `NAMS_API_KEY`
 
 Future installer commands may include:
 
@@ -421,8 +454,8 @@ Future installer commands may include:
 
 Unit tests:
 
-- config precedence: `.nams/.env` values are primary and environment variables fill missing values
-- session-state creation and lookup
+- config precedence: global JSON defaults, project JSON overrides, and environment variables override both
+- session-state creation and lookup under `~/.nams/state/<harness>/`
 - REST request shaping
 - generated `NamsClient` request and error behavior
 - duplicate message suppression
@@ -471,7 +504,7 @@ The CLI validates `--event` against `hookEvents`, routes `SessionStart` to `star
 
 Installer tests:
 
-- creates `.nams` structure
+- creates global config or project override config as requested
 - merges or backs up existing configs
 - updates `.gitignore` idempotently
 - reports installed harnesses
@@ -502,10 +535,10 @@ Approved decisions from brainstorming:
 
 - Standalone `nams-hooks` repo.
 - First iteration: Codex, Claude Code, Gemini CLI, and an OpenCode SessionStart walking skeleton on macOS.
-- Project-local runtime state and logs.
+- User-level runtime state and logs under `~/.nams/`.
 - Project-level installs for Codex, Claude, and OpenCode; Gemini extension distribution for v1.
 - Plain Node.js with built-in modules only.
-- `.nams/.env` plus real environment variables, with environment variables as fallback.
+- JSON configuration with global defaults in `~/.nams/config.json`, optional project overrides in `.nams/config.json`, and final environment overrides from `NAMS_API_KEY` and `NAMS_BASE_URL`.
 - Deterministic REST writes from hook runner, not MCP-driven writes.
 - Persist user messages and assistant responses as the core memory stream.
 - Store assistant responses in v1 where harnesses expose them cleanly.
