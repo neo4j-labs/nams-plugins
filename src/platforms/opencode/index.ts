@@ -1,21 +1,18 @@
-import type { HookInvocation, HookResult, PlatformAdapter, PlatformAdapterOptions } from "../../interfaces.js";
-import { loadNamsConfig, type NamsRuntimeConfig } from "../../runtime/config.js";
+import type { HookInvocation, HookResult, PlatformAdapter } from "../../interfaces.js";
+import { loadNamsConfig } from "../../runtime/config.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
 import {
   appendNamsConfigDiagnostic,
   appendNamsFailureDiagnostic,
-  appendNamsRequestLog,
   appendRawPlatformLog,
 } from "../../runtime/logging.js";
-import { combineMemoryContexts, NamsMemoryService, serializeToolInput } from "../../runtime/memory-service.js";
+import { combineMemoryContexts, createNamsMemoryService, serializeToolInput } from "../../runtime/memory-service.js";
 import { createInitialSessionState, loadSessionState, saveSessionState } from "../../runtime/session-state.js";
 import type { SessionState } from "../../runtime/session-state.js";
 import { parseOpenCodePayload, type OpenCodePayloadInfo } from "./payload.js";
 
 export class OpenCodeAdapter implements PlatformAdapter {
-  constructor(private readonly options: PlatformAdapterOptions = {}) {}
-
-  async startConversation(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
+  async startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
     const payloadInfo = parseOpenCodePayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({
       platform: invocation.platform,
@@ -67,7 +64,7 @@ export class OpenCodeAdapter implements PlatformAdapter {
     const config = configResult.config;
 
     try {
-      const memory = this.createMemoryService(config, invocation, state);
+      const memory = createNamsMemoryService(config, invocation, state);
 
       let conversationId = state.conversationId;
       if (conversationId === undefined) {
@@ -158,7 +155,7 @@ export class OpenCodeAdapter implements PlatformAdapter {
     const config = configResult.config;
 
     try {
-      const memory = this.createMemoryService(config, invocation, state);
+      const memory = createNamsMemoryService(config, invocation, state);
       const assistantPartId = assistantPartKey(payloadInfo);
       if (assistantPartId !== undefined) {
         if (state.seenAssistantPartIds.includes(assistantPartId)) {
@@ -231,7 +228,7 @@ export class OpenCodeAdapter implements PlatformAdapter {
         payloadInfo.toolInput,
       );
       if (!state.seenToolCallIds.includes(dedupeKey)) {
-        const memory = this.createMemoryService(config, invocation, state);
+        const memory = createNamsMemoryService(config, invocation, state);
         const reasoningStep = {
           conversationId: state.conversationId,
           reasoning: `OpenCode invoked ${payloadInfo.toolName} with the provided tool input.`,
@@ -270,17 +267,6 @@ export class OpenCodeAdapter implements PlatformAdapter {
     return allowOutput();
   }
 
-  private createMemoryService(
-    config: NamsRuntimeConfig,
-    invocation: HookInvocation,
-    state: SessionState,
-  ): NamsMemoryService {
-    return new NamsMemoryService({
-      ...config,
-      ...(this.options.fetch !== undefined ? { fetch: this.options.fetch } : {}),
-      onRequest: (event) => appendNamsRequestLog(invocation, state, event),
-    });
-  }
 }
 
 function allowOutput(): HookResult {

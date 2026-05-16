@@ -330,7 +330,7 @@ Session start:
 - Load config.
 - CLI receives a typed `SessionStart` event from `--event SessionStart`.
 - CLI reads raw hook JSON without interpreting platform-specific fields.
-- CLI dispatches to `adapter.startConversation(invocation)` through the static platform registry.
+- CLI dispatches to `adapter.startSession(invocation)` through the static platform registry.
 - The platform adapter initializes local state if a stable session key is available.
 - Do not create the NAMS conversation during `SessionStart`.
 - Return harness-specific empty or context-safe JSON.
@@ -502,7 +502,7 @@ export interface HookResult {
 }
 
 export interface PlatformAdapter {
-  startConversation(invocation: HookInvocation<"SessionStart">): Promise<HookResult>;
+  startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult>;
   beforeAgent?(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult>;
   afterAgent?(invocation: HookInvocation<"AfterAgent">): Promise<HookResult>;
   afterTool?(invocation: HookInvocation<"AfterTool">): Promise<HookResult>;

@@ -93,33 +93,40 @@ test("only the platform registry imports all concrete adapters", async () => {
   );
 });
 
-test("platform adapters use shared adapter options", async () => {
-  const adapterClassNames = {
-    gemini: "Gemini",
-    claude: "Claude",
-    codex: "Codex",
-    opencode: "OpenCode",
-  };
+test("platform adapters do not accept test-only runtime dependencies", async () => {
+  const content = await readFile("src/interfaces.ts", "utf8");
 
-  for (const [platform, className] of Object.entries(adapterClassNames)) {
+  assert.equal(/\bPlatformAdapterOptions\b/.test(content), false);
+  assert.equal(/\bfetch\?: typeof fetch\b/.test(content), false);
+  assert.equal(/\bruntimeEnvironment\?:/.test(content), false);
+  assert.equal(/\benv\?:/.test(content), false);
+
+  for (const platform of ["gemini", "claude", "codex", "opencode"]) {
     const filePath = `src/platforms/${platform}/index.ts`;
-    const content = await readFile(filePath, "utf8");
+    const platformContent = await readFile(filePath, "utf8");
 
-    assert.equal(
-      new RegExp(`interface\\s+${className}AdapterOptions\\b`).test(content),
-      false,
-      `${filePath} should use PlatformAdapterOptions instead of declaring ${className}AdapterOptions`,
-    );
-    assert.match(content, /\bPlatformAdapterOptions\b/, `${filePath} should reference PlatformAdapterOptions`);
+    assert.equal(/\bPlatformAdapterOptions\b/.test(platformContent), false);
+    assert.equal(/\bprivate readonly options\b|\bthis\.options\b/.test(platformContent), false);
+    assert.equal(/\bfetch\b/.test(platformContent), false);
   }
 });
 
-test("platform adapter options only expose adapter-owned dependencies", async () => {
-  const content = await readFile("src/interfaces.ts", "utf8");
+test("platform session-start contract names local session initialization", async () => {
+  const interfaceContent = await readFile("src/interfaces.ts", "utf8");
+  const cliContent = await readFile("src/cli.ts", "utf8");
 
-  assert.match(content, /\bfetch\?: typeof fetch\b/);
-  assert.equal(/\bruntimeEnvironment\?:/.test(content), false);
-  assert.equal(/\benv\?:/.test(content), false);
+  assert.match(interfaceContent, /\bstartSession\(invocation: HookInvocation<"SessionStart">\): Promise<HookResult>;/);
+  assert.equal(/\bstartConversation\b/.test(interfaceContent), false);
+  assert.match(cliContent, /\badapter\.startSession\(/);
+  assert.equal(/\badapter\.startConversation\b/.test(cliContent), false);
+
+  for (const platform of ["gemini", "claude", "codex", "opencode"]) {
+    const filePath = `src/platforms/${platform}/index.ts`;
+    const content = await readFile(filePath, "utf8");
+
+    assert.match(content, /\basync startSession\(invocation: HookInvocation<"SessionStart">\): Promise<HookResult>/);
+    assert.equal(/\bstartConversation\b/.test(content), false);
+  }
 });
 
 test("platform adapters do not manage runtime environment", async () => {

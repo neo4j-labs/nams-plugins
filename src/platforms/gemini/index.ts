@@ -1,13 +1,16 @@
-import type { HookInvocation, HookResult, PlatformAdapter, PlatformAdapterOptions } from "../../interfaces.js";
-import { loadNamsConfig, type NamsRuntimeConfig } from "../../runtime/config.js";
+import type { HookInvocation, HookResult, PlatformAdapter } from "../../interfaces.js";
+import { loadNamsConfig } from "../../runtime/config.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
 import {
   appendNamsConfigDiagnostic,
   appendNamsFailureDiagnostic,
-  appendNamsRequestLog,
   appendRawPlatformLog,
 } from "../../runtime/logging.js";
-import { combineMemoryContexts, NamsMemoryService } from "../../runtime/memory-service.js";
+import {
+  combineMemoryContexts,
+  createNamsMemoryService,
+  type NamsMemoryService,
+} from "../../runtime/memory-service.js";
 import {
   createInitialSessionState,
   loadSessionState,
@@ -18,9 +21,7 @@ import { parseGeminiPayload } from "./payload.js";
 import { readGeminiTranscript, type GeminiTranscriptEntry } from "./transcript.js";
 
 export class GeminiAdapter implements PlatformAdapter {
-  constructor(private readonly options: PlatformAdapterOptions = {}) {}
-
-  async startConversation(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
+  async startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
     const payloadInfo = parseGeminiPayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({
       platform: invocation.platform,
@@ -63,7 +64,7 @@ export class GeminiAdapter implements PlatformAdapter {
 
     let additionalContext: string | undefined;
     try {
-      const memory = this.createMemoryService(config, invocation, state);
+      const memory = createNamsMemoryService(config, invocation, state);
 
       let conversationId = state.conversationId;
       if (conversationId === undefined) {
@@ -140,7 +141,7 @@ export class GeminiAdapter implements PlatformAdapter {
     const config = configResult.config;
 
     try {
-      const memory = this.createMemoryService(config, invocation, state);
+      const memory = createNamsMemoryService(config, invocation, state);
       const response = payloadInfo.promptResponse?.trim();
       if (response !== undefined && response !== "") {
         const responseHash = sha256([invocation.platform, state.sessionKey, "assistant", response].join("\n"));
@@ -209,7 +210,7 @@ export class GeminiAdapter implements PlatformAdapter {
         toolPayload.input,
       );
       if (!hasSeenAny(state.seenToolCallIds, toolCallKeys.lookupKeys)) {
-        const memory = this.createMemoryService(config, invocation, state);
+        const memory = createNamsMemoryService(config, invocation, state);
         const reasoningStep = {
           conversationId: state.conversationId,
           reasoning: `Gemini invoked ${toolPayload.toolName} with the provided tool input.`,
@@ -248,17 +249,6 @@ export class GeminiAdapter implements PlatformAdapter {
     return allowOutput();
   }
 
-  private createMemoryService(
-    config: NamsRuntimeConfig,
-    invocation: HookInvocation,
-    state: SessionState,
-  ): NamsMemoryService {
-    return new NamsMemoryService({
-      ...config,
-      ...(this.options.fetch !== undefined ? { fetch: this.options.fetch } : {}),
-      onRequest: (event) => appendNamsRequestLog(invocation, state, event),
-    });
-  }
 }
 
 function allowOutput(additionalContext?: string): HookResult {

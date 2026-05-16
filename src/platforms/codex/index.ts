@@ -1,16 +1,16 @@
-import type { HookInvocation, HookResult, PlatformAdapter, PlatformAdapterOptions } from "../../interfaces.js";
-import { loadNamsConfig, type NamsRuntimeConfig } from "../../runtime/config.js";
+import type { HookInvocation, HookResult, PlatformAdapter } from "../../interfaces.js";
+import { loadNamsConfig } from "../../runtime/config.js";
 import { sha256 } from "../../runtime/hashing.js";
 import {
   appendNamsConfigDiagnostic,
   appendNamsFailureDiagnostic,
-  appendNamsRequestLog,
   appendRawPlatformLog,
 } from "../../runtime/logging.js";
 import {
   combineMemoryContexts,
-  NamsMemoryService,
+  createNamsMemoryService,
   serializeToolInput,
+  type NamsMemoryService,
 } from "../../runtime/memory-service.js";
 import {
   createInitialSessionState,
@@ -22,9 +22,7 @@ import { parseCodexPayload } from "./payload.js";
 import { readCodexTranscript, type CodexTranscriptEntry } from "./transcript.js";
 
 export class CodexAdapter implements PlatformAdapter {
-  constructor(private readonly options: PlatformAdapterOptions = {}) {}
-
-  async startConversation(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
+  async startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
     const payloadInfo = parseCodexPayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({
       platform: invocation.platform,
@@ -67,7 +65,7 @@ export class CodexAdapter implements PlatformAdapter {
 
     let additionalContext: string | undefined;
     try {
-      const memory = this.createMemoryService(config, invocation, state);
+      const memory = createNamsMemoryService(config, invocation, state);
 
       let conversationId = state.conversationId;
       if (conversationId === undefined) {
@@ -144,7 +142,7 @@ export class CodexAdapter implements PlatformAdapter {
     const config = configResult.config;
 
     try {
-      const memory = this.createMemoryService(config, invocation, state);
+      const memory = createNamsMemoryService(config, invocation, state);
       const response = payloadInfo.lastAssistantMessage?.trim();
       if (response !== undefined && response !== "") {
         const responseDedupeHash = assistantMessageDedupeHash(
@@ -228,7 +226,7 @@ export class CodexAdapter implements PlatformAdapter {
     });
 
     try {
-      const memory = this.createMemoryService(config, invocation, state);
+      const memory = createNamsMemoryService(config, invocation, state);
       let stepId: string | undefined = state.reasoningStepIdsByHash[reasoningHash];
       if (!state.seenReasoningStepHashes.includes(reasoningHash)) {
         stepId = await memory.recordReasoningStep({
@@ -257,17 +255,6 @@ export class CodexAdapter implements PlatformAdapter {
     return allowPostToolUseOutput();
   }
 
-  private createMemoryService(
-    config: NamsRuntimeConfig,
-    invocation: HookInvocation,
-    state: SessionState,
-  ): NamsMemoryService {
-    return new NamsMemoryService({
-      ...config,
-      ...(this.options.fetch !== undefined ? { fetch: this.options.fetch } : {}),
-      onRequest: (event) => appendNamsRequestLog(invocation, state, event),
-    });
-  }
 }
 
 function allowOutput(additionalContext?: string): HookResult {

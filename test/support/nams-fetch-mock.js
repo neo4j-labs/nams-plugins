@@ -4,6 +4,8 @@ export const namsBaseUrl = "https://memory.example.test";
 
 export function createNamsFetchMock(baseUrl = namsBaseUrl) {
   const mock = fetchMock.createInstance();
+  const fetchHandler = mock.fetchHandler.bind(mock);
+  globalThis.fetch = fetchHandler;
 
   const api = {
     calls: (filter, options) => mock.callHistory.calls(filter, options),
@@ -18,7 +20,7 @@ export function createNamsFetchMock(baseUrl = namsBaseUrl) {
       }
       return JSON.parse(call.options.body);
     },
-    fetch: mock.fetchHandler.bind(mock),
+    fetch: fetchHandler,
     createConversation(response = { id: "conversation-1" }, status = 201) {
       return api.post("/v1/conversations", response, status, "createConversation");
     },
