@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { RuntimeEnvironment, type RuntimeEnvironmentInput } from "./paths.js";
+import { RuntimeEnvironment } from "./paths.js";
 
 export interface NamsRuntimeConfig {
   apiKey: string;
@@ -56,11 +56,8 @@ export function configDiagnosticPayload(result: NamsConfigLoadResult): Record<st
   };
 }
 
-export async function loadNamsConfig(
-  projectDirectory: string,
-  environment: RuntimeEnvironmentInput = process.env,
-): Promise<NamsConfigLoadResult> {
-  const runtimeEnvironment = RuntimeEnvironment.from(environment);
+export async function loadNamsConfig(projectDirectory: string): Promise<NamsConfigLoadResult> {
+  const runtimeEnvironment = RuntimeEnvironment.fromProcess();
   const accumulated: Partial<NamsRuntimeConfig> = {};
   const sources: NamsConfigSources = {
     apiKey: "missing",

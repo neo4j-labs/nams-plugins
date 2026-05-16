@@ -9,17 +9,12 @@ import {
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
 import { appendPlatformLog } from "../../runtime/logging.js";
 import { combineMemoryContexts, NamsMemoryService, serializeToolInput } from "../../runtime/memory-service.js";
-import { RuntimeEnvironment } from "../../runtime/paths.js";
 import { createInitialSessionState, loadSessionState, saveSessionState } from "../../runtime/session-state.js";
 import type { SessionState } from "../../runtime/session-state.js";
 import { parseOpenCodePayload, type OpenCodePayloadInfo } from "./payload.js";
 
 export class OpenCodeAdapter implements PlatformAdapter {
-  private readonly runtimeEnvironment: RuntimeEnvironment;
-
-  constructor(private readonly options: PlatformAdapterOptions = {}) {
-    this.runtimeEnvironment = RuntimeEnvironment.from(options.runtimeEnvironment);
-  }
+  constructor(private readonly options: PlatformAdapterOptions = {}) {}
 
   async startConversation(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
     const payloadInfo = parseOpenCodePayload(invocation.rawPayload, invocation.processCwd);
@@ -29,11 +24,11 @@ export class OpenCodeAdapter implements PlatformAdapter {
       sessionId: payloadInfo.sessionId,
     });
     const state =
-      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey, this.runtimeEnvironment)) ??
+      (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
       initialState;
 
-    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state, this.runtimeEnvironment);
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
+    await appendRawPlatformLog(invocation, state);
+    await saveSessionState(invocation.platform, state.sessionKey, state);
 
     return allowOutput();
   }
@@ -41,7 +36,7 @@ export class OpenCodeAdapter implements PlatformAdapter {
   async beforeAgent(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult> {
     const payloadInfo = parseOpenCodePayload(invocation.rawPayload, invocation.processCwd);
     if (payloadInfo.hookName === "experimental.chat.system.transform") {
-      return consumePendingContext(invocation, payloadInfo, this.runtimeEnvironment);
+      return consumePendingContext(invocation, payloadInfo);
     }
     if (payloadInfo.hookName !== "chat.message") {
       return allowOutput();
@@ -53,27 +48,27 @@ export class OpenCodeAdapter implements PlatformAdapter {
       sessionId: payloadInfo.sessionId,
     });
     const state =
-      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey, this.runtimeEnvironment)) ??
+      (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
       initialState;
-    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state, this.runtimeEnvironment);
+    await appendRawPlatformLog(invocation, state);
     state.seenUserMessageIds ??= [];
 
     const userPrompt = payloadInfo.userPrompt;
     if (userPrompt === undefined || userPrompt.trim() === "") {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
-    const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.runtimeEnvironment);
-    await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult, this.runtimeEnvironment);
+    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
+    await appendNamsConfigDiagnostic(invocation, state, configResult);
     if (!configResult.ok) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
     const config = configResult.config;
 
     try {
-      const memory = this.createMemoryService(config, invocation, payloadInfo.projectDirectory, state);
+      const memory = this.createMemoryService(config, invocation, state);
 
       let conversationId = state.conversationId;
       if (conversationId === undefined) {
@@ -89,12 +84,12 @@ export class OpenCodeAdapter implements PlatformAdapter {
         try {
           recallContexts.push(await memory.recall(conversationId));
         } catch {
-          await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state, this.runtimeEnvironment);
+          await appendNamsFailureDiagnostic(invocation, state);
         }
         try {
           recallContexts.push(await memory.searchEntities(userPrompt));
         } catch {
-          await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state, this.runtimeEnvironment);
+          await appendNamsFailureDiagnostic(invocation, state);
         }
         const createdAt = new Date().toISOString();
         state.lastRecallAt = createdAt;
@@ -109,19 +104,19 @@ export class OpenCodeAdapter implements PlatformAdapter {
       }
 
       if (hasSeenUserMessage(state, payloadInfo.messageId, invocation.platform, userPrompt)) {
-        await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
+        await saveSessionState(invocation.platform, state.sessionKey, state);
         return allowOutput();
       }
 
       await memory.storeUserMessage(conversationId, userPrompt);
       markUserMessageSeen(state, payloadInfo.messageId, invocation.platform, userPrompt);
     } catch {
-      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state, this.runtimeEnvironment);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
+      await appendNamsFailureDiagnostic(invocation, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
+    await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
   }
 
@@ -133,42 +128,42 @@ export class OpenCodeAdapter implements PlatformAdapter {
       sessionId: payloadInfo.sessionId,
     });
     const state =
-      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey, this.runtimeEnvironment)) ??
+      (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
       initialState;
-    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state, this.runtimeEnvironment);
+    await appendRawPlatformLog(invocation, state);
     state.seenAssistantPartIds ??= [];
     state.seenAssistantMessageHashes ??= [];
 
     if (payloadInfo.hookName !== "experimental.text.complete") {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
     if (state.conversationId === undefined) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
     const assistantText = payloadInfo.assistantText?.trim();
     if (assistantText === undefined || assistantText === "") {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
-    const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.runtimeEnvironment);
-    await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult, this.runtimeEnvironment);
+    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
+    await appendNamsConfigDiagnostic(invocation, state, configResult);
     if (!configResult.ok) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
     const config = configResult.config;
 
     try {
-      const memory = this.createMemoryService(config, invocation, payloadInfo.projectDirectory, state);
+      const memory = this.createMemoryService(config, invocation, state);
       const assistantPartId = assistantPartKey(payloadInfo);
       if (assistantPartId !== undefined) {
         if (state.seenAssistantPartIds.includes(assistantPartId)) {
-          await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
+          await saveSessionState(invocation.platform, state.sessionKey, state);
           return allowOutput();
         }
 
@@ -182,12 +177,12 @@ export class OpenCodeAdapter implements PlatformAdapter {
         }
       }
     } catch {
-      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state, this.runtimeEnvironment);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
+      await appendNamsFailureDiagnostic(invocation, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
+    await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
   }
 
@@ -199,32 +194,32 @@ export class OpenCodeAdapter implements PlatformAdapter {
       sessionId: payloadInfo.sessionId,
     });
     const state =
-      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey, this.runtimeEnvironment)) ??
+      (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
       initialState;
-    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state, this.runtimeEnvironment);
+    await appendRawPlatformLog(invocation, state);
     state.seenToolCallIds ??= [];
     state.seenReasoningStepHashes ??= [];
     state.reasoningStepIdsByHash ??= {};
 
     if (state.conversationId === undefined) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
     if (payloadInfo.hookName !== "tool.execute.after") {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
     if (payloadInfo.toolName === undefined || payloadInfo.toolName.trim() === "") {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
-    const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.runtimeEnvironment);
-    await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult, this.runtimeEnvironment);
+    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
+    await appendNamsConfigDiagnostic(invocation, state, configResult);
     if (!configResult.ok) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
     const config = configResult.config;
@@ -237,7 +232,7 @@ export class OpenCodeAdapter implements PlatformAdapter {
         payloadInfo.toolInput,
       );
       if (!state.seenToolCallIds.includes(dedupeKey)) {
-        const memory = this.createMemoryService(config, invocation, payloadInfo.projectDirectory, state);
+        const memory = this.createMemoryService(config, invocation, state);
         const reasoningStep = {
           conversationId: state.conversationId,
           reasoning: `OpenCode invoked ${payloadInfo.toolName} with the provided tool input.`,
@@ -267,25 +262,24 @@ export class OpenCodeAdapter implements PlatformAdapter {
         markSeen(state.seenToolCallIds, [dedupeKey]);
       }
     } catch {
-      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state, this.runtimeEnvironment);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
+      await appendNamsFailureDiagnostic(invocation, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
+    await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
   }
 
   private createMemoryService(
     config: NamsRuntimeConfig,
     invocation: HookInvocation,
-    projectDirectory: string,
     state: SessionState,
   ): NamsMemoryService {
     return new NamsMemoryService({
       ...config,
       ...(this.options.fetch !== undefined ? { fetch: this.options.fetch } : {}),
-      onRequest: (event) => appendNamsRequestLog(invocation, projectDirectory, state, event, this.runtimeEnvironment),
+      onRequest: (event) => appendNamsRequestLog(invocation, state, event),
     });
   }
 }
@@ -297,7 +291,6 @@ function allowOutput(): HookResult {
 async function consumePendingContext(
   invocation: HookInvocation<"BeforeAgent">,
   payloadInfo: OpenCodePayloadInfo,
-  runtimeEnvironment: RuntimeEnvironment,
 ): Promise<HookResult> {
   const initialState = createInitialSessionState({
     platform: invocation.platform,
@@ -305,18 +298,18 @@ async function consumePendingContext(
     sessionId: payloadInfo.sessionId,
   });
   const state =
-    (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey, runtimeEnvironment)) ??
+    (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
     initialState;
-  await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state, runtimeEnvironment);
+  await appendRawPlatformLog(invocation, state);
 
   const pendingContext = state.pendingMemoryContext;
   if (pendingContext === undefined) {
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, runtimeEnvironment);
+    await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
   }
 
   delete state.pendingMemoryContext;
-  await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, runtimeEnvironment);
+  await saveSessionState(invocation.platform, state.sessionKey, state);
   return {
     stdout: {
       continue: true,
@@ -401,51 +394,39 @@ function markSeen(seen: string[], keys: string[]): void {
 
 async function appendNamsConfigDiagnostic(
   invocation: HookInvocation,
-  projectDirectory: string,
   state: SessionState,
   result: NamsConfigLoadResult,
-  runtimeEnvironment: RuntimeEnvironment,
 ): Promise<void> {
   await appendOpenCodeDiagnosticLog({
     platform: invocation.platform,
     event: invocation.event,
-    projectDirectory,
     state,
     payload: configDiagnosticPayload(result),
-    runtimeEnvironment,
   });
 }
 
 async function appendNamsFailureDiagnostic(
   invocation: HookInvocation,
-  projectDirectory: string,
   state: SessionState,
-  runtimeEnvironment: RuntimeEnvironment,
 ): Promise<void> {
   await appendOpenCodeDiagnosticLog({
     platform: invocation.platform,
     event: invocation.event,
-    projectDirectory,
     state,
     payload: { message: "NAMS request failed" },
-    runtimeEnvironment,
   });
 }
 
 async function appendNamsRequestLog(
   invocation: HookInvocation,
-  projectDirectory: string,
   state: SessionState,
   payload: NamsRequestEvent,
-  runtimeEnvironment: RuntimeEnvironment,
 ): Promise<void> {
   await appendPlatformLog({
     platform: invocation.platform,
     event: invocation.event,
     kind: "nams.request",
-    projectDirectory,
     payload: { ...payload },
-    runtimeEnvironment,
     sessionCreatedAt: state.createdAt,
     sessionKey: state.sessionKey,
   });
@@ -453,9 +434,7 @@ async function appendNamsRequestLog(
 
 async function appendRawPlatformLog(
   invocation: HookInvocation,
-  projectDirectory: string,
   state: SessionState,
-  runtimeEnvironment: RuntimeEnvironment,
 ): Promise<void> {
   try {
     await appendPlatformLog({
@@ -463,8 +442,6 @@ async function appendRawPlatformLog(
       event: invocation.event,
       kind: "hook.event",
       payload: invocation.rawPayload,
-      runtimeEnvironment,
-      projectDirectory,
       sessionCreatedAt: state.createdAt,
       sessionKey: state.sessionKey,
     });
@@ -476,19 +453,15 @@ async function appendRawPlatformLog(
 async function appendOpenCodeDiagnosticLog(entry: {
   platform: HookInvocation["platform"];
   event: HookInvocation["event"];
-  projectDirectory: string;
   state: SessionState;
   payload: Record<string, unknown>;
-  runtimeEnvironment: RuntimeEnvironment;
 }): Promise<void> {
   try {
     await appendPlatformLog({
       platform: entry.platform,
       event: entry.event,
       kind: "diagnostic",
-      projectDirectory: entry.projectDirectory,
       payload: entry.payload,
-      runtimeEnvironment: entry.runtimeEnvironment,
       sessionCreatedAt: entry.state.createdAt,
       sessionKey: entry.state.sessionKey,
     });

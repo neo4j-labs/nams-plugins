@@ -21,6 +21,13 @@ async function withFixture(fn) {
   }
 }
 
+function useRuntimeEnv(homeDir, overrides = {}) {
+  for (const key of ["HOME", "USERPROFILE", "NAMS_API_KEY", "NAMS_BASE_URL"]) {
+    delete process.env[key];
+  }
+  Object.assign(process.env, { HOME: homeDir, USERPROFILE: homeDir, ...overrides });
+}
+
 async function writeGlobalConfig(homeDir, config) {
   await mkdir(path.join(homeDir, ".nams"), { recursive: true });
   await writeFile(path.join(homeDir, ".nams", "config.json"), JSON.stringify(config), "utf8");
@@ -39,7 +46,8 @@ test("loads global JSON config by default", async () => {
     });
 
     const { loadNamsConfig } = await import(configUrl);
-    const result = await loadNamsConfig(projectDir, { HOME: homeDir });
+    useRuntimeEnv(homeDir);
+    const result = await loadNamsConfig(projectDir);
 
     assert.deepEqual(result, {
       ok: true,
@@ -66,7 +74,8 @@ test("project JSON config overlays global JSON config", async () => {
     });
 
     const { loadNamsConfig } = await import(configUrl);
-    const result = await loadNamsConfig(projectDir, { HOME: homeDir });
+    useRuntimeEnv(homeDir);
+    const result = await loadNamsConfig(projectDir);
 
     assert.deepEqual(result, {
       ok: true,
@@ -94,11 +103,11 @@ test("environment variables overlay project and global JSON config", async () =>
     });
 
     const { loadNamsConfig } = await import(configUrl);
-    const result = await loadNamsConfig(projectDir, {
-      HOME: homeDir,
+    useRuntimeEnv(homeDir, {
       NAMS_API_KEY: "env-key",
       NAMS_BASE_URL: "https://env.example.test",
     });
+    const result = await loadNamsConfig(projectDir);
 
     assert.deepEqual(result, {
       ok: true,
@@ -124,7 +133,8 @@ test("does not read project dotenv config files", async () => {
     );
 
     const { loadNamsConfig } = await import(configUrl);
-    const result = await loadNamsConfig(projectDir, { HOME: homeDir });
+    useRuntimeEnv(homeDir);
+    const result = await loadNamsConfig(projectDir);
 
     assert.deepEqual(result, {
       ok: false,
@@ -140,7 +150,8 @@ test("does not read project dotenv config files", async () => {
 test("missing apiKey returns structured non-ok result", async () => {
   await withFixture(async ({ homeDir, projectDir }) => {
     const { loadNamsConfig } = await import(configUrl);
-    const result = await loadNamsConfig(projectDir, { HOME: homeDir });
+    useRuntimeEnv(homeDir);
+    const result = await loadNamsConfig(projectDir);
 
     assert.deepEqual(result, {
       ok: false,
@@ -159,7 +170,8 @@ test("invalid JSON returns structured non-ok result without raw file content", a
     await writeFile(path.join(homeDir, ".nams", "config.json"), '{"apiKey":"secret-key"', "utf8");
 
     const { loadNamsConfig } = await import(configUrl);
-    const result = await loadNamsConfig(projectDir, { HOME: homeDir });
+    useRuntimeEnv(homeDir);
+    const result = await loadNamsConfig(projectDir);
 
     assert.equal(result.ok, false);
     assert.equal(result.reason, "invalid-json");
@@ -182,7 +194,8 @@ test("invalid project JSON preserves global source metadata", async () => {
     await writeFile(path.join(projectDir, ".nams", "config.json"), '{"apiKey":"secret-project-key"', "utf8");
 
     const { loadNamsConfig } = await import(configUrl);
-    const result = await loadNamsConfig(projectDir, { HOME: homeDir });
+    useRuntimeEnv(homeDir);
+    const result = await loadNamsConfig(projectDir);
 
     assert.equal(result.ok, false);
     assert.equal(result.reason, "invalid-json");
@@ -203,8 +216,10 @@ test("configDiagnosticPayload includes sources but not secret values", async () 
     });
 
     const { configDiagnosticPayload, loadNamsConfig } = await import(configUrl);
-    const loaded = await loadNamsConfig(projectDir, { HOME: homeDir });
-    const missing = await loadNamsConfig(projectDir, { HOME: path.join(homeDir, "empty") });
+    useRuntimeEnv(homeDir);
+    const loaded = await loadNamsConfig(projectDir);
+    useRuntimeEnv(path.join(homeDir, "empty"));
+    const missing = await loadNamsConfig(projectDir);
     const invalid = {
       ok: false,
       reason: "invalid-json",

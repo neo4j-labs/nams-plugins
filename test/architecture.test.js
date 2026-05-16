@@ -114,11 +114,31 @@ test("platform adapters use shared adapter options", async () => {
   }
 });
 
-test("platform adapter options use runtime environment rather than raw env", async () => {
+test("platform adapter options only expose adapter-owned dependencies", async () => {
   const content = await readFile("src/interfaces.ts", "utf8");
 
-  assert.match(content, /\bruntimeEnvironment\?: RuntimeEnvironment\b/);
+  assert.match(content, /\bfetch\?: typeof fetch\b/);
+  assert.equal(/\bruntimeEnvironment\?:/.test(content), false);
   assert.equal(/\benv\?:/.test(content), false);
+});
+
+test("platform adapters do not manage runtime environment", async () => {
+  for (const platform of ["gemini", "claude", "codex", "opencode"]) {
+    const filePath = `src/platforms/${platform}/index.ts`;
+    const content = await readFile(filePath, "utf8");
+
+    assert.equal(/\bRuntimeEnvironment\b|\bruntimeEnvironment\b/.test(content), false, `${filePath} should not manage runtime environment`);
+  }
+});
+
+test("global runtime modules do not accept unused project directory plumbing", async () => {
+  const sessionState = await readFile("src/runtime/session-state.ts", "utf8");
+  const logging = await readFile("src/runtime/logging.ts", "utf8");
+
+  assert.equal(/loadSessionState\(\s*\n\s*projectDirectory:/.test(sessionState), false);
+  assert.equal(/saveSessionState\(\s*\n\s*projectDirectory:/.test(sessionState), false);
+  assert.equal(/\bvoid projectDirectory\b/.test(sessionState), false);
+  assert.equal(/\bprojectDirectory: string;/.test(logging), false);
 });
 
 test("runtime environment home lookup stays in paths module", async () => {

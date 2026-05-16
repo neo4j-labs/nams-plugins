@@ -1,5 +1,3 @@
-import type { RuntimeEnvironment } from "./runtime/paths.js";
-
 export const platforms = ["gemini", "claude", "codex", "opencode"] as const;
 export type Platform = (typeof platforms)[number];
 
@@ -18,7 +16,6 @@ export interface HookResult {
 }
 
 export interface PlatformAdapterOptions {
-  runtimeEnvironment?: RuntimeEnvironment;
   fetch?: typeof fetch;
 }
 

@@ -12,7 +12,17 @@ const geminiUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "platforms"
 const stateUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "runtime", "session-state.js")).href;
 
 function testEnv(projectDir, overrides = {}) {
-  return { HOME: path.join(projectDir, "home"), ...overrides };
+  const env = { HOME: path.join(projectDir, "home"), USERPROFILE: path.join(projectDir, "home"), ...overrides };
+  for (const key of ["HOME", "USERPROFILE", "NAMS_API_KEY", "NAMS_BASE_URL"]) {
+    delete process.env[key];
+  }
+  Object.assign(process.env, env);
+  return env;
+}
+
+function testAdapterOptions(projectDir, overrides = {}) {
+  testEnv(projectDir, overrides);
+  return {};
 }
 
 test("initializes Gemini session state on SessionStart without creating a conversation", async () => {
@@ -20,7 +30,7 @@ test("initializes Gemini session state on SessionStart without creating a conver
   try {
     const { GeminiAdapter } = await import(geminiUrl);
     const { loadSessionState } = await import(stateUrl);
-    const adapter = new GeminiAdapter({ runtimeEnvironment: testEnv(projectDir) });
+    const adapter = new GeminiAdapter({ ...testAdapterOptions(projectDir) });
 
     const result = await adapter.startConversation({
       platform: "gemini",
@@ -33,7 +43,7 @@ test("initializes Gemini session state on SessionStart without creating a conver
     });
 
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
-    const state = await loadSessionState(projectDir, "gemini", "session-1", testEnv(projectDir));
+    const state = await loadSessionState("gemini", "session-1");
     assert.notEqual(state, null);
     assert.equal(state.sessionKey, "session-1");
     assert.equal(state.conversationId, undefined);
@@ -55,7 +65,7 @@ test("creates Gemini conversation, recalls memory, and stores first BeforeAgent 
       .message();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
-      runtimeEnvironment: testEnv(projectDir, {
+      ...testAdapterOptions(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       }),
@@ -169,7 +179,7 @@ test("Gemini BeforeAgent uses entity search context when conversation context fa
       .message();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
-      runtimeEnvironment: testEnv(projectDir, {
+      ...testAdapterOptions(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       }),
@@ -212,7 +222,7 @@ test("does not store duplicate Gemini BeforeAgent user prompt twice", async () =
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
-      runtimeEnvironment: testEnv(projectDir, {
+      ...testAdapterOptions(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       }),
@@ -243,7 +253,7 @@ test("allows Gemini BeforeAgent when NAMS returns an error", async () => {
   try {
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
-      runtimeEnvironment: testEnv(projectDir, {
+      ...testAdapterOptions(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       }),
@@ -277,7 +287,7 @@ test("Gemini BeforeAgent returns recalled context when user message persistence 
       .message({ error: "message write unavailable" }, 503);
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
-      runtimeEnvironment: testEnv(projectDir, {
+      ...testAdapterOptions(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       }),
@@ -310,7 +320,7 @@ test("Gemini BeforeAgent continues when NAMS_API_KEY is missing", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
     const { GeminiAdapter } = await import(geminiUrl);
-    const adapter = new GeminiAdapter({ runtimeEnvironment: testEnv(projectDir) });
+    const adapter = new GeminiAdapter({ ...testAdapterOptions(projectDir) });
 
     const result = await adapter.beforeAgent({
       platform: "gemini",
@@ -346,7 +356,7 @@ test("Gemini BeforeAgent logs invalid config diagnostics without raw JSON conten
     await mkdir(path.join(projectDir, ".nams"), { recursive: true });
     await writeFile(path.join(projectDir, ".nams", "config.json"), '{"apiKey":"secret-config-value"', "utf8");
     const { GeminiAdapter } = await import(geminiUrl);
-    const adapter = new GeminiAdapter({ runtimeEnvironment: testEnv(projectDir) });
+    const adapter = new GeminiAdapter({ ...testAdapterOptions(projectDir) });
 
     const result = await adapter.beforeAgent({
       platform: "gemini",
@@ -383,7 +393,7 @@ test("Gemini BeforeAgent continues when NAMS request fails", async () => {
   try {
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
-      runtimeEnvironment: testEnv(projectDir, {
+      ...testAdapterOptions(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       }),
@@ -415,7 +425,7 @@ test("Gemini NAMS failure diagnostics do not include arbitrary error text", asyn
   try {
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
-      runtimeEnvironment: testEnv(projectDir, {
+      ...testAdapterOptions(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       }),
@@ -452,7 +462,7 @@ test("Gemini session log keeps hook events together and includes user prompt fie
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
     const { GeminiAdapter } = await import(geminiUrl);
-    const adapter = new GeminiAdapter({ runtimeEnvironment: testEnv(projectDir) });
+    const adapter = new GeminiAdapter({ ...testAdapterOptions(projectDir) });
 
     await adapter.startConversation({
       platform: "gemini",
@@ -505,7 +515,7 @@ test("Gemini AfterAgent platform log keeps raw assistant response fields", async
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
     const { GeminiAdapter } = await import(geminiUrl);
-    const adapter = new GeminiAdapter({ runtimeEnvironment: testEnv(projectDir) });
+    const adapter = new GeminiAdapter({ ...testAdapterOptions(projectDir) });
 
     await adapter.afterAgent({
       platform: "gemini",
@@ -537,7 +547,7 @@ test("Gemini AfterTool platform log keeps raw tool output fields", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
     const { GeminiAdapter } = await import(geminiUrl);
-    const adapter = new GeminiAdapter({ runtimeEnvironment: testEnv(projectDir) });
+    const adapter = new GeminiAdapter({ ...testAdapterOptions(projectDir) });
 
     const result = await adapter.afterTool({
       platform: "gemini",
@@ -581,7 +591,7 @@ test("Gemini platform log keeps nested non-sensitive payload fields", async () =
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
     const { GeminiAdapter } = await import(geminiUrl);
-    const adapter = new GeminiAdapter({ runtimeEnvironment: testEnv(projectDir) });
+    const adapter = new GeminiAdapter({ ...testAdapterOptions(projectDir) });
 
     await adapter.beforeAgent({
       platform: "gemini",
@@ -624,7 +634,7 @@ test("Gemini hooks continue when observability log writes fail", async () => {
 
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
-      runtimeEnvironment: testEnv(projectDir, {
+      ...testAdapterOptions(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       }),
@@ -672,7 +682,7 @@ test("records Gemini AfterTool payload as a reasoning step with tool output", as
       .toolCall();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
-      runtimeEnvironment: testEnv(projectDir, {
+      ...testAdapterOptions(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       }),
@@ -748,7 +758,7 @@ test("does not duplicate Gemini AfterTool metadata for the same tool call id", a
       .toolCall();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
-      runtimeEnvironment: testEnv(projectDir, {
+      ...testAdapterOptions(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       }),
@@ -801,7 +811,7 @@ test("records distinct Gemini AfterTool calls with matching inputs when ids diff
       .toolCall();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
-      runtimeEnvironment: testEnv(projectDir, {
+      ...testAdapterOptions(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       }),
@@ -880,7 +890,7 @@ test("does not duplicate AfterTool when transcript later contains the same tool 
       .toolCall();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
-      runtimeEnvironment: testEnv(projectDir, {
+      ...testAdapterOptions(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       }),
@@ -935,7 +945,7 @@ test("stores Gemini AfterAgent prompt_response as an assistant message", async (
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
-      runtimeEnvironment: testEnv(projectDir, {
+      ...testAdapterOptions(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       }),
@@ -991,7 +1001,7 @@ test("stores Gemini AfterAgent assistant message from transcript when prompt_res
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
-      runtimeEnvironment: testEnv(projectDir, {
+      ...testAdapterOptions(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       }),
@@ -1048,7 +1058,7 @@ test("does not duplicate prompt_response assistant messages during later transcr
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
-      runtimeEnvironment: testEnv(projectDir, {
+      ...testAdapterOptions(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       }),
@@ -1152,7 +1162,7 @@ test("deduplicates repeated Gemini transcript thoughts by reasoning body", async
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message().reasoningStep();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
-      runtimeEnvironment: testEnv(projectDir, {
+      ...testAdapterOptions(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       }),
@@ -1240,7 +1250,7 @@ test("records Gemini transcript thoughts and sanitized tool metadata", async () 
       .toolCall();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
-      runtimeEnvironment: testEnv(projectDir, {
+      ...testAdapterOptions(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       }),
@@ -1336,7 +1346,7 @@ test("deduplicates repeated Gemini transcript tool ids", async () => {
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message().toolCall();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
-      runtimeEnvironment: testEnv(projectDir, {
+      ...testAdapterOptions(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       }),
@@ -1422,7 +1432,7 @@ test("preserves reasoning step id when retrying a failed transcript tool call", 
       });
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
-      runtimeEnvironment: testEnv(projectDir, {
+      ...testAdapterOptions(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       }),
@@ -1515,7 +1525,7 @@ test("does not attach reasoning step from a previous transcript entry to a later
       .toolCall();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
-      runtimeEnvironment: testEnv(projectDir, {
+      ...testAdapterOptions(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       }),
@@ -1602,7 +1612,7 @@ test("does not attach reasoning step when a transcript entry has multiple though
       .toolCall();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
-      runtimeEnvironment: testEnv(projectDir, {
+      ...testAdapterOptions(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       }),
@@ -1670,7 +1680,7 @@ test("deduplicates repeated parent transcript tool id despite changed status and
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message().toolCall();
     const { GeminiAdapter } = await import(geminiUrl);
     const adapter = new GeminiAdapter({
-      runtimeEnvironment: testEnv(projectDir, {
+      ...testAdapterOptions(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       }),

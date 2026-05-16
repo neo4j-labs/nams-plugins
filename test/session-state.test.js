@@ -9,6 +9,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const stateUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "runtime", "session-state.js")).href;
 
+function useRuntimeHome(homeDir) {
+  process.env.HOME = homeDir;
+  process.env.USERPROFILE = homeDir;
+}
+
 test("uses session id as Gemini session key when present", async () => {
   const { resolveSessionKey } = await import(stateUrl);
   const key = resolveSessionKey({ platform: "gemini", sessionId: "session-1", projectDirectory: "/tmp/project" });
@@ -39,7 +44,7 @@ test("persists session state under user-local .nams/state using safe session fil
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-state-"));
   try {
     const { loadSessionState, saveSessionState } = await import(stateUrl);
-    const env = { HOME: homeDir };
+    useRuntimeHome(homeDir);
     const state = {
       harness: "gemini",
       harnessSessionId: "session/1",
@@ -53,11 +58,11 @@ test("persists session state under user-local .nams/state using safe session fil
       seenToolCallIds: [],
     };
 
-    await saveSessionState(projectDir, "gemini", "session/1", state, env);
+    await saveSessionState("gemini", "session/1", state);
 
     const savedPath = path.join(homeDir, ".nams", "state", "gemini", `${sha256("session/1")}.json`);
     assert.deepEqual(JSON.parse(await readFile(savedPath, "utf8")), state);
-    assert.deepEqual(await loadSessionState(projectDir, "gemini", "session/1", env), state);
+    assert.deepEqual(await loadSessionState("gemini", "session/1"), state);
   } finally {
     await rm(homeDir, { recursive: true, force: true });
     await rm(projectDir, { recursive: true, force: true });
@@ -69,7 +74,7 @@ test("loads legacy lastMemorySearchAt as lastRecallAt", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-state-"));
   try {
     const { loadSessionState } = await import(stateUrl);
-    const env = { HOME: homeDir };
+    useRuntimeHome(homeDir);
     const statePath = path.join(homeDir, ".nams", "state", "gemini", `${sha256("session-1")}.json`);
     await mkdir(path.dirname(statePath), { recursive: true });
     await writeFile(
@@ -89,7 +94,7 @@ test("loads legacy lastMemorySearchAt as lastRecallAt", async () => {
       "utf8",
     );
 
-    const state = await loadSessionState(projectDir, "gemini", "session-1", env);
+    const state = await loadSessionState("gemini", "session-1");
 
     assert.equal(state.lastRecallAt, "2026-05-11T12:01:00.000Z");
     assert.equal(Object.hasOwn(state, "lastMemorySearchAt"), false);
@@ -108,7 +113,7 @@ test("persists colliding-looking session keys in separate state files", async ()
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-state-"));
   try {
     const { loadSessionState, saveSessionState } = await import(stateUrl);
-    const env = { HOME: homeDir };
+    useRuntimeHome(homeDir);
     const baseState = {
       harness: "gemini",
       projectDirectory: projectDir,
@@ -131,11 +136,11 @@ test("persists colliding-looking session keys in separate state files", async ()
       conversationId: "conversation-underscore",
     };
 
-    await saveSessionState(projectDir, "gemini", "session/1", slashState, env);
-    await saveSessionState(projectDir, "gemini", "session_1", underscoreState, env);
+    await saveSessionState("gemini", "session/1", slashState);
+    await saveSessionState("gemini", "session_1", underscoreState);
 
-    assert.equal((await loadSessionState(projectDir, "gemini", "session/1", env)).conversationId, "conversation-slash");
-    assert.equal((await loadSessionState(projectDir, "gemini", "session_1", env)).conversationId, "conversation-underscore");
+    assert.equal((await loadSessionState("gemini", "session/1")).conversationId, "conversation-slash");
+    assert.equal((await loadSessionState("gemini", "session_1")).conversationId, "conversation-underscore");
   } finally {
     await rm(homeDir, { recursive: true, force: true });
     await rm(projectDir, { recursive: true, force: true });
