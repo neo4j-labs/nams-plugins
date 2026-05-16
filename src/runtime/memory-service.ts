@@ -22,7 +22,7 @@ export interface ToolCallInput {
   stepId?: string;
   toolName: string;
   input: unknown;
-  output?: string;
+  output?: unknown;
   status?: string;
   durationMs?: number;
 }
@@ -87,7 +87,7 @@ export class NamsMemoryService {
     await this.client.recordToolCall({
       toolName: input.toolName,
       input: serializeToolInput(input.input),
-      output: input.output ?? "",
+      output: serializeToolOutput(input.output ?? ""),
       ...(input.stepId !== undefined ? { stepId: input.stepId } : {}),
       ...(input.status !== undefined ? { status: input.status } : {}),
       ...(input.durationMs !== undefined ? { durationMs: input.durationMs } : {}),
@@ -133,6 +133,15 @@ export function combineMemoryContexts(contexts: string[]): string {
 
 export function serializeToolInput(input: unknown): string {
   const serialized = JSON.stringify(removeToolOutputFields(input) ?? {});
+  return capSerializedToolText(serialized);
+}
+
+export function serializeToolOutput(output: unknown): string {
+  const serialized = typeof output === "string" ? output : JSON.stringify(output ?? "");
+  return capSerializedToolText(serialized);
+}
+
+function capSerializedToolText(serialized: string): string {
   if (serialized.length <= 4000) {
     return serialized;
   }

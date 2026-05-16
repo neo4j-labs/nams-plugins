@@ -8,6 +8,7 @@ import { spawn } from "node:child_process";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cliPath = path.join(repoRoot, ".build", "tsc", "cli.js");
+const codexHooksTemplatePath = path.join(repoRoot, "templates", "codex", "hooks.json");
 
 function runCliWithEvent(harness, event, payload, cwd) {
   return new Promise((resolve, reject) => {
@@ -81,7 +82,7 @@ for (const harness of ["gemini", "claude", "codex", "opencode"]) {
       });
 
       const logPath =
-        harness === "gemini"
+        harness === "gemini" || harness === "codex" || harness === "opencode"
           ? await singleSessionLogPath(projectDir)
           : path.join(projectDir, ".nams", "logs", `${harness}-session-start.jsonl`);
       const lines = (await readFile(logPath, "utf8")).trim().split("\n");
@@ -90,6 +91,10 @@ for (const harness of ["gemini", "claude", "codex", "opencode"]) {
       assert.equal(entry.harness, harness);
       assert.equal(entry.event, "SessionStart");
       assert.deepEqual(entry.payload, payload);
+      if (harness === "codex") {
+        const logFiles = await readdir(path.join(projectDir, ".nams", "logs"));
+        assert.ok(!logFiles.includes("codex-session-start.jsonl"));
+      }
     } finally {
       await rm(projectDir, { recursive: true, force: true });
     }
@@ -127,7 +132,52 @@ test("writes fallback logs under child process cwd when payload omits cwd", asyn
   }
 });
 
+test("opencode writes session log and state under directory when cwd is also present", async () => {
+  const cwdDir = await mkdtemp(path.join(tmpdir(), "nams-hooks-cwd-"));
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-hooks-project-"));
+  try {
+    const payload = {
+      hook: "session.created",
+      input: { sessionID: "opencode-directory-wins" },
+      cwd: cwdDir,
+      directory: projectDir,
+    };
+
+    const result = await runCli("opencode", payload, cwdDir);
+
+    assert.equal(result.code, 0, result.stderr);
+    const entry = JSON.parse((await readFile(await singleSessionLogPath(projectDir), "utf8")).trim());
+    assert.deepEqual(entry.payload, payload);
+    assert.equal((await sessionStateFiles(projectDir, "opencode")).length, 1);
+    assert.deepEqual(await sessionStateFiles(cwdDir, "opencode"), []);
+  } finally {
+    await rm(cwdDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 for (const event of ["BeforeAgent", "AfterAgent", "AfterTool"]) {
+  test(`routes opencode ${event} hook event`, async () => {
+    const projectDir = await mkdtemp(path.join(tmpdir(), "nams-hooks-"));
+    try {
+      const result = await runCliWithEvent(
+        "opencode",
+        event,
+        {
+          hook: "test",
+          input: { sessionID: `opencode-${event}` },
+          directory: projectDir,
+        },
+        projectDir,
+      );
+
+      assert.equal(result.code, 0, result.stderr);
+      assert.equal(JSON.parse(result.stdout).continue, true);
+    } finally {
+      await rm(projectDir, { recursive: true, force: true });
+    }
+  });
+
   test(`routes gemini ${event} hook event`, async () => {
     const projectDir = await mkdtemp(path.join(tmpdir(), "nams-hooks-"));
     try {
@@ -147,9 +197,94 @@ for (const event of ["BeforeAgent", "AfterAgent", "AfterTool"]) {
   });
 }
 
+const codexNativeHookMappings = [
+  {
+    nativeHook: "UserPromptSubmit",
+    namsEvent: "BeforeAgent",
+    statusMessage: "NAMS memory recall",
+  },
+  {
+    nativeHook: "Stop",
+    namsEvent: "AfterAgent",
+    statusMessage: "NAMS assistant persistence",
+  },
+  {
+    nativeHook: "PostToolUse",
+    namsEvent: "AfterTool",
+    statusMessage: "NAMS tool metadata",
+  },
+];
+
+for (const { nativeHook, namsEvent, statusMessage } of codexNativeHookMappings) {
+  test(`maps Codex ${nativeHook} hook through ${namsEvent} NAMS event`, async () => {
+    const template = JSON.parse(await readFile(codexHooksTemplatePath, "utf8"));
+    assert.deepEqual(template.hooks[nativeHook], [
+      {
+        hooks: [
+          {
+            type: "command",
+            command: `nams-hooks run codex --event ${namsEvent}`,
+            statusMessage,
+          },
+        ],
+      },
+    ]);
+
+    const projectDir = await mkdtemp(path.join(tmpdir(), "nams-hooks-"));
+    try {
+      const payload = {
+        session_id: `codex-${nativeHook}`,
+        hook_event_name: nativeHook,
+        cwd: projectDir,
+      };
+
+      const result = await runCliWithEvent("codex", namsEvent, payload, projectDir);
+
+      assert.equal(result.code, 0, result.stderr);
+      assert.deepEqual(
+        JSON.parse(result.stdout),
+        nativeHook === "PostToolUse" ? { continue: true } : { continue: true, suppressOutput: true },
+      );
+    } finally {
+      await rm(projectDir, { recursive: true, force: true });
+    }
+  });
+}
+
+for (const nativeHook of ["UserPromptSubmit", "Stop", "PostToolUse"]) {
+  test(`rejects native Codex ${nativeHook} as typed NAMS event`, async () => {
+    const projectDir = await mkdtemp(path.join(tmpdir(), "nams-hooks-"));
+    try {
+      const payload = {
+        session_id: `codex-invalid-${nativeHook}`,
+        hook_event_name: nativeHook,
+        cwd: projectDir,
+      };
+
+      const result = await runCliWithEvent("codex", nativeHook, payload, projectDir);
+
+      assert.equal(result.code, 1);
+      assert.match(result.stderr, /--event <SessionStart\|BeforeAgent\|AfterAgent\|AfterTool>/);
+    } finally {
+      await rm(projectDir, { recursive: true, force: true });
+    }
+  });
+}
+
 async function singleSessionLogPath(projectDir) {
   const logDir = path.join(projectDir, ".nams", "logs");
   const logFiles = (await readdir(logDir)).filter((fileName) => /^session-.*\.jsonl$/.test(fileName));
   assert.equal(logFiles.length, 1, `expected one session log file, got ${logFiles.join(", ")}`);
   return path.join(logDir, logFiles[0]);
+}
+
+async function sessionStateFiles(projectDir, harness) {
+  try {
+    return await readdir(path.join(projectDir, ".nams", "state", "sessions", harness));
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  }
 }

@@ -1,0 +1,194 @@
+import assert from "node:assert/strict";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { test } from "node:test";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const templatePath = path.join(repoRoot, "templates", "opencode", "plugins", "nams-hooks.js");
+
+test("opencode plugin template exposes NAMS hook handlers", async () => {
+  const source = await readFile(templatePath, "utf8");
+
+  assert.match(source, /export const NamsHooks/);
+  assert.match(source, /"chat\.message"/);
+  assert.match(source, /"experimental\.chat\.system\.transform"/);
+  assert.match(source, /"experimental\.text\.complete"/);
+  assert.match(source, /"tool\.execute\.after"/);
+  assert.match(source, /session\.created/);
+  assert.match(source, /nams-hooks/);
+});
+
+test("chat.message handler sends real two-argument input and output to nams-hooks", async () => {
+  const fixture = await createNamsHooksStub();
+  try {
+    const { NamsHooks } = await importTemplateWithCommand(fixture.commandPath);
+    const plugin = await NamsHooks({ directory: fixture.directory, project: "project-a", worktree: "worktree-a" });
+    const input = { message: { id: "message-1", parts: [{ type: "text", text: "hello" }] } };
+    const output = { ok: true };
+
+    const result = await plugin["chat.message"](input, output);
+
+    const calls = await readCalls(fixture.callsPath);
+    assert.equal(result, undefined);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].args, ["run", "opencode", "--event", "BeforeAgent"]);
+    assert.equal(calls[0].payload.hook, "chat.message");
+    assert.deepEqual(calls[0].payload.input, input);
+    assert.deepEqual(calls[0].payload.output, output);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("event handler sends session.created payload to SessionStart", async () => {
+  const fixture = await createNamsHooksStub();
+  try {
+    const { NamsHooks } = await importTemplateWithCommand(fixture.commandPath);
+    const plugin = await NamsHooks({ directory: fixture.directory, project: "project-session", worktree: "worktree-session" });
+    const event = { type: "session.created", properties: { info: { id: "session-1" } } };
+
+    await plugin.event({ event });
+
+    const calls = await readCalls(fixture.callsPath);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].args, ["run", "opencode", "--event", "SessionStart"]);
+    assert.equal(calls[0].payload.hook, "event");
+    assert.deepEqual(calls[0].payload.event, event);
+    assert.equal(calls[0].payload.directory, fixture.directory);
+    assert.equal(calls[0].payload.project, "project-session");
+    assert.equal(calls[0].payload.worktree, "worktree-session");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("system transform handler appends returned memory context with two-argument shape", async () => {
+  const fixture = await createNamsHooksStub();
+  try {
+    const { NamsHooks } = await importTemplateWithCommand(fixture.commandPath);
+    const plugin = await NamsHooks({ directory: fixture.directory, project: "project-b", worktree: "worktree-b" });
+    const input = { sessionID: "session-1" };
+    const output = { system: ["existing system"] };
+
+    const result = await plugin["experimental.chat.system.transform"](input, output);
+
+    assert.equal(result, output);
+    assert.deepEqual(output.system, ["existing system", "remember this"]);
+    const calls = await readCalls(fixture.callsPath);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].payload.hook, "experimental.chat.system.transform");
+    assert.deepEqual(calls[0].payload.input, input);
+    assert.deepEqual(calls[0].payload.output, { system: ["existing system"] });
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("experimental.text.complete handler sends assistant completion payload to AfterAgent", async () => {
+  const fixture = await createNamsHooksStub();
+  try {
+    const { NamsHooks } = await importTemplateWithCommand(fixture.commandPath);
+    const plugin = await NamsHooks({ directory: fixture.directory, project: "project-assistant", worktree: "worktree-assistant" });
+    const input = { sessionID: "session-1", messageID: "assistant-1", partID: "part-1" };
+    const output = { text: "Hello!" };
+
+    const result = await plugin["experimental.text.complete"](input, output);
+
+    const calls = await readCalls(fixture.callsPath);
+    assert.equal(result, undefined);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].args, ["run", "opencode", "--event", "AfterAgent"]);
+    assert.equal(calls[0].payload.hook, "experimental.text.complete");
+    assert.deepEqual(calls[0].payload.input, input);
+    assert.deepEqual(calls[0].payload.output, output);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("tool.execute.after handler sends tool payload to AfterTool", async () => {
+  const fixture = await createNamsHooksStub();
+  try {
+    const { NamsHooks } = await importTemplateWithCommand(fixture.commandPath);
+    const plugin = await NamsHooks({ directory: fixture.directory, project: "project-tool", worktree: "worktree-tool" });
+    const input = { sessionID: "session-1", callID: "call-1", tool: "bash", args: { command: "npm test" } };
+    const output = { title: "npm test", output: "100 tests pass" };
+
+    const result = await plugin["tool.execute.after"](input, output);
+
+    const calls = await readCalls(fixture.callsPath);
+    assert.equal(result, undefined);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].args, ["run", "opencode", "--event", "AfterTool"]);
+    assert.equal(calls[0].payload.hook, "tool.execute.after");
+    assert.deepEqual(calls[0].payload.input, input);
+    assert.deepEqual(calls[0].payload.output, output);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+async function createNamsHooksStub() {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "nams-opencode-template-"));
+  const commandPath = path.join(directory, "nams-hooks-stub.js");
+  const callsPath = path.join(directory, "calls.jsonl");
+  await writeFile(
+    commandPath,
+    `#!/usr/bin/env node
+import { appendFileSync } from "node:fs";
+
+const callsPath = ${JSON.stringify(callsPath)};
+let stdin = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => {
+  stdin += chunk;
+});
+process.stdin.on("end", () => {
+  const payload = JSON.parse(stdin);
+  appendFileSync(callsPath, JSON.stringify({ args: process.argv.slice(2), payload }) + "\\n");
+  if (payload.hook === "experimental.chat.system.transform") {
+    process.stdout.write(JSON.stringify({ hookSpecificOutput: { additionalContext: "remember this" } }));
+  }
+});
+`,
+    "utf8",
+  );
+  await chmod(commandPath, 0o755);
+  return {
+    callsPath,
+    commandPath,
+    directory,
+    cleanup: async () => {
+      await rm(directory, { force: true, recursive: true });
+    },
+  };
+}
+
+async function importTemplateWithCommand(commandPath) {
+  const previousCommand = process.env.NAMS_HOOKS_COMMAND;
+  process.env.NAMS_HOOKS_COMMAND = commandPath;
+  try {
+    return await import(`${pathToFileURL(templatePath).href}?test=${Date.now()}-${Math.random()}`);
+  } finally {
+    restoreEnv("NAMS_HOOKS_COMMAND", previousCommand);
+  }
+}
+
+async function readCalls(callsPath) {
+  const source = await readFile(callsPath, "utf8");
+  return source
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+}
+
+function restoreEnv(name, value) {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+  process.env[name] = value;
+}
