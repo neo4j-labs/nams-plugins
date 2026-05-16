@@ -1,4 +1,4 @@
-import type { HookInvocation, HookResult, PlatformAdapter } from "../../interfaces.js";
+import type { HookInvocation, HookResult, PlatformAdapter, PlatformAdapterOptions } from "../../interfaces.js";
 import type { NamsRequestEvent } from "../../generated/nams-client.js";
 import {
   configDiagnosticPayload,
@@ -22,13 +22,8 @@ import {
 import { parseCodexPayload } from "./payload.js";
 import { readCodexTranscript, type CodexTranscriptEntry } from "./transcript.js";
 
-export interface CodexAdapterOptions {
-  env?: Record<string, string | undefined>;
-  fetch?: typeof fetch;
-}
-
 export class CodexAdapter implements PlatformAdapter {
-  constructor(private readonly options: CodexAdapterOptions = {}) {}
+  constructor(private readonly options: PlatformAdapterOptions = {}) {}
 
   async startConversation(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
     const payloadInfo = parseCodexPayload(invocation.rawPayload, invocation.processCwd);

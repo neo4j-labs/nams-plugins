@@ -1,4 +1,4 @@
-import type { HookInvocation, HookResult, PlatformAdapter } from "../../interfaces.js";
+import type { HookInvocation, HookResult, PlatformAdapter, PlatformAdapterOptions } from "../../interfaces.js";
 import type { NamsRequestEvent } from "../../generated/nams-client.js";
 import {
   configDiagnosticPayload,
@@ -13,13 +13,8 @@ import { createInitialSessionState, loadSessionState, saveSessionState } from ".
 import type { SessionState } from "../../runtime/session-state.js";
 import { parseOpenCodePayload, type OpenCodePayloadInfo } from "./payload.js";
 
-export interface OpenCodeAdapterOptions {
-  env?: Record<string, string | undefined>;
-  fetch?: typeof fetch;
-}
-
 export class OpenCodeAdapter implements PlatformAdapter {
-  constructor(private readonly options: OpenCodeAdapterOptions = {}) {}
+  constructor(private readonly options: PlatformAdapterOptions = {}) {}
 
   async startConversation(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
     const payloadInfo = parseOpenCodePayload(invocation.rawPayload, invocation.processCwd);

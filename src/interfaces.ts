@@ -15,6 +15,11 @@ export interface HookResult {
   stdout: Record<string, unknown>;
 }
 
+export interface PlatformAdapterOptions {
+  env?: Record<string, string | undefined>;
+  fetch?: typeof fetch;
+}
+
 export interface PlatformAdapter {
   startConversation(invocation: HookInvocation<"SessionStart">): Promise<HookResult>;
   beforeAgent?(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult>;

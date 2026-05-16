@@ -92,3 +92,24 @@ test("only the platform registry imports all concrete adapters", async () => {
       ),
   );
 });
+
+test("platform adapters use shared adapter options", async () => {
+  const adapterClassNames = {
+    gemini: "Gemini",
+    claude: "Claude",
+    codex: "Codex",
+    opencode: "OpenCode",
+  };
+
+  for (const [platform, className] of Object.entries(adapterClassNames)) {
+    const filePath = `src/platforms/${platform}/index.ts`;
+    const content = await readFile(filePath, "utf8");
+
+    assert.equal(
+      new RegExp(`interface\\s+${className}AdapterOptions\\b`).test(content),
+      false,
+      `${filePath} should use PlatformAdapterOptions instead of declaring ${className}AdapterOptions`,
+    );
+    assert.match(content, /\bPlatformAdapterOptions\b/, `${filePath} should reference PlatformAdapterOptions`);
+  }
+});
