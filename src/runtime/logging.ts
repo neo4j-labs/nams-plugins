@@ -1,8 +1,11 @@
 import { mkdir, appendFile } from "node:fs/promises";
 import path from "node:path";
-import type { HookEvent, Platform } from "../interfaces.js";
+import type { NamsRequestEvent } from "../generated/nams-client.js";
+import type { HookEvent, HookInvocation, Platform } from "../interfaces.js";
+import { configDiagnosticPayload, type NamsConfigLoadResult } from "./config.js";
 import { sha256 } from "./hashing.js";
 import { RuntimeEnvironment } from "./paths.js";
+import type { SessionState } from "./session-state.js";
 
 export interface PlatformLogEntry {
   platform: Platform;
@@ -26,6 +29,73 @@ export async function appendPlatformLog(entry: PlatformLogEntry): Promise<void> 
 
   await mkdir(logDir, { recursive: true });
   await appendFile(logPath, `${JSON.stringify(logEntry)}\n`, "utf8");
+}
+
+export async function appendNamsConfigDiagnostic(
+  invocation: HookInvocation,
+  state: SessionState,
+  result: NamsConfigLoadResult,
+): Promise<void> {
+  await appendPlatformDiagnosticLog(invocation, state, configDiagnosticPayload(result));
+}
+
+export async function appendNamsFailureDiagnostic(
+  invocation: HookInvocation,
+  state: SessionState,
+): Promise<void> {
+  await appendPlatformDiagnosticLog(invocation, state, { message: "NAMS request failed" });
+}
+
+export async function appendNamsRequestLog(
+  invocation: HookInvocation,
+  state: SessionState,
+  payload: NamsRequestEvent,
+): Promise<void> {
+  await appendPlatformLogBestEffort({
+    platform: invocation.platform,
+    event: invocation.event,
+    kind: "nams.request",
+    payload: { ...payload },
+    sessionCreatedAt: state.createdAt,
+    sessionKey: state.sessionKey,
+  });
+}
+
+export async function appendRawPlatformLog(
+  invocation: HookInvocation,
+  state?: SessionState,
+): Promise<void> {
+  await appendPlatformLogBestEffort({
+    platform: invocation.platform,
+    event: invocation.event,
+    kind: "hook.event",
+    payload: invocation.rawPayload,
+    sessionCreatedAt: state?.createdAt,
+    sessionKey: state?.sessionKey,
+  });
+}
+
+export async function appendPlatformDiagnosticLog(
+  invocation: HookInvocation,
+  state: SessionState,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  await appendPlatformLogBestEffort({
+    platform: invocation.platform,
+    event: invocation.event,
+    kind: "diagnostic",
+    payload,
+    sessionCreatedAt: state.createdAt,
+    sessionKey: state.sessionKey,
+  });
+}
+
+async function appendPlatformLogBestEffort(entry: PlatformLogEntry): Promise<void> {
+  try {
+    await appendPlatformLog(entry);
+  } catch {
+    // Observability writes must never block hook responses.
+  }
 }
 
 function logFileName(entry: PlatformLogEntry): string {

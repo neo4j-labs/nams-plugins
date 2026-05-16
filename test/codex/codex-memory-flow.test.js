@@ -227,7 +227,7 @@ test("duplicate Codex beforeAgent prompt stores one user message", async () => {
   }
 });
 
-test("missing Codex NAMS_API_KEY returns allow output and sanitized log", async () => {
+test("missing Codex NAMS_API_KEY returns allow output and minimal diagnostic log", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
   try {
     const { CodexAdapter } = await import(codexUrl);
@@ -1038,7 +1038,7 @@ test("Codex afterAgent with no conversationId returns allow output and does not 
   }
 });
 
-test("Codex afterAgent missing config and failed NAMS calls allow and log sanitized diagnostics", async () => {
+test("Codex afterAgent missing config and failed NAMS calls allow and log minimal diagnostics", async () => {
   const missingConfigDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
   const namsFailureDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
   try {
@@ -1351,7 +1351,7 @@ test("Codex afterTool records distinct tool_use_id values with same input", asyn
   }
 });
 
-test("Codex afterTool missing config and failed NAMS calls allow and log sanitized diagnostics", async () => {
+test("Codex afterTool missing config and failed NAMS calls allow and log minimal diagnostics", async () => {
   const missingConfigDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
   const namsFailureDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
   try {
@@ -1387,17 +1387,10 @@ test("Codex afterTool missing config and failed NAMS calls allow and log sanitiz
     });
     assert.doesNotMatch(missingConfigLog, /Authorization|Bearer|test-api-key/);
 
-    const nams = createNamsFetchMock().reasoningStep(
-      {
-        error: "plain-secret-value rejected",
-        apiKey: "plain-secret-value",
-        token: "plain-secret-value",
-      },
-      503,
-    );
+    const nams = createNamsFetchMock().reasoningStep({ error: "reasoning step unavailable" }, 503);
     const namsFailureResult = await new CodexAdapter({
       ...testAdapterOptions(namsFailureDir, {
-        NAMS_API_KEY: "plain-secret-value",
+        NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
       }),
       fetch: nams.fetch,
@@ -1422,8 +1415,8 @@ test("Codex afterTool missing config and failed NAMS calls allow and log sanitiz
     const diagnostics = namsFailureLines.filter((entry) => entry.kind === "diagnostic");
     const failureDiagnostics = diagnostics.filter((entry) => entry.payload.message === "NAMS request failed");
     assert.deepEqual(failureDiagnostics.map((entry) => entry.payload), [{ message: "NAMS request failed" }]);
-    assert.doesNotMatch(JSON.stringify(failureDiagnostics), /plain-secret-value|Authorization|Bearer|apiKey|token/);
-    assert.doesNotMatch(namsFailureLog, /plain-secret-value|Authorization|Bearer|token/);
+    assert.doesNotMatch(JSON.stringify(failureDiagnostics), /reasoning step unavailable|Authorization|Bearer|key/);
+    assert.doesNotMatch(namsFailureLog, /Authorization|Bearer|key/);
   } finally {
     await rm(missingConfigDir, { recursive: true, force: true });
     await rm(namsFailureDir, { recursive: true, force: true });

@@ -154,3 +154,19 @@ test("runtime environment home lookup stays in paths module", async () => {
     assert.equal(/\bHOME\b|\bUSERPROFILE\b/.test(content), false, `${filePath} should not resolve home directories`);
   }
 });
+
+test("platform adapters use shared logging wrappers", async () => {
+  for (const platform of ["gemini", "codex", "opencode"]) {
+    const filePath = `src/platforms/${platform}/index.ts`;
+    const content = await readFile(filePath, "utf8");
+
+    assert.equal(
+      /async function append(?:NamsConfigDiagnostic|NamsFailureDiagnostic|NamsRequestLog|RawPlatformLog|[A-Z][A-Za-z]+DiagnosticLog)\b/.test(
+        content,
+      ),
+      false,
+      `${filePath} should reuse shared runtime logging helpers`,
+    );
+    assert.equal(/sanitizeNamsRequestLogPayload|isSensitiveLogKey|redactSecretValue/.test(content), false);
+  }
+});

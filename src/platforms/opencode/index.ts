@@ -1,13 +1,12 @@
 import type { HookInvocation, HookResult, PlatformAdapter, PlatformAdapterOptions } from "../../interfaces.js";
-import type { NamsRequestEvent } from "../../generated/nams-client.js";
-import {
-  configDiagnosticPayload,
-  loadNamsConfig,
-  type NamsConfigLoadResult,
-  type NamsRuntimeConfig,
-} from "../../runtime/config.js";
+import { loadNamsConfig, type NamsRuntimeConfig } from "../../runtime/config.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
-import { appendPlatformLog } from "../../runtime/logging.js";
+import {
+  appendNamsConfigDiagnostic,
+  appendNamsFailureDiagnostic,
+  appendNamsRequestLog,
+  appendRawPlatformLog,
+} from "../../runtime/logging.js";
 import { combineMemoryContexts, NamsMemoryService, serializeToolInput } from "../../runtime/memory-service.js";
 import { createInitialSessionState, loadSessionState, saveSessionState } from "../../runtime/session-state.js";
 import type { SessionState } from "../../runtime/session-state.js";
@@ -389,83 +388,5 @@ function markSeen(seen: string[], keys: string[]): void {
     if (!seen.includes(key)) {
       seen.push(key);
     }
-  }
-}
-
-async function appendNamsConfigDiagnostic(
-  invocation: HookInvocation,
-  state: SessionState,
-  result: NamsConfigLoadResult,
-): Promise<void> {
-  await appendOpenCodeDiagnosticLog({
-    platform: invocation.platform,
-    event: invocation.event,
-    state,
-    payload: configDiagnosticPayload(result),
-  });
-}
-
-async function appendNamsFailureDiagnostic(
-  invocation: HookInvocation,
-  state: SessionState,
-): Promise<void> {
-  await appendOpenCodeDiagnosticLog({
-    platform: invocation.platform,
-    event: invocation.event,
-    state,
-    payload: { message: "NAMS request failed" },
-  });
-}
-
-async function appendNamsRequestLog(
-  invocation: HookInvocation,
-  state: SessionState,
-  payload: NamsRequestEvent,
-): Promise<void> {
-  await appendPlatformLog({
-    platform: invocation.platform,
-    event: invocation.event,
-    kind: "nams.request",
-    payload: { ...payload },
-    sessionCreatedAt: state.createdAt,
-    sessionKey: state.sessionKey,
-  });
-}
-
-async function appendRawPlatformLog(
-  invocation: HookInvocation,
-  state: SessionState,
-): Promise<void> {
-  try {
-    await appendPlatformLog({
-      platform: invocation.platform,
-      event: invocation.event,
-      kind: "hook.event",
-      payload: invocation.rawPayload,
-      sessionCreatedAt: state.createdAt,
-      sessionKey: state.sessionKey,
-    });
-  } catch {
-    // OpenCode hooks must not fail because observability writes failed.
-  }
-}
-
-async function appendOpenCodeDiagnosticLog(entry: {
-  platform: HookInvocation["platform"];
-  event: HookInvocation["event"];
-  state: SessionState;
-  payload: Record<string, unknown>;
-}): Promise<void> {
-  try {
-    await appendPlatformLog({
-      platform: entry.platform,
-      event: entry.event,
-      kind: "diagnostic",
-      payload: entry.payload,
-      sessionCreatedAt: entry.state.createdAt,
-      sessionKey: entry.state.sessionKey,
-    });
-  } catch {
-    // Diagnostics are best-effort and must never block a hook response.
   }
 }

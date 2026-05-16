@@ -1,13 +1,12 @@
 import type { HookInvocation, HookResult, PlatformAdapter, PlatformAdapterOptions } from "../../interfaces.js";
-import type { NamsRequestEvent } from "../../generated/nams-client.js";
-import {
-  configDiagnosticPayload,
-  loadNamsConfig,
-  type NamsConfigLoadResult,
-  type NamsRuntimeConfig,
-} from "../../runtime/config.js";
+import { loadNamsConfig, type NamsRuntimeConfig } from "../../runtime/config.js";
 import { sha256 } from "../../runtime/hashing.js";
-import { appendPlatformLog } from "../../runtime/logging.js";
+import {
+  appendNamsConfigDiagnostic,
+  appendNamsFailureDiagnostic,
+  appendNamsRequestLog,
+  appendRawPlatformLog,
+} from "../../runtime/logging.js";
 import {
   combineMemoryContexts,
   NamsMemoryService,
@@ -266,7 +265,7 @@ export class CodexAdapter implements PlatformAdapter {
     return new NamsMemoryService({
       ...config,
       ...(this.options.fetch !== undefined ? { fetch: this.options.fetch } : {}),
-      onRequest: (event) => appendNamsRequestLog(invocation, state, event, config.apiKey),
+      onRequest: (event) => appendNamsRequestLog(invocation, state, event),
     });
   }
 }
@@ -453,130 +452,5 @@ function markReasoningStepSeen(state: TraceState, hash: string, stepId: string |
 function markToolCallSeen(state: TraceState, toolCallId: string): void {
   if (!state.seenToolCallIds.includes(toolCallId)) {
     state.seenToolCallIds.push(toolCallId);
-  }
-}
-
-async function appendNamsConfigDiagnostic(
-  invocation: HookInvocation,
-  state: SessionState,
-  result: NamsConfigLoadResult,
-): Promise<void> {
-  await appendCodexDiagnosticLog({
-    platform: invocation.platform,
-    event: invocation.event,
-    state,
-    payload: configDiagnosticPayload(result),
-  });
-}
-
-async function appendNamsFailureDiagnostic(
-  invocation: HookInvocation,
-  state: SessionState,
-): Promise<void> {
-  await appendCodexDiagnosticLog({
-    platform: invocation.platform,
-    event: invocation.event,
-    state,
-    payload: { message: "NAMS request failed" },
-  });
-}
-
-async function appendNamsRequestLog(
-  invocation: HookInvocation,
-  state: SessionState,
-  payload: NamsRequestEvent,
-  apiKey: string,
-): Promise<void> {
-  try {
-    await appendPlatformLog({
-      platform: invocation.platform,
-      event: invocation.event,
-      kind: "nams.request",
-      payload: sanitizeNamsRequestLogPayload(payload, apiKey) as Record<string, unknown>,
-      sessionCreatedAt: state.createdAt,
-      sessionKey: state.sessionKey,
-    });
-  } catch {
-    // Codex hooks must not fail because observability writes failed.
-  }
-}
-
-function sanitizeNamsRequestLogPayload(value: unknown, apiKey: string): unknown {
-  if (typeof value === "string") {
-    if (/authorization|bearer|api[-_ ]?key/i.test(value)) {
-      return "[redacted]";
-    }
-    return redactSecretValue(value, apiKey);
-  }
-  if (Array.isArray(value)) {
-    return value.map((entry) => sanitizeNamsRequestLogPayload(entry, apiKey));
-  }
-  if (value === null || typeof value !== "object") {
-    return value;
-  }
-
-  const sanitized: Record<string, unknown> = {};
-  for (const [key, nestedValue] of Object.entries(value)) {
-    if (isSensitiveLogKey(key)) {
-      continue;
-    }
-    sanitized[key] = sanitizeNamsRequestLogPayload(nestedValue, apiKey);
-  }
-  return sanitized;
-}
-
-function isSensitiveLogKey(key: string): boolean {
-  const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
-  return (
-    normalized === "authorization" ||
-    normalized === "apikey" ||
-    normalized === "xapikey" ||
-    normalized.includes("token") ||
-    normalized.includes("secret")
-  );
-}
-
-function redactSecretValue(value: string, secret: string): string {
-  if (secret === "") {
-    return value;
-  }
-  return value.split(secret).join("[redacted]");
-}
-
-async function appendRawPlatformLog(
-  invocation: HookInvocation,
-  state: SessionState,
-): Promise<void> {
-  try {
-    await appendPlatformLog({
-      platform: invocation.platform,
-      event: invocation.event,
-      kind: "hook.event",
-      payload: invocation.rawPayload,
-      sessionCreatedAt: state.createdAt,
-      sessionKey: state.sessionKey,
-    });
-  } catch {
-    // Codex hooks must not fail because observability writes failed.
-  }
-}
-
-async function appendCodexDiagnosticLog(entry: {
-  platform: HookInvocation["platform"];
-  event: HookInvocation["event"];
-  state: SessionState;
-  payload: Record<string, unknown>;
-}): Promise<void> {
-  try {
-    await appendPlatformLog({
-      platform: entry.platform,
-      event: entry.event,
-      kind: "diagnostic",
-      payload: entry.payload,
-      sessionCreatedAt: entry.state.createdAt,
-      sessionKey: entry.state.sessionKey,
-    });
-  } catch {
-    // Diagnostics are best-effort and must never block a hook response.
   }
 }
