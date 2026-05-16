@@ -30,6 +30,8 @@ Projects may override either key with `<project>/.nams/config.json`:
 }
 ```
 
+Keep project `.nams/config.json` local and gitignored if it contains an API key. Prefer `~/.nams/config.json` or `NAMS_API_KEY` for secrets that apply across projects.
+
 Environment variables are final overrides:
 
 - `NAMS_API_KEY` overrides `apiKey`.
