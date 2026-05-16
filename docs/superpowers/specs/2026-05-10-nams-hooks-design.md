@@ -6,7 +6,7 @@ Repository: nams-hooks
 
 ## Summary
 
-`nams-hooks` is a standalone Node.js integration layer that connects local agent harness hooks to the Neo4j Agent Memory Service (NAMS) REST API. Its hook runtime and generated release artifacts have zero runtime npm dependencies and use Node.js built-ins only, while the source repository may use dev-only build, generation, and test tooling. The first iteration supports macOS for Codex, Claude Code, and Gemini CLI. Codex and Claude use project-level installs; Gemini uses extension distribution while keeping runtime state and logs project-local.
+`nams-hooks` is a standalone Node.js integration layer that connects local agent harness hooks to the Neo4j Agent Memory Service (NAMS) REST API. Its hook runtime and generated release artifacts have zero runtime npm dependencies and use Node.js built-ins only, while the source repository may use dev-only build, generation, and test tooling. The first iteration supports macOS for Codex, Claude Code, and Gemini CLI. OpenCode has a SessionStart walking skeleton through a project-level plugin. Codex, Claude, and OpenCode use project-level installs; Gemini uses extension distribution while keeping runtime state and logs project-local.
 
 The hook runner owns deterministic memory persistence. Agents receive recalled context, but they are not responsible for deciding whether to write memory. The runner stores conversation messages, recalls relevant memory before agent work, and records limited tool metadata through NAMS REST endpoints.
 
@@ -18,11 +18,12 @@ The hook runner owns deterministic memory persistence. Agents receive recalled c
 - Claude Code hooks reference: `https://code.claude.com/docs/en/hooks`
 - Gemini CLI hooks reference: `https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/writing-hooks.md`
 - Codex hooks behavior note: `https://github.com/openai/codex/issues/16486`
+- OpenCode plugin reference: `https://opencode.ai/docs/plugins`
 
 ## Goals
 
 - Provide deterministic memory behavior through harness hooks and REST API calls.
-- Support Codex, Claude Code, and Gemini CLI on macOS in v1.
+- Support Codex, Claude Code, Gemini CLI, and an OpenCode SessionStart walking skeleton on macOS in v1.
 - Keep runtime state, logs, and harness configuration project-scoped wherever the platform supports it.
 - Use plain Node.js built-in modules only in runtime code and generated release artifacts. No runtime npm dependencies.
 - Allow dev-only dependencies for TypeScript compilation, code generation, architecture checks, and test support when they do not create additional runtime package installation requirements or runtime imports.
@@ -50,6 +51,7 @@ Generated hook configs call the same entry point and declare the hook event expl
 nams-hooks run claude --event SessionStart
 nams-hooks run codex --event SessionStart
 nams-hooks run gemini --event SessionStart
+nams-hooks run opencode --event SessionStart
 ```
 
 The CLI entry point is a gateway. It parses the platform and typed event from arguments, reads hook JSON from `stdin` as an opaque object, resolves a platform adapter through a static registry, and calls the interface method for that event. The CLI must not interpret platform-specific payload fields such as session IDs, transcript paths, or event-name property variants. Those subtleties belong inside the platform adapter implementations.
@@ -73,15 +75,19 @@ nams-hooks/
       logging.ts
     platforms/
       index.ts
-      gemini.ts
-      claude.ts
-      codex.ts
+      gemini/
+      claude/
+      codex/
+      opencode/
   install.mjs
   templates/
     claude/
       settings.local.json
     codex/
       hooks.json
+    opencode/
+      plugins/
+        nams-hooks.js
     gemini/
       gemini-extension.json
       hooks/
@@ -104,9 +110,11 @@ target-project/
         claude/
         codex/
         gemini/
+        opencode/
     logs/
   .claude/settings.local.json
   .codex/hooks.json
+  .opencode/plugins/nams-hooks.js
 ```
 
 Gemini v1 distribution is an extension install rather than a project `.gemini/settings.json` template. Gemini still writes hook runtime state and logs into the project-local `.nams/` directory when the extension runs from that project.
@@ -163,11 +171,11 @@ Gemini hook templates live under `templates/gemini/` on `devel`. The release art
 node "${extensionPath}/bin/cli.js" run gemini --event SessionStart
 ```
 
-Codex and Claude distribution use the released CLI package and project-level installer:
+Codex, Claude, and OpenCode distribution use the released CLI package and project-level installer:
 
 ```bash
 npm install -g @neo4j-labs/nams-hooks
-nams-hooks install --harness codex,claude
+nams-hooks install --harness codex,claude,opencode
 ```
 
 Manual or CI release flow:
@@ -187,7 +195,7 @@ Rules:
 - `master` is generated from `devel`; no hand edits.
 - Release tags are created from `master`.
 - Gemini installs default to `master`.
-- Codex and Claude npm releases are produced from the same validated artifact.
+- Codex, Claude, and OpenCode npm releases are produced from the same validated artifact.
 
 ## Configuration
 
@@ -342,9 +350,18 @@ Gemini CLI:
 Codex:
 
 - Use project-level `.codex/hooks.json`.
+- The repository template must use Codex's command-hook group shape for `SessionStart`:
+  `{ "matcher": "startup|resume", "hooks": [{ "type": "command", "command": "nams-hooks run codex --event SessionStart", "statusMessage": "Loading session notes" }] }`.
+  Do not use the stale short-form object that places `command` directly under `SessionStart`.
 - Use `SessionStart`, `UserPromptSubmit`, and `Stop`.
 - Tool-level capture is included only if the installed Codex version exposes supported tool hooks.
 - `doctor` should identify missing or partial Codex hook support and report it clearly.
+
+OpenCode:
+
+- Use a project-level `.opencode/plugins/nams-hooks.js` plugin.
+- The walking skeleton listens to OpenCode `session.created` events and invokes `nams-hooks run opencode --event SessionStart`.
+- The initial adapter logs the plugin-supplied raw payload and keeps later message, tool, and recall behavior out of scope until OpenCode event payload contracts are sampled.
 
 ## Duplicate Suppression
 
@@ -386,7 +403,7 @@ Installer errors are stricter. The installer should refuse unsafe overwrites and
 
 ## Installer Behavior
 
-`nams-hooks install --harness claude,gemini,codex` installs into the current project by default.
+`nams-hooks install --harness claude,gemini,codex,opencode` installs into the current project by default.
 
 The installer:
 
@@ -487,9 +504,9 @@ Manual validation:
 Approved decisions from brainstorming:
 
 - Standalone `nams-hooks` repo.
-- First iteration: Codex, Claude Code, Gemini CLI on macOS.
+- First iteration: Codex, Claude Code, Gemini CLI, and an OpenCode SessionStart walking skeleton on macOS.
 - Project-local runtime state and logs.
-- Project-level installs for Codex and Claude; Gemini extension distribution for v1.
+- Project-level installs for Codex, Claude, and OpenCode; Gemini extension distribution for v1.
 - Plain Node.js with built-in modules only.
 - `.nams/.env` plus real environment variables, with environment variables as fallback.
 - Deterministic REST writes from hook runner, not MCP-driven writes.

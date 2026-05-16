@@ -36,14 +36,15 @@ function importsConcreteAdapter(file) {
     "src/platforms/gemini/index.ts",
     "src/platforms/claude/index.ts",
     "src/platforms/codex/index.ts",
+    "src/platforms/opencode/index.ts",
   ]);
 
   return importedSourcePaths(file.path, file.content).some((importedPath) => concreteAdapters.has(importedPath));
 }
 
 test("platform adapters do not import each other", async () => {
-  for (const platform of ["gemini", "claude", "codex"]) {
-    const otherPlatforms = ["gemini", "claude", "codex"].filter((candidate) => candidate !== platform);
+  for (const platform of ["gemini", "claude", "codex", "opencode"]) {
+    const otherPlatforms = ["gemini", "claude", "codex", "opencode"].filter((candidate) => candidate !== platform);
     for (const otherPlatform of otherPlatforms) {
       await assertNoViolations(
         projectFiles()

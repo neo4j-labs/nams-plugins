@@ -21,7 +21,9 @@ interface RunArgs {
 async function main(argv: string[]): Promise<number> {
   const args = parseRunArgs(argv);
   if (args === null) {
-    process.stderr.write("Usage: nams-hooks run <gemini|claude|codex> --event <SessionStart|BeforeAgent|AfterAgent|AfterTool>\n");
+    process.stderr.write(
+      "Usage: nams-hooks run <gemini|claude|codex|opencode> --event <SessionStart|BeforeAgent|AfterAgent|AfterTool>\n",
+    );
     return 1;
   }
 

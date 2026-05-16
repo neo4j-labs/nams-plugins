@@ -8,14 +8,18 @@
 - A NAMS API key
 - Claude Code, for project-level Claude hooks
 - Gemini CLI, for the Gemini local extension path
+- OpenCode, for the OpenCode project plugin path
 
 ## Configure NAMS
 
-Create a project-local `.nams/.env` file:
+Create a project-local `.nams/.env` file in the directory where the harness runs:
 
 ```env
 NAMS_API_KEY=your_api_key_here
+NAMS_BASE_URL=https://memory.neo4jlabs.com
 ```
+
+`NAMS_API_KEY` is required. `NAMS_BASE_URL` is optional when using the default service URL, but set it explicitly when testing against another NAMS endpoint.
 
 `.nams/.env` has priority over process environment variables. Keep this file local and do not commit it.
 
@@ -36,6 +40,39 @@ This builds the generated Gemini extension tree under `dist/` and links it into 
 ### From Repository
 
 Repository-hosted Gemini installation is not published yet. For now, use the local build path above when testing Gemini CLI.
+
+## OpenCode
+
+OpenCode loads project plugins from `.opencode/plugins/`.
+
+OpenCode also reads NAMS settings from the project-local `.nams/.env` described above. If OpenCode logs are written under `/path/to/project/.nams/logs/`, put `NAMS_API_KEY` and optional `NAMS_BASE_URL` in `/path/to/project/.nams/.env`.
+
+Install the package so `nams-hooks` is on `PATH`:
+
+```bash
+npm install -g @neo4j-labs/nams-hooks
+mkdir -p .opencode/plugins
+cp "$(npm root -g)/@neo4j-labs/nams-hooks/templates/opencode/plugins/nams-hooks.js" .opencode/plugins/nams-hooks.js
+```
+
+If your global npm root is customized, run `npm root -g` first and copy the template from the reported package directory.
+
+For local development from this repository:
+
+```bash
+npm install
+npm run dist
+mkdir -p /path/to/project/.opencode/plugins
+cp templates/opencode/plugins/nams-hooks.js /path/to/project/.opencode/plugins/nams-hooks.js
+```
+
+If `nams-hooks` is not on OpenCode's `PATH`, set `NAMS_HOOKS_COMMAND` to the executable path before starting OpenCode. For a local checkout, use the generated executable:
+
+```bash
+export NAMS_HOOKS_COMMAND=/absolute/path/to/nams-hooks/dist/bin/cli.js
+```
+
+The plugin listens for OpenCode events and routes them through the CLI gateway, for example `nams-hooks run opencode --event SessionStart`.
 
 ## Claude Code
 

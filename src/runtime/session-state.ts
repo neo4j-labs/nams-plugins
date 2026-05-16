@@ -11,8 +11,15 @@ export interface SessionState {
   conversationId?: string;
   createdAt: string;
   lastRecallAt?: string;
+  pendingMemoryContext?: {
+    messageId?: string;
+    content: string;
+    createdAt: string;
+  };
   lastUserMessageHash?: string;
   lastAssistantMessageHash?: string;
+  seenUserMessageIds?: string[];
+  seenAssistantPartIds?: string[];
   seenAssistantMessageHashes: string[];
   seenTranscriptEntryIds: string[];
   seenReasoningStepHashes: string[];

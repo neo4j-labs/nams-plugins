@@ -9,7 +9,7 @@ It ensures deterministic memory persistence and context recall across different 
 - **Deterministic Memory**: Automatically persists user and assistant messages to NAMS.
 - **Memory Recall**: Searches and injects relevant past context before the agent responds.
 - **Tool Logging**: Records tool-call metadata (name, input, status, duration) for observability.
-- **Platform Aware**: Native support for **Claude Code**, **Gemini CLI**, and **Codex** via a clean adapter architecture.
+- **Platform Aware**: Full memory-flow support for **Gemini CLI** and **OpenCode**, with Claude Code and Codex adapter skeletons kept behind the same clean platform boundary.
 - **Zero Runtime Dependencies**: The hook runtime and generated distribution use only Node.js built-in modules, so target projects do not need extra package installs for transitive runtime libraries.
 - **Local-First Configuration**: Stores secrets and state in a local `.nams/` directory.
 
@@ -17,14 +17,15 @@ It ensures deterministic memory persistence and context recall across different 
 
 - **OS**: macOS
 - **Harnesses**:
-  - [Claude Code](https://code.claude.com/docs/en/hooks)
   - [Gemini CLI](https://github.com/google-gemini/gemini-cli)
-  - Codex
+  - [Codex](https://chatgpt.com/codex/)
+  - [OpenCode](https://opencode.ai/docs/) via a project-local `.opencode/plugins/` plugin shim
+  - Claude Code session-start skeleton
 
 ## Architecture
 
 - `src/cli.ts`: Entry point that dispatches events to platform adapters.
-- `src/platforms/`: Contains adapter logic for Claude, Gemini, and Codex.
+- `src/platforms/`: Contains adapter logic for Claude, Gemini, Codex, and OpenCode.
 - `src/interfaces.ts`: Shared contracts and hook event definitions.
 - `templates/`: Configuration templates for various harnesses.
 
@@ -55,7 +56,7 @@ npm run openapi:test
 
 ### Runtime Logs
 
-Gemini writes local JSONL diagnostics under the project `.nams/logs/` directory. Events for one Gemini session are kept in a single file named like:
+Gemini and OpenCode write local session-scoped JSONL diagnostics under the project `.nams/logs/` directory. Events for one session are kept in a single file named like:
 
 ```text
 .nams/logs/session-2026-05-11T15-40-1b11dfee.jsonl

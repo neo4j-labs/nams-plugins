@@ -2,7 +2,47 @@
   "hooks": {
     "SessionStart": [
       {
-        "command": "nams-hooks run codex --event SessionStart"
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "nams-hooks run codex --event SessionStart",
+            "statusMessage": "Loading session notes"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "nams-hooks run codex --event BeforeAgent",
+            "statusMessage": "NAMS memory recall"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "nams-hooks run codex --event AfterAgent",
+            "statusMessage": "NAMS assistant persistence"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "nams-hooks run codex --event AfterTool",
+            "statusMessage": "NAMS tool metadata"
+          }
+        ]
       }
     ]
   }
