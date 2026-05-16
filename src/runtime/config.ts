@@ -76,7 +76,7 @@ export async function loadNamsConfig(
 
   const projectResult = await readJsonConfig(projectConfigPath(projectDirectory), "project:.nams/config.json");
   if (!projectResult.ok) {
-    return invalidJsonResult(projectResult.source);
+    return invalidJsonResult(projectResult.source, sources);
   }
   applyJsonConfig(accumulated, sources, projectResult.config, "project:.nams/config.json");
 
@@ -155,15 +155,19 @@ async function readGlobalJsonConfig(env: RuntimeEnv): Promise<JsonConfigReadResu
   return readJsonConfig(globalConfigPath(env), "global:~/.nams/config.json");
 }
 
-function invalidJsonResult(errorSource: JsonConfigSource): NamsConfigLoadResult {
+function invalidJsonResult(errorSource: JsonConfigSource, sources: NamsConfigSources = defaultSources()): NamsConfigLoadResult {
   return {
     ok: false,
     reason: "invalid-json",
     errorSource,
-    sources: {
-      apiKey: "missing",
-      baseUrl: "default",
-    },
+    sources,
+  };
+}
+
+function defaultSources(): NamsConfigSources {
+  return {
+    apiKey: "missing",
+    baseUrl: "default",
   };
 }
 

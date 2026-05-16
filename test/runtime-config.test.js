@@ -172,6 +172,29 @@ test("invalid JSON returns structured non-ok result without raw file content", a
   });
 });
 
+test("invalid project JSON preserves global source metadata", async () => {
+  await withFixture(async ({ homeDir, projectDir }) => {
+    await writeGlobalConfig(homeDir, {
+      apiKey: "global-key",
+      baseUrl: "https://global.example.test",
+    });
+    await mkdir(path.join(projectDir, ".nams"), { recursive: true });
+    await writeFile(path.join(projectDir, ".nams", "config.json"), '{"apiKey":"secret-project-key"', "utf8");
+
+    const { loadNamsConfig } = await import(configUrl);
+    const result = await loadNamsConfig(projectDir, { HOME: homeDir });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "invalid-json");
+    assert.equal(result.errorSource, "project:.nams/config.json");
+    assert.deepEqual(result.sources, {
+      apiKey: "global:~/.nams/config.json",
+      baseUrl: "global:~/.nams/config.json",
+    });
+    assert.doesNotMatch(JSON.stringify(result), /secret-project-key|global-key|global\.example/);
+  });
+});
+
 test("configDiagnosticPayload includes sources but not secret values", async () => {
   await withFixture(async ({ homeDir, projectDir }) => {
     await writeGlobalConfig(homeDir, {
