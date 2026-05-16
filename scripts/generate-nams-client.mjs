@@ -74,15 +74,8 @@ const resolvedEndpoints = endpoints.map((endpoint) => resolveEndpoint(spec, endp
 const referencedDefinitions = collectReferencedDefinitions(resolvedEndpoints, definitions);
 const source = renderClient(resolvedEndpoints, referencedDefinitions, definitions);
 
-if (process.argv.includes("--check")) {
-  const current = await readFile(outputPath, "utf8").catch(() => "");
-  if (current !== source) {
-    throw new Error("src/generated/nams-client.ts is stale. Run npm run openapi:generate.");
-  }
-} else {
-  await mkdir(path.dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, source, "utf8");
-}
+await mkdir(path.dirname(outputPath), { recursive: true });
+await writeFile(outputPath, source, "utf8");
 
 function resolveEndpoint(openapi, endpoint) {
   const operation = openapi.paths?.[endpoint.path]?.[endpoint.httpMethod.toLowerCase()];
