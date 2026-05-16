@@ -5,19 +5,31 @@ import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createNamsFetchMock } from "../support/nams-fetch-mock.js";
+import { namsHome, readSingleSessionLog as readRuntimeSingleSessionLog } from "../support/runtime-home.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const codexUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "platforms", "codex", "index.js")).href;
 const stateUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "runtime", "session-state.js")).href;
+
+function testEnv(projectDir, overrides = {}) {
+  const env = { HOME: path.join(projectDir, "home"), USERPROFILE: path.join(projectDir, "home"), ...overrides };
+  for (const key of ["HOME", "USERPROFILE", "NAMS_API_KEY", "NAMS_BASE_URL"]) {
+    delete process.env[key];
+  }
+  Object.assign(process.env, env);
+  return env;
+}
+
 
 test("initializes Codex session state on SessionStart without creating a conversation", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
   try {
     const { CodexAdapter } = await import(codexUrl);
     const { loadSessionState } = await import(stateUrl);
+    testEnv(projectDir);
     const adapter = new CodexAdapter();
 
-    const result = await adapter.startConversation({
+    const result = await adapter.startSession({
       platform: "codex",
       event: "SessionStart",
       processCwd: projectDir,
@@ -28,12 +40,12 @@ test("initializes Codex session state on SessionStart without creating a convers
     });
 
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
-    const state = await loadSessionState(projectDir, "codex", "session-1");
+    const state = await loadSessionState("codex", "session-1");
     assert.notEqual(state, null);
     assert.equal(state.sessionKey, "session-1");
     assert.equal(state.conversationId, undefined);
 
-    const logFileNames = await readdir(path.join(projectDir, ".nams", "logs"));
+    const logFileNames = await readdir(path.join(namsHome(testEnv(projectDir).HOME), "logs", "codex"));
     assert.equal(logFileNames.filter((fileName) => fileName.startsWith("session-")).length, 1);
     assert.equal(logFileNames.includes("codex-session-start.jsonl"), false);
   } finally {
@@ -47,13 +59,11 @@ test("Codex beforeAgent with no prompt saves state, logs raw event, and does not
     const nams = createNamsFetchMock().all({ error: "unexpected NAMS call" }, 500);
     const { CodexAdapter } = await import(codexUrl);
     const { loadSessionState } = await import(stateUrl);
-    const adapter = new CodexAdapter({
-      env: {
+    testEnv(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
-    });
+      });
+    const adapter = new CodexAdapter();
 
     const result = await adapter.beforeAgent({
       platform: "codex",
@@ -67,7 +77,7 @@ test("Codex beforeAgent with no prompt saves state, logs raw event, and does not
     });
 
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
-    const state = await loadSessionState(projectDir, "codex", "session-1");
+    const state = await loadSessionState("codex", "session-1");
     assert.notEqual(state, null);
     assert.equal(state.sessionKey, "session-1");
     assert.equal(state.conversationId, undefined);
@@ -99,13 +109,11 @@ test("creates Codex conversation, recalls memory, returns context, and stores Us
       })
       .message();
     const { CodexAdapter } = await import(codexUrl);
-    const adapter = new CodexAdapter({
-      env: {
+    testEnv(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
-    });
+      });
+    const adapter = new CodexAdapter();
 
     const result = await adapter.beforeAgent({
       platform: "codex",
@@ -141,6 +149,14 @@ test("creates Codex conversation, recalls memory, returns context, and stores Us
 
     const { lines } = await readSingleSessionLog(projectDir);
     assert.equal(lines[0].kind, "hook.event");
+    const configDiagnostics = lines.filter(
+      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS config loaded",
+    );
+    assert.equal(configDiagnostics.length, 1);
+    assert.deepEqual(configDiagnostics[0].payload.configSources, {
+      apiKey: "env:NAMS_API_KEY",
+      baseUrl: "env:NAMS_BASE_URL",
+    });
     const requestEntries = lines.filter((entry) => entry.kind === "nams.request");
     assert.deepEqual(
       requestEntries.map((entry) => entry.payload.operation),
@@ -176,13 +192,11 @@ test("duplicate Codex beforeAgent prompt stores one user message", async () => {
     const prompt = "Remember this only once.";
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     const { CodexAdapter } = await import(codexUrl);
-    const adapter = new CodexAdapter({
-      env: {
+    testEnv(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
-    });
+      });
+    const adapter = new CodexAdapter();
     const invocation = {
       platform: "codex",
       event: "BeforeAgent",
@@ -204,11 +218,12 @@ test("duplicate Codex beforeAgent prompt stores one user message", async () => {
   }
 });
 
-test("missing Codex NAMS_API_KEY returns allow output and sanitized log", async () => {
+test("missing Codex NAMS_API_KEY returns allow output and minimal diagnostic log", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
   try {
     const { CodexAdapter } = await import(codexUrl);
-    const adapter = new CodexAdapter({ env: {} });
+    testEnv(projectDir);
+    const adapter = new CodexAdapter();
 
     const result = await adapter.beforeAgent({
       platform: "codex",
@@ -223,9 +238,57 @@ test("missing Codex NAMS_API_KEY returns allow output and sanitized log", async 
     });
 
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
-    const { log } = await readSingleSessionLog(projectDir);
-    assert.match(log, /NAMS_API_KEY missing/);
+    const { log, lines } = await readSingleSessionLog(projectDir);
+    assert.match(log, /NAMS apiKey missing/);
+    const diagnostics = lines.filter(
+      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS apiKey missing",
+    );
+    assert.equal(diagnostics.length, 1);
+    assert.deepEqual(diagnostics[0].payload.configSources, {
+      apiKey: "missing",
+      baseUrl: "default",
+    });
     assert.doesNotMatch(log, /Bearer|key/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Codex beforeAgent logs invalid config diagnostics without raw JSON contents", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
+  try {
+    await mkdir(path.join(projectDir, ".nams"), { recursive: true });
+    await writeFile(path.join(projectDir, ".nams", "config.json"), '{"apiKey":"secret-config-value"', "utf8");
+    const { CodexAdapter } = await import(codexUrl);
+    testEnv(projectDir);
+    const adapter = new CodexAdapter();
+
+    const result = await adapter.beforeAgent({
+      platform: "codex",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "Hello",
+      },
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    const { log, lines } = await readSingleSessionLog(projectDir);
+    const diagnostics = lines.filter((entry) => entry.kind === "diagnostic");
+    assert.deepEqual(diagnostics.map((entry) => entry.payload), [
+      {
+        message: "NAMS config invalid",
+        configSources: {
+          apiKey: "missing",
+          baseUrl: "default",
+        },
+        errorSource: "project:.nams/config.json",
+      },
+    ]);
+    assert.doesNotMatch(log, /secret-config-value/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -243,13 +306,11 @@ test("Codex recall failure still stores prompt and can return entity search cont
       })
       .message();
     const { CodexAdapter } = await import(codexUrl);
-    const adapter = new CodexAdapter({
-      env: {
+    testEnv(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
-    });
+      });
+    const adapter = new CodexAdapter();
 
     const result = await adapter.beforeAgent({
       platform: "codex",
@@ -274,8 +335,9 @@ test("Codex recall failure still stores prompt and can return entity search cont
     const { lines, log } = await readSingleSessionLog(projectDir);
     assert.match(log, /NAMS request failed/);
     const diagnostics = lines.filter((entry) => entry.kind === "diagnostic");
-    assert.deepEqual(diagnostics.map((entry) => entry.payload), [{ message: "NAMS request failed" }]);
-    assert.doesNotMatch(JSON.stringify(diagnostics), /context unavailable|Authorization|Bearer|key/);
+    const failureDiagnostics = diagnostics.filter((entry) => entry.payload.message === "NAMS request failed");
+    assert.deepEqual(failureDiagnostics.map((entry) => entry.payload), [{ message: "NAMS request failed" }]);
+    assert.doesNotMatch(JSON.stringify(failureDiagnostics), /context unavailable|Authorization|Bearer|key/);
     assert.doesNotMatch(log, /Authorization|Bearer|key/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
@@ -292,13 +354,11 @@ test("Codex entity search failure still stores prompt and can return conversatio
       .searchEntities({ error: "entity search unavailable" }, 503)
       .message();
     const { CodexAdapter } = await import(codexUrl);
-    const adapter = new CodexAdapter({
-      env: {
+    testEnv(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
-    });
+      });
+    const adapter = new CodexAdapter();
 
     const result = await adapter.beforeAgent({
       platform: "codex",
@@ -326,8 +386,9 @@ test("Codex entity search failure still stores prompt and can return conversatio
     const { lines, log } = await readSingleSessionLog(projectDir);
     assert.match(log, /NAMS request failed/);
     const diagnostics = lines.filter((entry) => entry.kind === "diagnostic");
-    assert.deepEqual(diagnostics.map((entry) => entry.payload), [{ message: "NAMS request failed" }]);
-    assert.doesNotMatch(JSON.stringify(diagnostics), /entity search unavailable|Authorization|Bearer|key/);
+    const failureDiagnostics = diagnostics.filter((entry) => entry.payload.message === "NAMS request failed");
+    assert.deepEqual(failureDiagnostics.map((entry) => entry.payload), [{ message: "NAMS request failed" }]);
+    assert.doesNotMatch(JSON.stringify(failureDiagnostics), /entity search unavailable|Authorization|Bearer|key/);
     assert.doesNotMatch(log, /Authorization|Bearer|key/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
@@ -343,13 +404,11 @@ test("Codex message failure returns recalled additional context and fails open",
       .searchEntities()
       .message({ error: "message write unavailable" }, 503);
     const { CodexAdapter } = await import(codexUrl);
-    const adapter = new CodexAdapter({
-      env: {
+    testEnv(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
-    });
+      });
+    const adapter = new CodexAdapter();
 
     const result = await adapter.beforeAgent({
       platform: "codex",
@@ -378,13 +437,11 @@ test("stores Codex Stop last_assistant_message as an assistant message", async (
   try {
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     const { CodexAdapter } = await import(codexUrl);
-    const adapter = new CodexAdapter({
-      env: {
+    testEnv(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
-    });
+      });
+    const adapter = new CodexAdapter();
 
     await adapter.beforeAgent({
       platform: "codex",
@@ -443,13 +500,11 @@ test("stores Codex transcript assistant message when last_assistant_message is a
 
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     const { CodexAdapter } = await import(codexUrl);
-    const adapter = new CodexAdapter({
-      env: {
+    testEnv(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
-    });
+      });
+    const adapter = new CodexAdapter();
 
     await adapter.beforeAgent({
       platform: "codex",
@@ -490,13 +545,11 @@ test("repeated Codex Stop last_assistant_message with same turn_id stores once",
   try {
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     const { CodexAdapter } = await import(codexUrl);
-    const adapter = new CodexAdapter({
-      env: {
+    testEnv(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
-    });
+      });
+    const adapter = new CodexAdapter();
 
     await adapter.beforeAgent({
       platform: "codex",
@@ -538,13 +591,11 @@ test("Codex Stop last_assistant_message with same content and different turn_id 
   try {
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     const { CodexAdapter } = await import(codexUrl);
-    const adapter = new CodexAdapter({
-      env: {
+    testEnv(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
-    });
+      });
+    const adapter = new CodexAdapter();
 
     await adapter.beforeAgent({
       platform: "codex",
@@ -614,13 +665,11 @@ test("Codex transcript fallback does not duplicate an entry id", async () => {
 
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     const { CodexAdapter } = await import(codexUrl);
-    const adapter = new CodexAdapter({
-      env: {
+    testEnv(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
-    });
+      });
+    const adapter = new CodexAdapter();
 
     await adapter.beforeAgent({
       platform: "codex",
@@ -678,13 +727,11 @@ test("Codex transcript fallback dedupes same assistant content when id changes",
 
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     const { CodexAdapter } = await import(codexUrl);
-    const adapter = new CodexAdapter({
-      env: {
+    testEnv(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
-    });
+      });
+    const adapter = new CodexAdapter();
 
     await adapter.beforeAgent({
       platform: "codex",
@@ -735,13 +782,11 @@ test("Codex transcript fallback does not duplicate a direct assistant response",
 
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     const { CodexAdapter } = await import(codexUrl);
-    const adapter = new CodexAdapter({
-      env: {
+    testEnv(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
-    });
+      });
+    const adapter = new CodexAdapter();
 
     await adapter.beforeAgent({
       platform: "codex",
@@ -808,13 +853,11 @@ test("Codex transcript fallback without entry id still dedupes by assistant cont
 
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     const { CodexAdapter } = await import(codexUrl);
-    const adapter = new CodexAdapter({
-      env: {
+    testEnv(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
-    });
+      });
+    const adapter = new CodexAdapter();
 
     await adapter.beforeAgent({
       platform: "codex",
@@ -885,13 +928,11 @@ test("records Codex transcript web search calls during AfterAgent", async () => 
     const nams = createNamsFetchMock().message().reasoningStep({ id: "step-1" }).toolCall();
     const { CodexAdapter } = await import(codexUrl);
     await seedCodexConversation(projectDir);
-    const adapter = new CodexAdapter({
-      env: {
+    testEnv(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
-    });
+      });
+    const adapter = new CodexAdapter();
 
     const invocation = {
       platform: "codex",
@@ -936,13 +977,11 @@ test("Codex afterAgent with no conversationId returns allow output and does not 
     const nams = createNamsFetchMock().all({ error: "unexpected NAMS call" }, 500);
     const { CodexAdapter } = await import(codexUrl);
     const { loadSessionState } = await import(stateUrl);
-    const adapter = new CodexAdapter({
-      env: {
+    testEnv(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
-    });
+      });
+    const adapter = new CodexAdapter();
 
     const result = await adapter.afterAgent({
       platform: "codex",
@@ -958,7 +997,7 @@ test("Codex afterAgent with no conversationId returns allow output and does not 
 
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
     assert.equal(nams.calls().length, 0);
-    const state = await loadSessionState(projectDir, "codex", "session-1");
+    const state = await loadSessionState("codex", "session-1");
     assert.notEqual(state, null);
     assert.equal(state.conversationId, undefined);
   } finally {
@@ -966,7 +1005,7 @@ test("Codex afterAgent with no conversationId returns allow output and does not 
   }
 });
 
-test("Codex afterAgent missing config and failed NAMS calls allow and log sanitized diagnostics", async () => {
+test("Codex afterAgent missing config and failed NAMS calls allow and log minimal diagnostics", async () => {
   const missingConfigDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
   const namsFailureDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
   try {
@@ -979,9 +1018,11 @@ test("Codex afterAgent missing config and failed NAMS calls allow and log saniti
       projectDirectory: missingConfigDir,
     });
     missingConfigState.conversationId = "conversation-1";
-    await saveSessionState(missingConfigDir, "codex", missingConfigState.sessionKey, missingConfigState);
+    testEnv(missingConfigDir);
+    await saveSessionState("codex", missingConfigState.sessionKey, missingConfigState);
 
-    const missingConfigResult = await new CodexAdapter({ env: {} }).afterAgent({
+    testEnv(missingConfigDir);
+    const missingConfigResult = await new CodexAdapter().afterAgent({
       platform: "codex",
       event: "AfterAgent",
       processCwd: missingConfigDir,
@@ -994,8 +1035,16 @@ test("Codex afterAgent missing config and failed NAMS calls allow and log saniti
     });
 
     assert.deepEqual(missingConfigResult.stdout, { continue: true, suppressOutput: true });
-    const { log: missingConfigLog } = await readSingleSessionLog(missingConfigDir);
-    assert.match(missingConfigLog, /NAMS_API_KEY missing/);
+    const { log: missingConfigLog, lines: missingConfigLines } = await readSingleSessionLog(missingConfigDir);
+    assert.match(missingConfigLog, /NAMS apiKey missing/);
+    const missingConfigDiagnostics = missingConfigLines.filter(
+      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS apiKey missing",
+    );
+    assert.equal(missingConfigDiagnostics.length, 1);
+    assert.deepEqual(missingConfigDiagnostics[0].payload.configSources, {
+      apiKey: "missing",
+      baseUrl: "default",
+    });
     assert.doesNotMatch(missingConfigLog, /Authorization|Bearer|key/);
 
     const namsFailureState = createInitialSessionState({
@@ -1004,16 +1053,15 @@ test("Codex afterAgent missing config and failed NAMS calls allow and log saniti
       projectDirectory: namsFailureDir,
     });
     namsFailureState.conversationId = "conversation-1";
-    await saveSessionState(namsFailureDir, "codex", namsFailureState.sessionKey, namsFailureState);
+    testEnv(namsFailureDir);
+    await saveSessionState("codex", namsFailureState.sessionKey, namsFailureState);
 
     const nams = createNamsFetchMock().message({ error: "assistant write unavailable" }, 503);
-    const namsFailureResult = await new CodexAdapter({
-      env: {
-        NAMS_API_KEY: "key",
-        NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
-    }).afterAgent({
+    testEnv(namsFailureDir, {
+      NAMS_API_KEY: "key",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+    const namsFailureResult = await new CodexAdapter().afterAgent({
       platform: "codex",
       event: "AfterAgent",
       processCwd: namsFailureDir,
@@ -1029,8 +1077,9 @@ test("Codex afterAgent missing config and failed NAMS calls allow and log saniti
     const { lines: namsFailureLines, log: namsFailureLog } = await readSingleSessionLog(namsFailureDir);
     assert.match(namsFailureLog, /NAMS request failed/);
     const diagnostics = namsFailureLines.filter((entry) => entry.kind === "diagnostic");
-    assert.deepEqual(diagnostics.map((entry) => entry.payload), [{ message: "NAMS request failed" }]);
-    assert.doesNotMatch(JSON.stringify(diagnostics), /assistant write unavailable|Authorization|Bearer|key/);
+    const failureDiagnostics = diagnostics.filter((entry) => entry.payload.message === "NAMS request failed");
+    assert.deepEqual(failureDiagnostics.map((entry) => entry.payload), [{ message: "NAMS request failed" }]);
+    assert.doesNotMatch(JSON.stringify(failureDiagnostics), /assistant write unavailable|Authorization|Bearer|key/);
     assert.doesNotMatch(namsFailureLog, /Authorization|Bearer|key/);
   } finally {
     await rm(missingConfigDir, { recursive: true, force: true });
@@ -1044,13 +1093,11 @@ test("records Codex PostToolUse as reasoning step and tool call", async () => {
     const nams = createNamsFetchMock().reasoningStep({ id: "step-1" }).toolCall();
     const { CodexAdapter } = await import(codexUrl);
     await seedCodexConversation(projectDir);
-    const adapter = new CodexAdapter({
-      env: {
+    testEnv(projectDir, {
         NAMS_API_KEY: "test-api-key",
         NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
-    });
+      });
+    const adapter = new CodexAdapter();
 
     const result = await adapter.afterTool({
       platform: "codex",
@@ -1103,13 +1150,11 @@ test("Codex afterTool sanitizes output-like fields from tool input", async () =>
     const nams = createNamsFetchMock().reasoningStep({ id: "step-1" }).toolCall();
     const { CodexAdapter } = await import(codexUrl);
     await seedCodexConversation(projectDir);
-    const adapter = new CodexAdapter({
-      env: {
+    testEnv(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
-    });
+      });
+    const adapter = new CodexAdapter();
 
     await adapter.afterTool({
       platform: "codex",
@@ -1150,13 +1195,11 @@ test("repeated Codex afterTool with same tool_use_id records one tool call", asy
     const nams = createNamsFetchMock().reasoningStep({ id: "step-1" }).toolCall();
     const { CodexAdapter } = await import(codexUrl);
     await seedCodexConversation(projectDir);
-    const adapter = new CodexAdapter({
-      env: {
+    testEnv(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
-    });
+      });
+    const adapter = new CodexAdapter();
     const invocation = {
       platform: "codex",
       event: "AfterTool",
@@ -1188,13 +1231,11 @@ test("Codex afterTool without tool_use_id dedupes by fallback hash", async () =>
     const nams = createNamsFetchMock().reasoningStep({ id: "step-1" }).toolCall();
     const { CodexAdapter } = await import(codexUrl);
     await seedCodexConversation(projectDir);
-    const adapter = new CodexAdapter({
-      env: {
+    testEnv(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
-    });
+      });
+    const adapter = new CodexAdapter();
     const invocation = {
       platform: "codex",
       event: "AfterTool",
@@ -1226,13 +1267,11 @@ test("Codex afterTool records distinct tool_use_id values with same input", asyn
     const nams = createNamsFetchMock().reasoningStep({ id: "step-1" }).toolCall();
     const { CodexAdapter } = await import(codexUrl);
     await seedCodexConversation(projectDir);
-    const adapter = new CodexAdapter({
-      env: {
+    testEnv(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
-    });
+      });
+    const adapter = new CodexAdapter();
     const basePayload = {
       hook_event_name: "PostToolUse",
       session_id: "session-1",
@@ -1267,7 +1306,7 @@ test("Codex afterTool records distinct tool_use_id values with same input", asyn
   }
 });
 
-test("Codex afterTool missing config and failed NAMS calls allow and log sanitized diagnostics", async () => {
+test("Codex afterTool missing config and failed NAMS calls allow and log minimal diagnostics", async () => {
   const missingConfigDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
   const namsFailureDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
   try {
@@ -1275,7 +1314,9 @@ test("Codex afterTool missing config and failed NAMS calls allow and log sanitiz
     await seedCodexConversation(missingConfigDir);
     await seedCodexConversation(namsFailureDir);
 
-    const missingConfigResult = await new CodexAdapter({ env: {} }).afterTool({
+    testEnv(missingConfigDir);
+
+    const missingConfigResult = await new CodexAdapter().afterTool({
       platform: "codex",
       event: "AfterTool",
       processCwd: missingConfigDir,
@@ -1291,25 +1332,24 @@ test("Codex afterTool missing config and failed NAMS calls allow and log sanitiz
     });
 
     assert.deepEqual(missingConfigResult.stdout, { continue: true });
-    const { log: missingConfigLog } = await readSingleSessionLog(missingConfigDir);
-    assert.match(missingConfigLog, /NAMS_API_KEY missing/);
+    const { log: missingConfigLog, lines: missingConfigLines } = await readSingleSessionLog(missingConfigDir);
+    assert.match(missingConfigLog, /NAMS apiKey missing/);
+    const missingConfigDiagnostics = missingConfigLines.filter(
+      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS apiKey missing",
+    );
+    assert.equal(missingConfigDiagnostics.length, 1);
+    assert.deepEqual(missingConfigDiagnostics[0].payload.configSources, {
+      apiKey: "missing",
+      baseUrl: "default",
+    });
     assert.doesNotMatch(missingConfigLog, /Authorization|Bearer|test-api-key/);
 
-    const nams = createNamsFetchMock().reasoningStep(
-      {
-        error: "plain-secret-value rejected",
-        apiKey: "plain-secret-value",
-        token: "plain-secret-value",
-      },
-      503,
-    );
-    const namsFailureResult = await new CodexAdapter({
-      env: {
-        NAMS_API_KEY: "plain-secret-value",
+    const nams = createNamsFetchMock().reasoningStep({ error: "reasoning step unavailable" }, 503);
+    testEnv(namsFailureDir, {
+        NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
-    }).afterTool({
+      });
+    const namsFailureResult = await new CodexAdapter().afterTool({
       platform: "codex",
       event: "AfterTool",
       processCwd: namsFailureDir,
@@ -1328,9 +1368,10 @@ test("Codex afterTool missing config and failed NAMS calls allow and log sanitiz
     const { lines: namsFailureLines, log: namsFailureLog } = await readSingleSessionLog(namsFailureDir);
     assert.match(namsFailureLog, /NAMS request failed/);
     const diagnostics = namsFailureLines.filter((entry) => entry.kind === "diagnostic");
-    assert.deepEqual(diagnostics.map((entry) => entry.payload), [{ message: "NAMS request failed" }]);
-    assert.doesNotMatch(JSON.stringify(diagnostics), /plain-secret-value|Authorization|Bearer|apiKey|token/);
-    assert.doesNotMatch(namsFailureLog, /plain-secret-value|Authorization|Bearer|apiKey|token/);
+    const failureDiagnostics = diagnostics.filter((entry) => entry.payload.message === "NAMS request failed");
+    assert.deepEqual(failureDiagnostics.map((entry) => entry.payload), [{ message: "NAMS request failed" }]);
+    assert.doesNotMatch(JSON.stringify(failureDiagnostics), /reasoning step unavailable|Authorization|Bearer|key/);
+    assert.doesNotMatch(namsFailureLog, /Authorization|Bearer|key/);
   } finally {
     await rm(missingConfigDir, { recursive: true, force: true });
     await rm(namsFailureDir, { recursive: true, force: true });
@@ -1344,15 +1385,22 @@ test("Codex afterTool without conversationId or toolName saves state and does no
     const nams = createNamsFetchMock().all({ error: "unexpected NAMS call" }, 500);
     const { CodexAdapter } = await import(codexUrl);
     await seedCodexConversation(noToolNameDir);
-    const adapter = new CodexAdapter({
-      env: {
+    testEnv(noConversationDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
-    });
+      });
+    const noConversationAdapter = new CodexAdapter();
+    testEnv(noToolNameDir, {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      });
+    const noToolNameAdapter = new CodexAdapter();
 
-    const noConversationResult = await adapter.afterTool({
+    testEnv(noConversationDir, {
+      NAMS_API_KEY: "key",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+    const noConversationResult = await noConversationAdapter.afterTool({
       platform: "codex",
       event: "AfterTool",
       processCwd: noConversationDir,
@@ -1365,7 +1413,11 @@ test("Codex afterTool without conversationId or toolName saves state and does no
         tool_input: { command: "pwd" },
       },
     });
-    const noToolNameResult = await adapter.afterTool({
+    testEnv(noToolNameDir, {
+      NAMS_API_KEY: "key",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+    const noToolNameResult = await noToolNameAdapter.afterTool({
       platform: "codex",
       event: "AfterTool",
       processCwd: noToolNameDir,
@@ -1391,9 +1443,10 @@ test("raw Codex hook logs are session-scoped and include raw UserPromptSubmit pa
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
   try {
     const { CodexAdapter } = await import(codexUrl);
-    const adapter = new CodexAdapter({ env: {} });
+    testEnv(projectDir);
+    const adapter = new CodexAdapter();
 
-    await adapter.startConversation({
+    await adapter.startSession({
       platform: "codex",
       event: "SessionStart",
       processCwd: projectDir,
@@ -1439,11 +1492,13 @@ test("raw Codex hook logs are session-scoped and include raw UserPromptSubmit pa
 test("Codex observability log write failure does not block response", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
   try {
-    await mkdir(path.join(projectDir, ".nams"), { recursive: true });
-    await writeFile(path.join(projectDir, ".nams", "logs"), "not a directory", "utf8");
+    const homeDir = testEnv(projectDir).HOME;
+    await mkdir(namsHome(homeDir), { recursive: true });
+    await writeFile(path.join(namsHome(homeDir), "logs"), "not a directory", "utf8");
 
     const { CodexAdapter } = await import(codexUrl);
-    const adapter = new CodexAdapter({ env: {} });
+    testEnv(projectDir);
+    const adapter = new CodexAdapter();
 
     const result = await adapter.beforeAgent({
       platform: "codex",
@@ -1464,18 +1519,9 @@ test("Codex observability log write failure does not block response", async () =
 });
 
 async function readSingleSessionLog(projectDir) {
-  const logDir = path.join(projectDir, ".nams", "logs");
-  const fileNames = await readdir(logDir);
-  const sessionFileNames = fileNames.filter((fileName) => fileName.startsWith("session-"));
-  assert.equal(sessionFileNames.length, 1);
-  const fileName = sessionFileNames[0];
-  const log = await readFile(path.join(logDir, fileName), "utf8");
-  const lines = log
-    .trim()
-    .split("\n")
-    .filter((line) => line.trim() !== "")
-    .map((line) => JSON.parse(line));
-  return { fileName, lines, log };
+  const { logPath, lines } = await readRuntimeSingleSessionLog(testEnv(projectDir).HOME, "codex");
+  const log = await readFile(logPath, "utf8");
+  return { fileName: path.basename(logPath), lines, log };
 }
 
 async function seedCodexConversation(projectDir, sessionId = "session-1", conversationId = "conversation-1") {
@@ -1486,7 +1532,8 @@ async function seedCodexConversation(projectDir, sessionId = "session-1", conver
     projectDirectory: projectDir,
   });
   state.conversationId = conversationId;
-  await saveSessionState(projectDir, "codex", state.sessionKey, state);
+  testEnv(projectDir);
+  await saveSessionState("codex", state.sessionKey, state);
   return state;
 }
 

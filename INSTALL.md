@@ -9,18 +9,35 @@
 - Gemini CLI, for the Gemini local extension path
 - OpenCode, for the OpenCode project plugin path
 
-## Configure NAMS
+## Configuration
 
-Create a project-local `.nams/.env` file in the directory where the harness runs:
+Create a user-local config file at `~/.nams/config.json`:
 
-```env
-NAMS_API_KEY=your_api_key_here
-NAMS_BASE_URL=https://memory.neo4jlabs.com
+```json
+{
+  "apiKey": "nams-api-key",
+  "baseUrl": "https://memory.neo4jlabs.com"
+}
 ```
 
-`NAMS_API_KEY` is required. `NAMS_BASE_URL` is optional when using the default service URL, but set it explicitly when testing against another NAMS endpoint.
+`apiKey` is required for NAMS requests. `baseUrl` is optional and defaults to the runtime client's built-in NAMS URL.
 
-`.nams/.env` has priority over process environment variables. Keep this file local and do not commit it.
+Projects may override either key with `<project>/.nams/config.json`:
+
+```json
+{
+  "baseUrl": "https://memory.neo4jlabs.com"
+}
+```
+
+Keep project `.nams/config.json` local and gitignored if it contains an API key. Prefer `~/.nams/config.json` or `NAMS_API_KEY` for secrets that apply across projects.
+
+Environment variables are final overrides:
+
+- `NAMS_API_KEY` overrides `apiKey`.
+- `NAMS_BASE_URL` overrides `baseUrl`.
+
+The runtime does not read `.env` files.
 
 ## Gemini CLI
 
@@ -44,7 +61,7 @@ Placeholder: installation instructions for linking or installing directly from a
 
 OpenCode loads project plugins from `.opencode/plugins/`.
 
-OpenCode also reads NAMS settings from the project-local `.nams/.env` described above. If OpenCode logs are written under `/path/to/project/.nams/logs/`, put `NAMS_API_KEY` and optional `NAMS_BASE_URL` in `/path/to/project/.nams/.env`.
+OpenCode uses the same NAMS configuration hierarchy as other harnesses: `~/.nams/config.json`, optional project `.nams/config.json`, then final `NAMS_API_KEY` and `NAMS_BASE_URL` environment overrides.
 
 Install the package so `nams-hooks` is on `PATH`:
 
