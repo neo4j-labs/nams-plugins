@@ -16,7 +16,6 @@ async function main() {
   await chmod(path.join(distDir, "bin", "cli.js"), 0o755);
   await cp(path.join(root, "templates", "gemini", "gemini-extension.json"), path.join(distDir, "gemini-extension.json"));
   await cp(path.join(root, "templates", "gemini", "hooks"), path.join(distDir, "hooks"), { recursive: true });
-  await cp(path.join(root, "docs", "nams-openapi.json"), path.join(distDir, "docs", "nams-openapi.json"));
   await writeReleasePackageJson();
 }
 

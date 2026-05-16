@@ -9,7 +9,6 @@
   "files": [
     "dist/",
     "templates/",
-    "docs/nams-openapi.json",
     "README.md",
     "INSTALL.md"
   ],

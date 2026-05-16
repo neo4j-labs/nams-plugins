@@ -85,7 +85,7 @@ Create `templates/claude/settings.local.json` with a `SessionStart` command hook
 
 - [x] **Step 4: Add Codex SessionStart template**
 
-Create `templates/codex/hooks.json` with a `SessionStart` command hook that runs `nams-hooks run codex --event SessionStart`.
+Create `templates/codex/hooks.json` with the verified Codex command-hook group shape: `SessionStart` matches `startup|resume`, contains a nested command hook with `"type": "command"`, runs `nams-hooks run codex --event SessionStart`, and uses status message `Loading session notes`.
 
 ### Task 4: Verification And Commit
 

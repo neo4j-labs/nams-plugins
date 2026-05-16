@@ -18,8 +18,9 @@ It ensures deterministic memory persistence and context recall across different 
 - **OS**: macOS
 - **Harnesses**:
   - [Gemini CLI](https://github.com/google-gemini/gemini-cli)
+  - [Codex](https://chatgpt.com/codex/)
   - [OpenCode](https://opencode.ai/docs/) via a project-local `.opencode/plugins/` plugin shim
-  - Claude Code and Codex session-start skeletons
+  - Claude Code session-start skeleton
 
 ## Architecture
 
