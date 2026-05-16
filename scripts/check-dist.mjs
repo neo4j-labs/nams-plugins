@@ -9,9 +9,13 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const distDir = path.join(root, "dist");
 const generatedClientPath = path.join(root, "dist", "bin", "generated", "nams-client.js");
+const opencodeTemplatePath = path.join(root, "templates", "opencode", "plugins", "nams-hooks.js");
+const rootPackagePath = path.join(root, "package.json");
 const execFileAsync = promisify(execFile);
 
 await access(generatedClientPath);
+await access(opencodeTemplatePath);
+await verifyRootPackageFiles(rootPackagePath);
 
 const source = await readFile(generatedClientPath, "utf8");
 if (/nams-openapi|readFile/.test(source)) {
@@ -65,6 +69,13 @@ async function assertExecutable(filePath) {
     await access(filePath, constants.X_OK);
   } catch {
     throw new Error(`${path.relative(root, filePath)} must be executable.`);
+  }
+}
+
+async function verifyRootPackageFiles(packagePath) {
+  const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
+  if (!Array.isArray(packageJson.files) || !packageJson.files.includes("templates/")) {
+    throw new Error("package.json files must include templates/ for the OpenCode plugin shim.");
   }
 }
 

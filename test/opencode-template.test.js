@@ -11,5 +11,6 @@ test("opencode plugin template routes session-created events through the typed h
 
   assert.match(source, /session\.created/);
   assert.match(source, /nams-hooks/);
-  assert.match(source, /"run", "opencode", "--event", "SessionStart"/);
+  assert.match(source, /run\("SessionStart", \{ hook: "event", event \}\)/);
+  assert.match(source, /"run", "opencode", "--event", event/);
 });
