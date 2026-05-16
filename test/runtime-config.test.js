@@ -114,7 +114,7 @@ test("environment variables overlay project and global JSON config", async () =>
   });
 });
 
-test("does not read project .nams/.env", async () => {
+test("does not read project dotenv config files", async () => {
   await withFixture(async ({ homeDir, projectDir }) => {
     await mkdir(path.join(projectDir, ".nams"), { recursive: true });
     await writeFile(
