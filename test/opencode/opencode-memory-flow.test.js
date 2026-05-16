@@ -178,8 +178,16 @@ test("OpenCode BeforeAgent continues when NAMS_API_KEY is missing", async () => 
     });
 
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
-    const { log } = await readSingleSessionLog(projectDir);
+    const { log, lines } = await readSingleSessionLog(projectDir);
     assert.match(log, /NAMS apiKey missing/);
+    const diagnostics = lines.filter(
+      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS apiKey missing",
+    );
+    assert.equal(diagnostics.length, 1);
+    assert.deepEqual(diagnostics[0].payload.configSources, {
+      apiKey: "missing",
+      baseUrl: "default",
+    });
     assert.doesNotMatch(log, /Bearer|key/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });

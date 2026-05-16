@@ -236,8 +236,16 @@ test("missing Codex NAMS_API_KEY returns allow output and sanitized log", async 
     });
 
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
-    const { log } = await readSingleSessionLog(projectDir);
+    const { log, lines } = await readSingleSessionLog(projectDir);
     assert.match(log, /NAMS apiKey missing/);
+    const diagnostics = lines.filter(
+      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS apiKey missing",
+    );
+    assert.equal(diagnostics.length, 1);
+    assert.deepEqual(diagnostics[0].payload.configSources, {
+      apiKey: "missing",
+      baseUrl: "default",
+    });
     assert.doesNotMatch(log, /Bearer|key/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
@@ -1048,8 +1056,16 @@ test("Codex afterAgent missing config and failed NAMS calls allow and log saniti
     });
 
     assert.deepEqual(missingConfigResult.stdout, { continue: true, suppressOutput: true });
-    const { log: missingConfigLog } = await readSingleSessionLog(missingConfigDir);
+    const { log: missingConfigLog, lines: missingConfigLines } = await readSingleSessionLog(missingConfigDir);
     assert.match(missingConfigLog, /NAMS apiKey missing/);
+    const missingConfigDiagnostics = missingConfigLines.filter(
+      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS apiKey missing",
+    );
+    assert.equal(missingConfigDiagnostics.length, 1);
+    assert.deepEqual(missingConfigDiagnostics[0].payload.configSources, {
+      apiKey: "missing",
+      baseUrl: "default",
+    });
     assert.doesNotMatch(missingConfigLog, /Authorization|Bearer|key/);
 
     const namsFailureState = createInitialSessionState({
@@ -1346,8 +1362,16 @@ test("Codex afterTool missing config and failed NAMS calls allow and log sanitiz
     });
 
     assert.deepEqual(missingConfigResult.stdout, { continue: true });
-    const { log: missingConfigLog } = await readSingleSessionLog(missingConfigDir);
+    const { log: missingConfigLog, lines: missingConfigLines } = await readSingleSessionLog(missingConfigDir);
     assert.match(missingConfigLog, /NAMS apiKey missing/);
+    const missingConfigDiagnostics = missingConfigLines.filter(
+      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS apiKey missing",
+    );
+    assert.equal(missingConfigDiagnostics.length, 1);
+    assert.deepEqual(missingConfigDiagnostics[0].payload.configSources, {
+      apiKey: "missing",
+      baseUrl: "default",
+    });
     assert.doesNotMatch(missingConfigLog, /Authorization|Bearer|test-api-key/);
 
     const nams = createNamsFetchMock().reasoningStep(
