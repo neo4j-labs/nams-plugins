@@ -113,3 +113,24 @@ test("platform adapters use shared adapter options", async () => {
     assert.match(content, /\bPlatformAdapterOptions\b/, `${filePath} should reference PlatformAdapterOptions`);
   }
 });
+
+test("platform adapter options use runtime environment rather than raw env", async () => {
+  const content = await readFile("src/interfaces.ts", "utf8");
+
+  assert.match(content, /\bruntimeEnvironment\?: RuntimeEnvironment\b/);
+  assert.equal(/\benv\?:/.test(content), false);
+});
+
+test("runtime environment home lookup stays in paths module", async () => {
+  const config = await readFile("src/runtime/config.ts", "utf8");
+  const sessionState = await readFile("src/runtime/session-state.ts", "utf8");
+  const logging = await readFile("src/runtime/logging.ts", "utf8");
+
+  for (const [filePath, content] of Object.entries({
+    "src/runtime/config.ts": config,
+    "src/runtime/session-state.ts": sessionState,
+    "src/runtime/logging.ts": logging,
+  })) {
+    assert.equal(/\bHOME\b|\bUSERPROFILE\b/.test(content), false, `${filePath} should not resolve home directories`);
+  }
+});

@@ -12,9 +12,10 @@ const pathsUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "runtime", "
 test("resolves NAMS home from HOME", async () => {
   const homeDir = await mkdtemp(path.join(tmpdir(), "nams-home-"));
   try {
-    const { resolveNamsHome } = await import(pathsUrl);
+    const { RuntimeEnvironment, resolveNamsHome } = await import(pathsUrl);
 
     assert.equal(resolveNamsHome({ HOME: homeDir }), path.join(homeDir, ".nams"));
+    assert.equal(RuntimeEnvironment.from({ HOME: homeDir }).namsHome(), path.join(homeDir, ".nams"));
   } finally {
     await rm(homeDir, { recursive: true, force: true });
   }
@@ -34,14 +35,24 @@ test("resolves NAMS home from USERPROFILE when HOME is absent", async () => {
 test("builds config, state, and log paths under NAMS home", async () => {
   const homeDir = await mkdtemp(path.join(tmpdir(), "nams-home-"));
   try {
-    const { globalConfigPath, platformLogDirectory, projectConfigPath, sessionStatePath } = await import(pathsUrl);
-    const env = { HOME: homeDir };
+    const { RuntimeEnvironment, globalConfigPath, platformLogDirectory, projectConfigPath, sessionStatePath } =
+      await import(pathsUrl);
+    const runtimeEnvironment = RuntimeEnvironment.from({ HOME: homeDir });
 
-    assert.equal(globalConfigPath(env), path.join(homeDir, ".nams", "config.json"));
+    assert.equal(runtimeEnvironment.homeDirectory(), homeDir);
+    assert.equal(runtimeEnvironment.value("HOME"), homeDir);
+    assert.equal(runtimeEnvironment.globalConfigPath(), path.join(homeDir, ".nams", "config.json"));
+    assert.equal(globalConfigPath(runtimeEnvironment), path.join(homeDir, ".nams", "config.json"));
     assert.equal(projectConfigPath("/tmp/project"), path.join("/tmp/project", ".nams", "config.json"));
-    assert.equal(platformLogDirectory("gemini", env), path.join(homeDir, ".nams", "logs", "gemini"));
+    assert.equal(runtimeEnvironment.projectConfigPath("/tmp/project"), path.join("/tmp/project", ".nams", "config.json"));
+    assert.equal(runtimeEnvironment.platformLogDirectory("gemini"), path.join(homeDir, ".nams", "logs", "gemini"));
+    assert.equal(platformLogDirectory("gemini", runtimeEnvironment), path.join(homeDir, ".nams", "logs", "gemini"));
     assert.equal(
-      sessionStatePath("gemini", "session/1", env),
+      runtimeEnvironment.sessionStatePath("gemini", "session/1"),
+      path.join(homeDir, ".nams", "state", "gemini", `${sha256("session/1")}.json`),
+    );
+    assert.equal(
+      sessionStatePath("gemini", "session/1", runtimeEnvironment),
       path.join(homeDir, ".nams", "state", "gemini", `${sha256("session/1")}.json`),
     );
   } finally {

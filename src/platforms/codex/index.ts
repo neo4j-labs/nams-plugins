@@ -13,6 +13,7 @@ import {
   NamsMemoryService,
   serializeToolInput,
 } from "../../runtime/memory-service.js";
+import { RuntimeEnvironment } from "../../runtime/paths.js";
 import {
   createInitialSessionState,
   loadSessionState,
@@ -23,7 +24,11 @@ import { parseCodexPayload } from "./payload.js";
 import { readCodexTranscript, type CodexTranscriptEntry } from "./transcript.js";
 
 export class CodexAdapter implements PlatformAdapter {
-  constructor(private readonly options: PlatformAdapterOptions = {}) {}
+  private readonly runtimeEnvironment: RuntimeEnvironment;
+
+  constructor(private readonly options: PlatformAdapterOptions = {}) {
+    this.runtimeEnvironment = RuntimeEnvironment.from(options.runtimeEnvironment);
+  }
 
   async startConversation(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
     const payloadInfo = parseCodexPayload(invocation.rawPayload, invocation.processCwd);
@@ -33,10 +38,10 @@ export class CodexAdapter implements PlatformAdapter {
       projectDirectory: payloadInfo.projectDirectory,
     });
     const state =
-      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey, this.options.env)) ??
+      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey, this.runtimeEnvironment)) ??
       initialState;
-    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state, this.options.env);
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
+    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state, this.runtimeEnvironment);
+    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
 
     return { stdout: { continue: true, suppressOutput: true } };
   }
@@ -49,19 +54,19 @@ export class CodexAdapter implements PlatformAdapter {
       projectDirectory: payloadInfo.projectDirectory,
     });
     const state =
-      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey, this.options.env)) ??
+      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey, this.runtimeEnvironment)) ??
       initialState;
-    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state, this.options.env);
+    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state, this.runtimeEnvironment);
 
     if (payloadInfo.prompt === undefined) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
       return allowOutput();
     }
 
-    const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
-    await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult, this.options.env);
+    const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.runtimeEnvironment);
+    await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult, this.runtimeEnvironment);
     if (!configResult.ok) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
       return allowOutput();
     }
     const config = configResult.config;
@@ -84,12 +89,12 @@ export class CodexAdapter implements PlatformAdapter {
         try {
           recallContexts.push(await memory.recall(conversationId));
         } catch {
-          await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state, this.options.env);
+          await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state, this.runtimeEnvironment);
         }
         try {
           recallContexts.push(await memory.searchEntities(payloadInfo.prompt));
         } catch {
-          await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state, this.options.env);
+          await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state, this.runtimeEnvironment);
         }
         state.lastRecallAt = new Date().toISOString();
         const recalledContext = combineMemoryContexts(recallContexts);
@@ -104,12 +109,12 @@ export class CodexAdapter implements PlatformAdapter {
         state.lastUserMessageHash = promptHash;
       }
     } catch {
-      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state, this.options.env);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
+      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state, this.runtimeEnvironment);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
       return allowOutput(additionalContext);
     }
 
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
+    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
     return allowOutput(additionalContext);
   }
 
@@ -121,9 +126,9 @@ export class CodexAdapter implements PlatformAdapter {
       projectDirectory: payloadInfo.projectDirectory,
     });
     const state =
-      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey, this.options.env)) ??
+      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey, this.runtimeEnvironment)) ??
       initialState;
-    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state, this.options.env);
+    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state, this.runtimeEnvironment);
     state.seenAssistantMessageHashes ??= [];
     state.seenTranscriptEntryIds ??= [];
     state.seenToolCallIds ??= [];
@@ -131,15 +136,15 @@ export class CodexAdapter implements PlatformAdapter {
     state.reasoningStepIdsByHash ??= {};
 
     if (state.conversationId === undefined) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
       return allowOutput();
     }
     const conversationId = state.conversationId;
 
-    const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
-    await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult, this.options.env);
+    const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.runtimeEnvironment);
+    await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult, this.runtimeEnvironment);
     if (!configResult.ok) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
       return allowOutput();
     }
     const config = configResult.config;
@@ -170,12 +175,12 @@ export class CodexAdapter implements PlatformAdapter {
         await recordTraceFromTranscript(conversationId, state, memory, entries);
       }
     } catch {
-      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state, this.options.env);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
+      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state, this.runtimeEnvironment);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
       return allowOutput();
     }
 
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
+    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
     return allowOutput();
   }
 
@@ -187,9 +192,9 @@ export class CodexAdapter implements PlatformAdapter {
       projectDirectory: payloadInfo.projectDirectory,
     });
     const state =
-      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey, this.options.env)) ??
+      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey, this.runtimeEnvironment)) ??
       initialState;
-    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state, this.options.env);
+    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state, this.runtimeEnvironment);
     state.seenToolCallIds ??= [];
     state.seenReasoningStepHashes ??= [];
     state.reasoningStepIdsByHash ??= {};
@@ -197,14 +202,14 @@ export class CodexAdapter implements PlatformAdapter {
     const conversationId = state.conversationId;
     const toolName = payloadInfo.toolName;
     if (conversationId === undefined || toolName === undefined) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
       return allowPostToolUseOutput();
     }
 
-    const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
-    await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult, this.options.env);
+    const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.runtimeEnvironment);
+    await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult, this.runtimeEnvironment);
     if (!configResult.ok) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
       return allowPostToolUseOutput();
     }
     const config = configResult.config;
@@ -218,7 +223,7 @@ export class CodexAdapter implements PlatformAdapter {
       toolInput,
     });
     if (state.seenToolCallIds.includes(toolCallId)) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
       return allowPostToolUseOutput();
     }
 
@@ -249,12 +254,12 @@ export class CodexAdapter implements PlatformAdapter {
       });
       markToolCallSeen(state, toolCallId);
     } catch {
-      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state, this.options.env);
-        await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
+      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state, this.runtimeEnvironment);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
       return allowPostToolUseOutput();
     }
 
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
+    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.runtimeEnvironment);
     return allowPostToolUseOutput();
   }
 
@@ -267,7 +272,7 @@ export class CodexAdapter implements PlatformAdapter {
     return new NamsMemoryService({
       ...config,
       ...(this.options.fetch !== undefined ? { fetch: this.options.fetch } : {}),
-      onRequest: (event) => appendNamsRequestLog(invocation, projectDirectory, state, event, config.apiKey, this.options.env),
+      onRequest: (event) => appendNamsRequestLog(invocation, projectDirectory, state, event, config.apiKey, this.runtimeEnvironment),
     });
   }
 }
@@ -462,7 +467,7 @@ async function appendNamsConfigDiagnostic(
   projectDirectory: string,
   state: SessionState,
   result: NamsConfigLoadResult,
-  env: Record<string, string | undefined> | undefined,
+  runtimeEnvironment: RuntimeEnvironment,
 ): Promise<void> {
   await appendCodexDiagnosticLog({
     platform: invocation.platform,
@@ -470,7 +475,7 @@ async function appendNamsConfigDiagnostic(
     projectDirectory,
     state,
     payload: configDiagnosticPayload(result),
-    env,
+    runtimeEnvironment,
   });
 }
 
@@ -478,7 +483,7 @@ async function appendNamsFailureDiagnostic(
   invocation: HookInvocation,
   projectDirectory: string,
   state: SessionState,
-  env: Record<string, string | undefined> | undefined,
+  runtimeEnvironment: RuntimeEnvironment,
 ): Promise<void> {
   await appendCodexDiagnosticLog({
     platform: invocation.platform,
@@ -486,7 +491,7 @@ async function appendNamsFailureDiagnostic(
     projectDirectory,
     state,
     payload: { message: "NAMS request failed" },
-    env,
+    runtimeEnvironment,
   });
 }
 
@@ -496,7 +501,7 @@ async function appendNamsRequestLog(
   state: SessionState,
   payload: NamsRequestEvent,
   apiKey: string,
-  env: Record<string, string | undefined> | undefined,
+  runtimeEnvironment: RuntimeEnvironment,
 ): Promise<void> {
   try {
     await appendPlatformLog({
@@ -505,7 +510,7 @@ async function appendNamsRequestLog(
       kind: "nams.request",
       projectDirectory,
       payload: sanitizeNamsRequestLogPayload(payload, apiKey) as Record<string, unknown>,
-      env,
+      runtimeEnvironment,
       sessionCreatedAt: state.createdAt,
       sessionKey: state.sessionKey,
     });
@@ -560,7 +565,7 @@ async function appendRawPlatformLog(
   invocation: HookInvocation,
   projectDirectory: string,
   state: SessionState,
-  env: Record<string, string | undefined> | undefined,
+  runtimeEnvironment: RuntimeEnvironment,
 ): Promise<void> {
   try {
     await appendPlatformLog({
@@ -568,7 +573,7 @@ async function appendRawPlatformLog(
       event: invocation.event,
       kind: "hook.event",
       payload: invocation.rawPayload,
-      env,
+      runtimeEnvironment,
       projectDirectory,
       sessionCreatedAt: state.createdAt,
       sessionKey: state.sessionKey,
@@ -584,7 +589,7 @@ async function appendCodexDiagnosticLog(entry: {
   projectDirectory: string;
   state: SessionState;
   payload: Record<string, unknown>;
-  env: Record<string, string | undefined> | undefined;
+  runtimeEnvironment: RuntimeEnvironment;
 }): Promise<void> {
   try {
     await appendPlatformLog({
@@ -593,7 +598,7 @@ async function appendCodexDiagnosticLog(entry: {
       kind: "diagnostic",
       projectDirectory: entry.projectDirectory,
       payload: entry.payload,
-      env: entry.env,
+      runtimeEnvironment: entry.runtimeEnvironment,
       sessionCreatedAt: entry.state.createdAt,
       sessionKey: entry.state.sessionKey,
     });

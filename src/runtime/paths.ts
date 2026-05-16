@@ -2,30 +2,87 @@ import path from "node:path";
 import type { Platform } from "../interfaces.js";
 import { sha256 } from "./hashing.js";
 
-type RuntimeEnv = Record<string, string | undefined>;
+export type RuntimeEnvironmentValues = Record<string, string | undefined>;
+export type RuntimeEnvironmentInput = RuntimeEnvironment | RuntimeEnvironmentValues | undefined;
 
-export function resolveNamsHome(env: RuntimeEnv = process.env): string {
-  const home = firstNonBlank(env.HOME, env.USERPROFILE);
-  if (home === undefined) {
-    throw new Error("Unable to resolve NAMS home directory from HOME or USERPROFILE");
+export class RuntimeEnvironment {
+  static from(input: RuntimeEnvironmentInput = process.env): RuntimeEnvironment {
+    if (input instanceof RuntimeEnvironment) {
+      return input;
+    }
+    return new RuntimeEnvironment(input ?? process.env);
   }
-  return path.join(home, ".nams");
+
+  static fromProcess(): RuntimeEnvironment {
+    return new RuntimeEnvironment(process.env);
+  }
+
+  private constructor(private readonly values: RuntimeEnvironmentValues) {}
+
+  value(name: string): string | undefined {
+    return firstNonBlank(this.values[name]);
+  }
+
+  homeDirectory(): string | undefined {
+    return this.value("HOME") ?? this.value("USERPROFILE");
+  }
+
+  namsHome(): string | undefined {
+    const home = this.homeDirectory();
+    return home === undefined ? undefined : path.join(home, ".nams");
+  }
+
+  requireNamsHome(): string {
+    const namsHome = this.namsHome();
+    if (namsHome === undefined) {
+      throw new Error("Unable to resolve NAMS home directory from HOME or USERPROFILE");
+    }
+    return namsHome;
+  }
+
+  globalConfigPath(): string | undefined {
+    const namsHome = this.namsHome();
+    return namsHome === undefined ? undefined : path.join(namsHome, "config.json");
+  }
+
+  projectConfigPath(projectDirectory: string): string {
+    return path.join(projectDirectory, ".nams", "config.json");
+  }
+
+  sessionStatePath(platform: Platform, sessionKey: string): string {
+    return path.join(this.requireNamsHome(), "state", platform, `${sha256(sessionKey)}.json`);
+  }
+
+  platformLogDirectory(platform: Platform): string {
+    return path.join(this.requireNamsHome(), "logs", platform);
+  }
 }
 
-export function globalConfigPath(env: RuntimeEnv = process.env): string {
-  return path.join(resolveNamsHome(env), "config.json");
+export function resolveNamsHome(environment: RuntimeEnvironmentInput = process.env): string {
+  return RuntimeEnvironment.from(environment).requireNamsHome();
+}
+
+export function globalConfigPath(environment: RuntimeEnvironmentInput = process.env): string {
+  return path.join(resolveNamsHome(environment), "config.json");
 }
 
 export function projectConfigPath(projectDirectory: string): string {
   return path.join(projectDirectory, ".nams", "config.json");
 }
 
-export function sessionStatePath(platform: Platform, sessionKey: string, env: RuntimeEnv = process.env): string {
-  return path.join(resolveNamsHome(env), "state", platform, `${sha256(sessionKey)}.json`);
+export function sessionStatePath(
+  platform: Platform,
+  sessionKey: string,
+  environment: RuntimeEnvironmentInput = process.env,
+): string {
+  return RuntimeEnvironment.from(environment).sessionStatePath(platform, sessionKey);
 }
 
-export function platformLogDirectory(platform: Platform, env: RuntimeEnv = process.env): string {
-  return path.join(resolveNamsHome(env), "logs", platform);
+export function platformLogDirectory(
+  platform: Platform,
+  environment: RuntimeEnvironmentInput = process.env,
+): string {
+  return RuntimeEnvironment.from(environment).platformLogDirectory(platform);
 }
 
 function firstNonBlank(...values: Array<string | undefined>): string | undefined {

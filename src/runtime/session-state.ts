@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Platform } from "../interfaces.js";
 import { sha256 } from "./hashing.js";
-import { sessionStatePath } from "./paths.js";
+import { RuntimeEnvironment, type RuntimeEnvironmentInput } from "./paths.js";
 
 export interface SessionState {
   harness: Platform;
@@ -45,11 +45,12 @@ export async function loadSessionState(
   projectDirectory: string,
   platform: Platform,
   sessionKey: string,
-  env: Record<string, string | undefined> = process.env,
+  environment: RuntimeEnvironmentInput = process.env,
 ): Promise<SessionState | null> {
   void projectDirectory;
+  const statePath = RuntimeEnvironment.from(environment).sessionStatePath(platform, sessionKey);
   try {
-    const state = JSON.parse(await readFile(sessionStatePath(platform, sessionKey, env), "utf8")) as SessionState & {
+    const state = JSON.parse(await readFile(statePath, "utf8")) as SessionState & {
       lastMemorySearchAt?: string;
     };
     if (state.lastRecallAt === undefined && typeof state.lastMemorySearchAt === "string") {
@@ -70,10 +71,10 @@ export async function saveSessionState(
   platform: Platform,
   sessionKey: string,
   state: SessionState,
-  env: Record<string, string | undefined> = process.env,
+  environment: RuntimeEnvironmentInput = process.env,
 ): Promise<void> {
   void projectDirectory;
-  const statePath = sessionStatePath(platform, sessionKey, env);
+  const statePath = RuntimeEnvironment.from(environment).sessionStatePath(platform, sessionKey);
   await mkdir(path.dirname(statePath), { recursive: true });
   await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
 }

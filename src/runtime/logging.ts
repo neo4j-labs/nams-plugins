@@ -2,21 +2,21 @@ import { mkdir, appendFile } from "node:fs/promises";
 import path from "node:path";
 import type { HookEvent, Platform } from "../interfaces.js";
 import { sha256 } from "./hashing.js";
-import { platformLogDirectory } from "./paths.js";
+import { RuntimeEnvironment, type RuntimeEnvironmentInput } from "./paths.js";
 
 export interface PlatformLogEntry {
   platform: Platform;
   event: HookEvent;
   kind?: string;
   payload: Record<string, unknown>;
-  env?: Record<string, string | undefined>;
+  runtimeEnvironment?: RuntimeEnvironmentInput;
   projectDirectory: string;
   sessionCreatedAt?: string;
   sessionKey?: string;
 }
 
 export async function appendPlatformLog(entry: PlatformLogEntry): Promise<void> {
-  const logDir = platformLogDirectory(entry.platform, entry.env);
+  const logDir = RuntimeEnvironment.from(entry.runtimeEnvironment).platformLogDirectory(entry.platform);
   const logPath = path.join(logDir, logFileName(entry));
   const logEntry = {
     timestamp: new Date().toISOString(),

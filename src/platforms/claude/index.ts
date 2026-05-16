@@ -1,8 +1,13 @@
 import type { HookInvocation, HookResult, PlatformAdapter, PlatformAdapterOptions } from "../../interfaces.js";
 import { appendPlatformLog } from "../../runtime/logging.js";
+import { RuntimeEnvironment } from "../../runtime/paths.js";
 
 export class ClaudeAdapter implements PlatformAdapter {
-  constructor(private readonly options: PlatformAdapterOptions = {}) {}
+  private readonly runtimeEnvironment: RuntimeEnvironment;
+
+  constructor(options: PlatformAdapterOptions = {}) {
+    this.runtimeEnvironment = RuntimeEnvironment.from(options.runtimeEnvironment);
+  }
 
   async startConversation(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
     await appendPlatformLog({
@@ -10,7 +15,7 @@ export class ClaudeAdapter implements PlatformAdapter {
       event: invocation.event,
       payload: invocation.rawPayload,
       projectDirectory: resolveClaudeProjectDirectory(invocation),
-      env: this.options.env,
+      runtimeEnvironment: this.runtimeEnvironment,
     });
     return { stdout: { continue: true, suppressOutput: true } };
   }

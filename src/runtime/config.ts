@@ -1,7 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { globalConfigPath, projectConfigPath } from "./paths.js";
-
-type RuntimeEnv = Record<string, string | undefined>;
+import { RuntimeEnvironment, type RuntimeEnvironmentInput } from "./paths.js";
 
 export interface NamsRuntimeConfig {
   apiKey: string;
@@ -60,27 +58,31 @@ export function configDiagnosticPayload(result: NamsConfigLoadResult): Record<st
 
 export async function loadNamsConfig(
   projectDirectory: string,
-  env: RuntimeEnv = process.env,
+  environment: RuntimeEnvironmentInput = process.env,
 ): Promise<NamsConfigLoadResult> {
+  const runtimeEnvironment = RuntimeEnvironment.from(environment);
   const accumulated: Partial<NamsRuntimeConfig> = {};
   const sources: NamsConfigSources = {
     apiKey: "missing",
     baseUrl: "default",
   };
 
-  const globalResult = await readGlobalJsonConfig(env);
+  const globalResult = await readGlobalJsonConfig(runtimeEnvironment);
   if (!globalResult.ok) {
     return invalidJsonResult(globalResult.source);
   }
   applyJsonConfig(accumulated, sources, globalResult.config, "global:~/.nams/config.json");
 
-  const projectResult = await readJsonConfig(projectConfigPath(projectDirectory), "project:.nams/config.json");
+  const projectResult = await readJsonConfig(
+    runtimeEnvironment.projectConfigPath(projectDirectory),
+    "project:.nams/config.json",
+  );
   if (!projectResult.ok) {
     return invalidJsonResult(projectResult.source, sources);
   }
   applyJsonConfig(accumulated, sources, projectResult.config, "project:.nams/config.json");
 
-  applyEnvConfig(accumulated, sources, env);
+  applyEnvironmentOverrides(accumulated, sources, runtimeEnvironment);
 
   if (accumulated.apiKey === undefined) {
     return {
@@ -148,11 +150,12 @@ async function readJsonConfig(path: string, source: JsonConfigSource): Promise<J
   };
 }
 
-async function readGlobalJsonConfig(env: RuntimeEnv): Promise<JsonConfigReadResult> {
-  if (nonBlankString(env.HOME) === undefined && nonBlankString(env.USERPROFILE) === undefined) {
+async function readGlobalJsonConfig(runtimeEnvironment: RuntimeEnvironment): Promise<JsonConfigReadResult> {
+  const configPath = runtimeEnvironment.globalConfigPath();
+  if (configPath === undefined) {
     return { ok: true, config: {} };
   }
-  return readJsonConfig(globalConfigPath(env), "global:~/.nams/config.json");
+  return readJsonConfig(configPath, "global:~/.nams/config.json");
 }
 
 function invalidJsonResult(errorSource: JsonConfigSource, sources: NamsConfigSources = defaultSources()): NamsConfigLoadResult {
@@ -187,18 +190,18 @@ function applyJsonConfig(
   }
 }
 
-function applyEnvConfig(
+function applyEnvironmentOverrides(
   accumulated: Partial<NamsRuntimeConfig>,
   sources: NamsConfigSources,
-  env: RuntimeEnv,
+  runtimeEnvironment: RuntimeEnvironment,
 ): void {
-  const apiKey = nonBlankString(env.NAMS_API_KEY);
+  const apiKey = runtimeEnvironment.value("NAMS_API_KEY");
   if (apiKey !== undefined) {
     accumulated.apiKey = apiKey;
     sources.apiKey = "env:NAMS_API_KEY";
   }
 
-  const baseUrl = nonBlankString(env.NAMS_BASE_URL);
+  const baseUrl = runtimeEnvironment.value("NAMS_BASE_URL");
   if (baseUrl !== undefined) {
     accumulated.baseUrl = baseUrl;
     sources.baseUrl = "env:NAMS_BASE_URL";
