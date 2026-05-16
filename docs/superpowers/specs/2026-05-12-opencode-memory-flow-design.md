@@ -1,9 +1,8 @@
 # OpenCode Memory Flow Design
 
 Date: 2026-05-12
-Status: Proposed design
+Status: Implemented design
 Repository: nams-hooks
-Baseline branch: devel at 16af023
 
 ## Summary
 
@@ -11,7 +10,7 @@ Add OpenCode as the next full NAMS memory-flow integration, using the existing G
 
 OpenCode does not expose Gemini-style command hooks. The integration should use a small project-local OpenCode plugin shim under `.opencode/plugins/` that translates OpenCode plugin hooks into the existing `nams-hooks run <platform> --event <event>` gateway. The CLI continues to parse only the platform and typed event, read stdin as opaque JSON, and dispatch through the static adapter registry. OpenCode-specific payload interpretation stays inside `src/platforms/opencode/`.
 
-The first implementation should match Gemini's completed integration level for the reliable surfaces OpenCode exposes: session-scoped local state and logs, lazy NAMS conversation creation, first-response recall, user-message persistence, best-effort assistant text persistence, and tool-call metadata persistence. It should not persist hidden chain-of-thought or depend on OpenCode internals.
+The first implementation should match Gemini's completed integration level for the reliable surfaces OpenCode exposes: user-local session state and session-scoped logs, lazy NAMS conversation creation, first-response recall, user-message persistence, best-effort assistant text persistence, and tool-call metadata persistence. It should not persist hidden chain-of-thought or depend on OpenCode internals.
 
 ## Source Inputs
 
@@ -34,7 +33,7 @@ The OpenCode docs referenced above were checked on 2026-05-12. They describe loc
 - Keep the CLI as an opaque gateway; it must not parse OpenCode hook payloads.
 - Use a project-level OpenCode plugin shim for the first implementation.
 - Preserve zero runtime npm dependencies for the hook runtime and release artifacts.
-- Use OpenCode `session.created` only to initialize local state and session logs.
+- Use OpenCode `session.created` only to initialize user-local state and session logs.
 - Create NAMS conversations lazily when the first user message is observed.
 - Recall memory before OpenCode sends the first model request for a session.
 - Inject recalled context through `experimental.chat.system.transform`, not by rewriting user text.
@@ -42,7 +41,7 @@ The OpenCode docs referenced above were checked on 2026-05-12. They describe loc
 - Persist assistant text best-effort from `experimental.text.complete`.
 - Persist tool-call metadata from `tool.execute.after`.
 - Store tool output only when OpenCode exposes it cleanly as the tool hook output.
-- Keep secrets, session state, and logs under project-local `.nams/`.
+- Keep persistent config, session state, and logs under user-local `~/.nams/`, with optional project overrides in `.nams/config.json`.
 - Continue the agent run when NAMS config, NAMS requests, or local logging fail.
 
 ## Non-Goals
@@ -104,7 +103,7 @@ Reuse the existing semantic hook events instead of adding OpenCode-specific even
 
 | OpenCode hook | NAMS event | Purpose |
 |---|---|---|
-| `event` with `session.created` | `SessionStart` | Initialize local state and session log only. |
+| `event` with `session.created` | `SessionStart` | Initialize user-local state and session log only. |
 | `chat.message` | `BeforeAgent` | Create/reuse NAMS conversation, recall memory, persist user message, store pending context. |
 | `experimental.chat.system.transform` | `BeforeAgent` | Consume pending context for the session and return it for system prompt injection. |
 | `experimental.text.complete` | `AfterAgent` | Persist completed assistant text best-effort. |
@@ -167,7 +166,7 @@ No OpenCode payload field should be read outside the OpenCode adapter.
 
 ### Session State
 
-Reuse `.nams/state/sessions/<platform>/<session-key>.json` with platform `opencode`.
+Reuse `~/.nams/state/<platform>/<session-hash>.json` with platform `opencode`.
 
 OpenCode session key selection:
 
@@ -194,7 +193,7 @@ Existing hash-based duplicate suppression remains the fallback.
 OpenCode should use the same session-scoped log naming as Gemini:
 
 ```text
-.nams/logs/session-<created-at>-<session-part>.jsonl
+~/.nams/logs/opencode/session-<created-at>-<session-part>.jsonl
 ```
 
 Records should include:
@@ -256,7 +255,7 @@ Hook payload logs should preserve raw OpenCode plugin input and output for local
 
 All OpenCode plugin hooks should be best-effort and non-blocking.
 
-If `NAMS_API_KEY` is missing, the adapter logs `NAMS_API_KEY missing`, saves conservative state, and returns allow output.
+If `apiKey` is missing after JSON config and environment overlays, the adapter logs a fixed sanitized diagnostic, saves conservative state, and returns allow output.
 
 If NAMS recall fails, the adapter should still attempt user-message persistence when possible. If persistence fails after recall succeeded, it may still return recalled context for injection, matching Gemini behavior.
 
@@ -291,7 +290,7 @@ Core tests:
 - `SessionStart` initializes state without creating a NAMS conversation.
 - `chat.message` creates a conversation, recalls memory, stores the user prompt, and stores pending context.
 - `experimental.chat.system.transform` returns and consumes pending context.
-- Missing `NAMS_API_KEY` and NAMS failures allow OpenCode to continue.
+- Missing `apiKey` and NAMS failures allow OpenCode to continue.
 - `experimental.text.complete` stores assistant text and deduplicates replayed parts.
 - `tool.execute.after` stores a reasoning step plus sanitized tool metadata and deduplicates replayed calls.
 - OpenCode session logs keep hook, NAMS request, and diagnostic records together.

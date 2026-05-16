@@ -6,7 +6,7 @@ Repository: nams-hooks
 
 ## Summary
 
-`nams-hooks` is a standalone Node.js integration layer that connects local agent harness hooks to the Neo4j Agent Memory Service (NAMS) REST API. Its hook runtime and generated release artifacts have zero runtime npm dependencies and use Node.js built-ins only, while the source repository may use dev-only build, generation, and test tooling. The first iteration supports macOS for Codex, Claude Code, and Gemini CLI. OpenCode has a SessionStart walking skeleton through a project-level plugin. Codex, Claude, and OpenCode use project-level installs; Gemini uses extension distribution. Runtime configuration, state, and logs live under user-level `~/.nams/`, with optional project overrides in `.nams/config.json`.
+`nams-hooks` is a standalone Node.js integration layer that connects local agent harness hooks to the Neo4j Agent Memory Service (NAMS) REST API. Its hook runtime and generated release artifacts have zero runtime npm dependencies and use Node.js built-ins only, while the source repository may use dev-only build, generation, and test tooling. The first iteration supports macOS for Codex, Claude Code, Gemini CLI, and OpenCode. Codex, Claude, and OpenCode use project-level installs; Gemini uses extension distribution. Runtime configuration, state, and logs live under user-level `~/.nams/`, with optional project overrides in `.nams/config.json`.
 
 The hook runner owns deterministic memory persistence. Agents receive recalled context, but they are not responsible for deciding whether to write memory. The runner stores conversation messages, recalls relevant memory before agent work, and records limited tool metadata through NAMS REST endpoints.
 
@@ -23,7 +23,7 @@ The hook runner owns deterministic memory persistence. Agents receive recalled c
 ## Goals
 
 - Provide deterministic memory behavior through harness hooks and REST API calls.
-- Support Codex, Claude Code, Gemini CLI, and an OpenCode SessionStart walking skeleton on macOS in v1.
+- Support Codex, Claude Code, Gemini CLI, and OpenCode memory flows on macOS in v1.
 - Keep runtime configuration, state, and logs under user-level `~/.nams/`, while preserving project-scoped harness installation and optional project config overrides.
 - Use plain Node.js built-in modules only in runtime code and generated release artifacts. No runtime npm dependencies.
 - Allow dev-only dependencies for TypeScript compilation, code generation, architecture checks, and test support when they do not create additional runtime package installation requirements or runtime imports.
@@ -332,7 +332,7 @@ Session start:
 - CLI reads raw hook JSON without interpreting platform-specific fields.
 - CLI dispatches to `adapter.startConversation(invocation)` through the static platform registry.
 - The platform adapter initializes local state if a stable session key is available.
-- Optionally create the NAMS conversation early if configured.
+- Do not create the NAMS conversation during `SessionStart`.
 - Return harness-specific empty or context-safe JSON.
 
 User prompt submit or before-agent:
@@ -384,15 +384,17 @@ Codex:
 - The repository template must use Codex's command-hook group shape for `SessionStart`:
   `{ "matcher": "startup|resume", "hooks": [{ "type": "command", "command": "nams-hooks run codex --event SessionStart", "statusMessage": "Loading session notes" }] }`.
   Do not use the stale short-form object that places `command` directly under `SessionStart`.
-- Use `SessionStart`, `UserPromptSubmit`, and `Stop`.
-- Tool-level capture is included only if the installed Codex version exposes supported tool hooks.
+- Use `SessionStart`, `UserPromptSubmit`, `Stop`, and `PostToolUse`, mapped to NAMS `SessionStart`, `BeforeAgent`, `AfterAgent`, and `AfterTool`.
+- Tool-level capture is best-effort for exposed `PostToolUse` payloads and clear transcript-derived tool records.
 - `doctor` should identify missing or partial Codex hook support and report it clearly.
 
 OpenCode:
 
 - Use a project-level `.opencode/plugins/nams-hooks.js` plugin.
-- The walking skeleton listens to OpenCode `session.created` events and invokes `nams-hooks run opencode --event SessionStart`.
-- The initial adapter logs the plugin-supplied raw payload and keeps later message, tool, and recall behavior out of scope until OpenCode event payload contracts are sampled.
+- The plugin maps `session.created`, `chat.message`, `experimental.chat.system.transform`, `experimental.text.complete`, and `tool.execute.after` to NAMS `SessionStart`, `BeforeAgent`, `AfterAgent`, and `AfterTool`.
+- `chat.message` creates or reuses the NAMS conversation, recalls memory, persists user messages, and stores pending context for system prompt injection.
+- `experimental.text.complete` persists exposed assistant text best-effort.
+- `tool.execute.after` persists sanitized tool metadata and exposed tool output.
 
 ## Duplicate Suppression
 
@@ -477,14 +479,15 @@ Fixture tests:
 
 - Claude: `SessionStart`, `UserPromptSubmit`, `PostToolUse`, `Stop`
 - Gemini: `SessionStart`, `BeforeAgent`, `AfterTool`, `AfterAgent`
-- Codex: `SessionStart`, `UserPromptSubmit`, `Stop`; tool hooks only when supported by the installed version
+- Codex: `SessionStart`, `UserPromptSubmit`, `Stop`, `PostToolUse`
+- OpenCode: `session.created`, `chat.message`, `experimental.chat.system.transform`, `experimental.text.complete`, `tool.execute.after`
 
 ## Gateway Interfaces
 
-The first shared interface is `startConversation`, driven by a typed hook event:
+The shared interface is driven by typed NAMS lifecycle events:
 
 ```ts
-export const hookEvents = ["SessionStart"] as const;
+export const hookEvents = ["SessionStart", "BeforeAgent", "AfterAgent", "AfterTool"] as const;
 export type HookEvent = (typeof hookEvents)[number];
 
 export interface HookInvocation<E extends HookEvent = HookEvent> {
@@ -500,10 +503,13 @@ export interface HookResult {
 
 export interface PlatformAdapter {
   startConversation(invocation: HookInvocation<"SessionStart">): Promise<HookResult>;
+  beforeAgent?(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult>;
+  afterAgent?(invocation: HookInvocation<"AfterAgent">): Promise<HookResult>;
+  afterTool?(invocation: HookInvocation<"AfterTool">): Promise<HookResult>;
 }
 ```
 
-The CLI validates `--event` against `hookEvents`, routes `SessionStart` to `startConversation`, and prints the returned `stdout`. As additional hook events are added, `hookEvents` and `PlatformAdapter` grow deliberately so TypeScript forces routing and adapter coverage.
+The CLI validates `--event` against `hookEvents`, routes each typed event to the corresponding adapter method, and prints the returned `stdout`. Harness-native hook names stay in templates and platform adapters; `invocation.event` remains the NAMS event source of truth.
 
 Installer tests:
 
@@ -537,7 +543,7 @@ Manual validation:
 Approved decisions from brainstorming:
 
 - Standalone `nams-hooks` repo.
-- First iteration: Codex, Claude Code, Gemini CLI, and an OpenCode SessionStart walking skeleton on macOS.
+- First iteration: Codex, Claude Code, Gemini CLI, and OpenCode on macOS.
 - User-level runtime state and logs under `~/.nams/`.
 - Project-level installs for Codex, Claude, and OpenCode; Gemini extension distribution for v1.
 - Plain Node.js with built-in modules only.
