@@ -1,6 +1,6 @@
 # TODO
 
-- [ ] Interate the opencode walking skeleton scaffold - and eliminate unnecesarry constraints when adding a new platform to the hooks. Adding opencode required quite a few changes that didn't seem required.
+- [ ] Interate the opencode walking skeleton scaffold - and eliminate unnecesarry constraints when adding a new platform to the hooks. Adding opencode required quite a few changes that didn't seem required (based on this PR https://github.com/kubamarchwicki/nams-hooks/pull/5)
 - [ ] Additional header identifing a platform for platform diagnostics and statistics
 - [ ] Redacting logs 
 - [ ] Implement `NAMS_LOG_LEVEL` to skip logging HTTP calls, requests, and responses or limit the verbosity
