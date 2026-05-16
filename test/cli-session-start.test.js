@@ -14,6 +14,7 @@ function runCliWithEvent(harness, event, payload, cwd) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [cliPath, "run", harness, "--event", event], {
       cwd,
+      env: { ...process.env, HOME: testHome(cwd) },
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
@@ -42,6 +43,7 @@ function runCliWithoutEvent(harness, payload, cwd) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [cliPath, "run", harness], {
       cwd,
+      env: { ...process.env, HOME: testHome(cwd) },
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
@@ -60,6 +62,10 @@ function runCliWithoutEvent(harness, payload, cwd) {
     });
     child.stdin.end(`${JSON.stringify(payload)}\n`);
   });
+}
+
+function testHome(cwd) {
+  return path.join(cwd, "home");
 }
 
 for (const harness of ["gemini", "claude", "codex", "opencode"]) {
@@ -132,7 +138,7 @@ test("writes fallback logs under child process cwd when payload omits cwd", asyn
   }
 });
 
-test("opencode writes session log and state under directory when cwd is also present", async () => {
+test("opencode writes session log under directory and state under HOME when cwd is also present", async () => {
   const cwdDir = await mkdtemp(path.join(tmpdir(), "nams-hooks-cwd-"));
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-hooks-project-"));
   try {
@@ -148,8 +154,7 @@ test("opencode writes session log and state under directory when cwd is also pre
     assert.equal(result.code, 0, result.stderr);
     const entry = JSON.parse((await readFile(await singleSessionLogPath(projectDir), "utf8")).trim());
     assert.deepEqual(entry.payload, payload);
-    assert.equal((await sessionStateFiles(projectDir, "opencode")).length, 1);
-    assert.deepEqual(await sessionStateFiles(cwdDir, "opencode"), []);
+    assert.equal((await sessionStateFiles(testHome(cwdDir), "opencode")).length, 1);
   } finally {
     await rm(cwdDir, { recursive: true, force: true });
     await rm(projectDir, { recursive: true, force: true });
@@ -280,7 +285,7 @@ async function singleSessionLogPath(projectDir) {
 
 async function sessionStateFiles(projectDir, harness) {
   try {
-    return await readdir(path.join(projectDir, ".nams", "state", "sessions", harness));
+    return await readdir(path.join(projectDir, ".nams", "state", harness));
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
       return [];

@@ -29,10 +29,11 @@ export class OpenCodeAdapter implements PlatformAdapter {
       sessionId: payloadInfo.sessionId,
     });
     const state =
-      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
+      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey, this.options.env)) ??
+      initialState;
 
     await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
 
     return allowOutput();
   }
@@ -40,7 +41,7 @@ export class OpenCodeAdapter implements PlatformAdapter {
   async beforeAgent(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult> {
     const payloadInfo = parseOpenCodePayload(invocation.rawPayload, invocation.processCwd);
     if (payloadInfo.hookName === "experimental.chat.system.transform") {
-      return consumePendingContext(invocation, payloadInfo);
+      return consumePendingContext(invocation, payloadInfo, this.options.env);
     }
     if (payloadInfo.hookName !== "chat.message") {
       return allowOutput();
@@ -52,20 +53,21 @@ export class OpenCodeAdapter implements PlatformAdapter {
       sessionId: payloadInfo.sessionId,
     });
     const state =
-      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
+      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey, this.options.env)) ??
+      initialState;
     await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
     state.seenUserMessageIds ??= [];
 
     const userPrompt = payloadInfo.userPrompt;
     if (userPrompt === undefined || userPrompt.trim() === "") {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowOutput();
     }
 
     const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
     if (!configResult.ok) {
       await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowOutput();
     }
     const config = configResult.config;
@@ -107,7 +109,7 @@ export class OpenCodeAdapter implements PlatformAdapter {
       }
 
       if (hasSeenUserMessage(state, payloadInfo.messageId, invocation.platform, userPrompt)) {
-        await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+        await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
         return allowOutput();
       }
 
@@ -115,11 +117,11 @@ export class OpenCodeAdapter implements PlatformAdapter {
       markUserMessageSeen(state, payloadInfo.messageId, invocation.platform, userPrompt);
     } catch {
       await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowOutput();
     }
 
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
     return allowOutput();
   }
 
@@ -131,31 +133,32 @@ export class OpenCodeAdapter implements PlatformAdapter {
       sessionId: payloadInfo.sessionId,
     });
     const state =
-      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
+      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey, this.options.env)) ??
+      initialState;
     await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
     state.seenAssistantPartIds ??= [];
     state.seenAssistantMessageHashes ??= [];
 
     if (payloadInfo.hookName !== "experimental.text.complete") {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowOutput();
     }
 
     if (state.conversationId === undefined) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowOutput();
     }
 
     const assistantText = payloadInfo.assistantText?.trim();
     if (assistantText === undefined || assistantText === "") {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowOutput();
     }
 
     const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
     if (!configResult.ok) {
       await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowOutput();
     }
     const config = configResult.config;
@@ -165,7 +168,7 @@ export class OpenCodeAdapter implements PlatformAdapter {
       const assistantPartId = assistantPartKey(payloadInfo);
       if (assistantPartId !== undefined) {
         if (state.seenAssistantPartIds.includes(assistantPartId)) {
-          await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+          await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
           return allowOutput();
         }
 
@@ -180,11 +183,11 @@ export class OpenCodeAdapter implements PlatformAdapter {
       }
     } catch {
       await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowOutput();
     }
 
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
     return allowOutput();
   }
 
@@ -196,31 +199,32 @@ export class OpenCodeAdapter implements PlatformAdapter {
       sessionId: payloadInfo.sessionId,
     });
     const state =
-      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
+      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey, this.options.env)) ??
+      initialState;
     await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
     state.seenToolCallIds ??= [];
     state.seenReasoningStepHashes ??= [];
     state.reasoningStepIdsByHash ??= {};
 
     if (state.conversationId === undefined) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowOutput();
     }
 
     if (payloadInfo.hookName !== "tool.execute.after") {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowOutput();
     }
 
     if (payloadInfo.toolName === undefined || payloadInfo.toolName.trim() === "") {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowOutput();
     }
 
     const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
     if (!configResult.ok) {
       await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowOutput();
     }
     const config = configResult.config;
@@ -264,11 +268,11 @@ export class OpenCodeAdapter implements PlatformAdapter {
       }
     } catch {
       await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowOutput();
     }
 
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
     return allowOutput();
   }
 
@@ -293,6 +297,7 @@ function allowOutput(): HookResult {
 async function consumePendingContext(
   invocation: HookInvocation<"BeforeAgent">,
   payloadInfo: OpenCodePayloadInfo,
+  env: Record<string, string | undefined> | undefined,
 ): Promise<HookResult> {
   const initialState = createInitialSessionState({
     platform: invocation.platform,
@@ -300,17 +305,17 @@ async function consumePendingContext(
     sessionId: payloadInfo.sessionId,
   });
   const state =
-    (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
+    (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey, env)) ?? initialState;
   await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
 
   const pendingContext = state.pendingMemoryContext;
   if (pendingContext === undefined) {
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, env);
     return allowOutput();
   }
 
   delete state.pendingMemoryContext;
-  await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+  await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, env);
   return {
     stdout: {
       continue: true,

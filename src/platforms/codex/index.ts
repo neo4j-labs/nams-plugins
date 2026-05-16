@@ -38,9 +38,10 @@ export class CodexAdapter implements PlatformAdapter {
       projectDirectory: payloadInfo.projectDirectory,
     });
     const state =
-      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
+      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey, this.options.env)) ??
+      initialState;
     await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
 
     return { stdout: { continue: true, suppressOutput: true } };
   }
@@ -53,18 +54,19 @@ export class CodexAdapter implements PlatformAdapter {
       projectDirectory: payloadInfo.projectDirectory,
     });
     const state =
-      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
+      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey, this.options.env)) ??
+      initialState;
     await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
 
     if (payloadInfo.prompt === undefined) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowOutput();
     }
 
     const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
     if (!configResult.ok) {
       await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowOutput();
     }
     const config = configResult.config;
@@ -108,11 +110,11 @@ export class CodexAdapter implements PlatformAdapter {
       }
     } catch {
       await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowOutput(additionalContext);
     }
 
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
     return allowOutput(additionalContext);
   }
 
@@ -124,7 +126,8 @@ export class CodexAdapter implements PlatformAdapter {
       projectDirectory: payloadInfo.projectDirectory,
     });
     const state =
-      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
+      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey, this.options.env)) ??
+      initialState;
     await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
     state.seenAssistantMessageHashes ??= [];
     state.seenTranscriptEntryIds ??= [];
@@ -133,7 +136,7 @@ export class CodexAdapter implements PlatformAdapter {
     state.reasoningStepIdsByHash ??= {};
 
     if (state.conversationId === undefined) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowOutput();
     }
     const conversationId = state.conversationId;
@@ -141,7 +144,7 @@ export class CodexAdapter implements PlatformAdapter {
     const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
     if (!configResult.ok) {
       await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowOutput();
     }
     const config = configResult.config;
@@ -173,11 +176,11 @@ export class CodexAdapter implements PlatformAdapter {
       }
     } catch {
       await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowOutput();
     }
 
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
     return allowOutput();
   }
 
@@ -189,7 +192,8 @@ export class CodexAdapter implements PlatformAdapter {
       projectDirectory: payloadInfo.projectDirectory,
     });
     const state =
-      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
+      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey, this.options.env)) ??
+      initialState;
     await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
     state.seenToolCallIds ??= [];
     state.seenReasoningStepHashes ??= [];
@@ -198,14 +202,14 @@ export class CodexAdapter implements PlatformAdapter {
     const conversationId = state.conversationId;
     const toolName = payloadInfo.toolName;
     if (conversationId === undefined || toolName === undefined) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowPostToolUseOutput();
     }
 
     const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
     if (!configResult.ok) {
       await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowPostToolUseOutput();
     }
     const config = configResult.config;
@@ -219,7 +223,7 @@ export class CodexAdapter implements PlatformAdapter {
       toolInput,
     });
     if (state.seenToolCallIds.includes(toolCallId)) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowPostToolUseOutput();
     }
 
@@ -251,11 +255,11 @@ export class CodexAdapter implements PlatformAdapter {
       markToolCallSeen(state, toolCallId);
     } catch {
       await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+        await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowPostToolUseOutput();
     }
 
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
     return allowPostToolUseOutput();
   }
 
