@@ -64,8 +64,8 @@ export class CodexAdapter implements PlatformAdapter {
     }
 
     const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
+    await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult, this.options.env);
     if (!configResult.ok) {
-      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult, this.options.env);
       await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowOutput();
     }
@@ -142,8 +142,8 @@ export class CodexAdapter implements PlatformAdapter {
     const conversationId = state.conversationId;
 
     const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
+    await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult, this.options.env);
     if (!configResult.ok) {
-      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult, this.options.env);
       await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowOutput();
     }
@@ -207,8 +207,8 @@ export class CodexAdapter implements PlatformAdapter {
     }
 
     const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
+    await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult, this.options.env);
     if (!configResult.ok) {
-      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult, this.options.env);
       await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state, this.options.env);
       return allowPostToolUseOutput();
     }

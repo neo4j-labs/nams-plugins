@@ -146,6 +146,14 @@ test("creates Codex conversation, recalls memory, returns context, and stores Us
 
     const { lines } = await readSingleSessionLog(projectDir);
     assert.equal(lines[0].kind, "hook.event");
+    const configDiagnostics = lines.filter(
+      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS config loaded",
+    );
+    assert.equal(configDiagnostics.length, 1);
+    assert.deepEqual(configDiagnostics[0].payload.configSources, {
+      apiKey: "env:NAMS_API_KEY",
+      baseUrl: "env:NAMS_BASE_URL",
+    });
     const requestEntries = lines.filter((entry) => entry.kind === "nams.request");
     assert.deepEqual(
       requestEntries.map((entry) => entry.payload.operation),
@@ -318,8 +326,9 @@ test("Codex recall failure still stores prompt and can return entity search cont
     const { lines, log } = await readSingleSessionLog(projectDir);
     assert.match(log, /NAMS request failed/);
     const diagnostics = lines.filter((entry) => entry.kind === "diagnostic");
-    assert.deepEqual(diagnostics.map((entry) => entry.payload), [{ message: "NAMS request failed" }]);
-    assert.doesNotMatch(JSON.stringify(diagnostics), /context unavailable|Authorization|Bearer|key/);
+    const failureDiagnostics = diagnostics.filter((entry) => entry.payload.message === "NAMS request failed");
+    assert.deepEqual(failureDiagnostics.map((entry) => entry.payload), [{ message: "NAMS request failed" }]);
+    assert.doesNotMatch(JSON.stringify(failureDiagnostics), /context unavailable|Authorization|Bearer|key/);
     assert.doesNotMatch(log, /Authorization|Bearer|key/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
@@ -370,8 +379,9 @@ test("Codex entity search failure still stores prompt and can return conversatio
     const { lines, log } = await readSingleSessionLog(projectDir);
     assert.match(log, /NAMS request failed/);
     const diagnostics = lines.filter((entry) => entry.kind === "diagnostic");
-    assert.deepEqual(diagnostics.map((entry) => entry.payload), [{ message: "NAMS request failed" }]);
-    assert.doesNotMatch(JSON.stringify(diagnostics), /entity search unavailable|Authorization|Bearer|key/);
+    const failureDiagnostics = diagnostics.filter((entry) => entry.payload.message === "NAMS request failed");
+    assert.deepEqual(failureDiagnostics.map((entry) => entry.payload), [{ message: "NAMS request failed" }]);
+    assert.doesNotMatch(JSON.stringify(failureDiagnostics), /entity search unavailable|Authorization|Bearer|key/);
     assert.doesNotMatch(log, /Authorization|Bearer|key/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
@@ -1073,8 +1083,9 @@ test("Codex afterAgent missing config and failed NAMS calls allow and log saniti
     const { lines: namsFailureLines, log: namsFailureLog } = await readSingleSessionLog(namsFailureDir);
     assert.match(namsFailureLog, /NAMS request failed/);
     const diagnostics = namsFailureLines.filter((entry) => entry.kind === "diagnostic");
-    assert.deepEqual(diagnostics.map((entry) => entry.payload), [{ message: "NAMS request failed" }]);
-    assert.doesNotMatch(JSON.stringify(diagnostics), /assistant write unavailable|Authorization|Bearer|key/);
+    const failureDiagnostics = diagnostics.filter((entry) => entry.payload.message === "NAMS request failed");
+    assert.deepEqual(failureDiagnostics.map((entry) => entry.payload), [{ message: "NAMS request failed" }]);
+    assert.doesNotMatch(JSON.stringify(failureDiagnostics), /assistant write unavailable|Authorization|Bearer|key/);
     assert.doesNotMatch(namsFailureLog, /Authorization|Bearer|key/);
   } finally {
     await rm(missingConfigDir, { recursive: true, force: true });
@@ -1372,9 +1383,10 @@ test("Codex afterTool missing config and failed NAMS calls allow and log sanitiz
     const { lines: namsFailureLines, log: namsFailureLog } = await readSingleSessionLog(namsFailureDir);
     assert.match(namsFailureLog, /NAMS request failed/);
     const diagnostics = namsFailureLines.filter((entry) => entry.kind === "diagnostic");
-    assert.deepEqual(diagnostics.map((entry) => entry.payload), [{ message: "NAMS request failed" }]);
-    assert.doesNotMatch(JSON.stringify(diagnostics), /plain-secret-value|Authorization|Bearer|apiKey|token/);
-    assert.doesNotMatch(namsFailureLog, /plain-secret-value|Authorization|Bearer|apiKey|token/);
+    const failureDiagnostics = diagnostics.filter((entry) => entry.payload.message === "NAMS request failed");
+    assert.deepEqual(failureDiagnostics.map((entry) => entry.payload), [{ message: "NAMS request failed" }]);
+    assert.doesNotMatch(JSON.stringify(failureDiagnostics), /plain-secret-value|Authorization|Bearer|apiKey|token/);
+    assert.doesNotMatch(namsFailureLog, /plain-secret-value|Authorization|Bearer|token/);
   } finally {
     await rm(missingConfigDir, { recursive: true, force: true });
     await rm(namsFailureDir, { recursive: true, force: true });

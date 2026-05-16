@@ -95,6 +95,16 @@ test("OpenCode chat.message creates conversation, recalls memory, and stores use
     const state = await loadSessionState(projectDir, "opencode", "session-1", testEnv(projectDir));
     assert.match(state.pendingMemoryContext.content, /User prefers fixture-driven tests\./);
     assert.equal(state.pendingMemoryContext.messageId, "user-1");
+
+    const { lines } = await readSingleSessionLog(projectDir);
+    const configDiagnostics = lines.filter(
+      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS config loaded",
+    );
+    assert.equal(configDiagnostics.length, 1);
+    assert.deepEqual(configDiagnostics[0].payload.configSources, {
+      apiKey: "env:NAMS_API_KEY",
+      baseUrl: "env:NAMS_BASE_URL",
+    });
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -262,7 +272,7 @@ test("OpenCode NAMS failure diagnostics do not include arbitrary error text", as
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
     const { log } = await readSingleSessionLog(projectDir);
     assert.match(log, /NAMS request failed/);
-    assert.doesNotMatch(log, /Authorization|Bearer|NAMS_API_KEY|do not log me/);
+    assert.doesNotMatch(log, /Authorization|Bearer|do not log me/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }

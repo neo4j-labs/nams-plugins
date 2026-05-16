@@ -95,6 +95,14 @@ test("creates Gemini conversation, recalls memory, and stores first BeforeAgent 
 
     const { lines } = await readSingleSessionLog(projectDir);
     assert.equal(lines[0].kind, "hook.event");
+    const configDiagnostics = lines.filter(
+      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS config loaded",
+    );
+    assert.equal(configDiagnostics.length, 1);
+    assert.deepEqual(configDiagnostics[0].payload.configSources, {
+      apiKey: "env:NAMS_API_KEY",
+      baseUrl: "env:NAMS_BASE_URL",
+    });
     const requestEntries = lines.filter((entry) => entry.kind === "nams.request");
     assert.deepEqual(
       requestEntries.map((entry) => entry.payload.operation),
@@ -426,7 +434,7 @@ test("Gemini NAMS failure diagnostics do not include arbitrary error text", asyn
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
     const { log } = await readSingleSessionLog(projectDir);
     assert.match(log, /NAMS request failed/);
-    assert.doesNotMatch(log, /Authorization|Bearer|NAMS_API_KEY|content secret|do not log me/);
+    assert.doesNotMatch(log, /Authorization|Bearer|content secret|do not log me/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
