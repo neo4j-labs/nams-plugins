@@ -312,8 +312,46 @@ test("Gemini BeforeAgent continues when NAMS_API_KEY is missing", async () => {
 
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
     const { log } = await readSingleSessionLog(projectDir);
-    assert.match(log, /NAMS_API_KEY missing/);
+    assert.match(log, /NAMS apiKey missing/);
     assert.doesNotMatch(log, /Bearer|key/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Gemini BeforeAgent logs invalid config diagnostics without raw JSON contents", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
+  try {
+    await mkdir(path.join(projectDir, ".nams"), { recursive: true });
+    await writeFile(path.join(projectDir, ".nams", "config.json"), '{"apiKey":"secret-config-value"', "utf8");
+    const { GeminiAdapter } = await import(geminiUrl);
+    const adapter = new GeminiAdapter({ env: { HOME: projectDir } });
+
+    const result = await adapter.beforeAgent({
+      platform: "gemini",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "Hello",
+      },
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    const { log, lines } = await readSingleSessionLog(projectDir);
+    const diagnostics = lines.filter((entry) => entry.kind === "diagnostic");
+    assert.deepEqual(diagnostics.map((entry) => entry.payload), [
+      {
+        message: "NAMS config invalid",
+        configSources: {
+          apiKey: "missing",
+          baseUrl: "default",
+        },
+        errorSource: "global:~/.nams/config.json",
+      },
+    ]);
+    assert.doesNotMatch(log, /secret-config-value/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -425,7 +463,7 @@ test("Gemini session log keeps hook events together and includes user prompt fie
     assert.equal(lines[0].kind, "hook.event");
     assert.match(log, /"event":"SessionStart"/);
     assert.match(log, /"event":"BeforeAgent"/);
-    assert.match(log, /NAMS_API_KEY missing/);
+    assert.match(log, /NAMS apiKey missing/);
     assert.match(log, /"prompt":"raw prompt text"/);
     assert.match(log, /"user_prompt":"raw snake prompt text"/);
     assert.match(log, /"userPrompt":"raw camel prompt text"/);

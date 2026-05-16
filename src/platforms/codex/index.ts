@@ -1,6 +1,11 @@
 import type { HookInvocation, HookResult, PlatformAdapter } from "../../interfaces.js";
 import type { NamsRequestEvent } from "../../generated/nams-client.js";
-import { loadNamsConfig, type NamsRuntimeConfig } from "../../runtime/config.js";
+import {
+  configDiagnosticPayload,
+  loadNamsConfig,
+  type NamsConfigLoadResult,
+  type NamsRuntimeConfig,
+} from "../../runtime/config.js";
 import { sha256 } from "../../runtime/hashing.js";
 import { appendPlatformLog } from "../../runtime/logging.js";
 import {
@@ -58,7 +63,7 @@ export class CodexAdapter implements PlatformAdapter {
 
     const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
     if (!configResult.ok) {
-      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state);
+      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult);
       await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
@@ -135,7 +140,7 @@ export class CodexAdapter implements PlatformAdapter {
 
     const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
     if (!configResult.ok) {
-      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state);
+      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult);
       await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
@@ -199,7 +204,7 @@ export class CodexAdapter implements PlatformAdapter {
 
     const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
     if (!configResult.ok) {
-      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state);
+      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state, configResult);
       await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
       return allowPostToolUseOutput();
     }
@@ -457,13 +462,14 @@ async function appendNamsConfigDiagnostic(
   invocation: HookInvocation,
   projectDirectory: string,
   state: SessionState,
+  result: NamsConfigLoadResult,
 ): Promise<void> {
   await appendCodexDiagnosticLog({
     platform: invocation.platform,
     event: invocation.event,
     projectDirectory,
     state,
-    payload: { message: "NAMS_API_KEY missing" },
+    payload: configDiagnosticPayload(result),
   });
 }
 

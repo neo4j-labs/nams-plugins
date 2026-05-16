@@ -224,8 +224,47 @@ test("missing Codex NAMS_API_KEY returns allow output and sanitized log", async 
 
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
     const { log } = await readSingleSessionLog(projectDir);
-    assert.match(log, /NAMS_API_KEY missing/);
+    assert.match(log, /NAMS apiKey missing/);
     assert.doesNotMatch(log, /Bearer|key/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Codex beforeAgent logs invalid config diagnostics without raw JSON contents", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
+  try {
+    await mkdir(path.join(projectDir, ".nams"), { recursive: true });
+    await writeFile(path.join(projectDir, ".nams", "config.json"), '{"apiKey":"secret-config-value"', "utf8");
+    const { CodexAdapter } = await import(codexUrl);
+    const adapter = new CodexAdapter({ env: { HOME: projectDir } });
+
+    const result = await adapter.beforeAgent({
+      platform: "codex",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "Hello",
+      },
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    const { log, lines } = await readSingleSessionLog(projectDir);
+    const diagnostics = lines.filter((entry) => entry.kind === "diagnostic");
+    assert.deepEqual(diagnostics.map((entry) => entry.payload), [
+      {
+        message: "NAMS config invalid",
+        configSources: {
+          apiKey: "missing",
+          baseUrl: "default",
+        },
+        errorSource: "global:~/.nams/config.json",
+      },
+    ]);
+    assert.doesNotMatch(log, /secret-config-value/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -995,7 +1034,7 @@ test("Codex afterAgent missing config and failed NAMS calls allow and log saniti
 
     assert.deepEqual(missingConfigResult.stdout, { continue: true, suppressOutput: true });
     const { log: missingConfigLog } = await readSingleSessionLog(missingConfigDir);
-    assert.match(missingConfigLog, /NAMS_API_KEY missing/);
+    assert.match(missingConfigLog, /NAMS apiKey missing/);
     assert.doesNotMatch(missingConfigLog, /Authorization|Bearer|key/);
 
     const namsFailureState = createInitialSessionState({
@@ -1292,7 +1331,7 @@ test("Codex afterTool missing config and failed NAMS calls allow and log sanitiz
 
     assert.deepEqual(missingConfigResult.stdout, { continue: true });
     const { log: missingConfigLog } = await readSingleSessionLog(missingConfigDir);
-    assert.match(missingConfigLog, /NAMS_API_KEY missing/);
+    assert.match(missingConfigLog, /NAMS apiKey missing/);
     assert.doesNotMatch(missingConfigLog, /Authorization|Bearer|test-api-key/);
 
     const nams = createNamsFetchMock().reasoningStep(

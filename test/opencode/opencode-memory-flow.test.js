@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -164,8 +164,42 @@ test("OpenCode BeforeAgent continues when NAMS_API_KEY is missing", async () => 
 
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
     const { log } = await readSingleSessionLog(projectDir);
-    assert.match(log, /NAMS_API_KEY missing/);
+    assert.match(log, /NAMS apiKey missing/);
     assert.doesNotMatch(log, /Bearer|key/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("OpenCode BeforeAgent logs invalid config diagnostics without raw JSON contents", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
+  try {
+    await mkdir(path.join(projectDir, ".nams"), { recursive: true });
+    await writeFile(path.join(projectDir, ".nams", "config.json"), '{"apiKey":"secret-config-value"', "utf8");
+    const { OpenCodeAdapter } = await import(opencodeUrl);
+    const adapter = new OpenCodeAdapter({ env: { HOME: projectDir } });
+
+    const result = await adapter.beforeAgent({
+      platform: "opencode",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: chatMessagePayload(projectDir, "session-1", "user-1", "Hello"),
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    const { log, lines } = await readSingleSessionLog(projectDir);
+    const diagnostics = lines.filter((entry) => entry.kind === "diagnostic");
+    assert.deepEqual(diagnostics.map((entry) => entry.payload), [
+      {
+        message: "NAMS config invalid",
+        configSources: {
+          apiKey: "missing",
+          baseUrl: "default",
+        },
+        errorSource: "global:~/.nams/config.json",
+      },
+    ]);
+    assert.doesNotMatch(log, /secret-config-value/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
