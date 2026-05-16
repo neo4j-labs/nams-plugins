@@ -4,14 +4,24 @@ import { test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const clientUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "generated", "nams-client.js")).href;
 const serviceUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "runtime", "memory-service.js")).href;
+
+async function createService(options) {
+  const { NamsClient } = await import(clientUrl);
+  const { NamsMemoryService } = await import(serviceUrl);
+  return new NamsMemoryService(
+    new NamsClient({
+      apiKey: "key",
+      baseUrl: "https://memory.example.test",
+      ...options,
+    }),
+  );
+}
 
 test("createConversation sends minimal Gemini metadata and returns conversation id", async () => {
   const requests = [];
-  const { NamsMemoryService } = await import(serviceUrl);
-  const service = new NamsMemoryService({
-    apiKey: "key",
-    baseUrl: "https://memory.example.test",
+  const service = await createService({
     fetch: async (url, init) => {
       requests.push({ url, init });
       return new Response(JSON.stringify({ id: "conversation-1" }), { status: 201 });
@@ -51,10 +61,7 @@ test("formatMemoryContext formats memories for Gemini additionalContext", async 
 
 test("recordToolCall serializes sanitized capped input and sends explicit tool output", async () => {
   const requests = [];
-  const { NamsMemoryService } = await import(serviceUrl);
-  const service = new NamsMemoryService({
-    apiKey: "key",
-    baseUrl: "https://memory.example.test",
+  const service = await createService({
     fetch: async (url, init) => {
       requests.push({ url, init });
       return new Response(JSON.stringify({ id: "tool-call-1" }), { status: 201 });
@@ -106,10 +113,7 @@ test("recordToolCall serializes sanitized capped input and sends explicit tool o
 
 test("recordToolCall serializes capped explicit tool output", async () => {
   const requests = [];
-  const { NamsMemoryService } = await import(serviceUrl);
-  const service = new NamsMemoryService({
-    apiKey: "key",
-    baseUrl: "https://memory.example.test",
+  const service = await createService({
     fetch: async (url, init) => {
       requests.push({ url, init });
       return new Response(JSON.stringify({ id: "tool-call-1" }), { status: 201 });

@@ -2,7 +2,7 @@ import type { HookInvocation, HookResult, PlatformAdapter } from "../../interfac
 import { appendPlatformLog } from "../../runtime/logging.js";
 
 export class ClaudeAdapter implements PlatformAdapter {
-  async startConversation(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
+  async startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
     await logClaudeInvocation(invocation);
     return allowOutput();
   }
@@ -27,8 +27,7 @@ async function logClaudeInvocation(invocation: HookInvocation): Promise<void> {
   await appendPlatformLog({
     platform: invocation.platform,
     event: invocation.event,
-    payload: invocation.rawPayload,
-    projectDirectory: resolveClaudeProjectDirectory(invocation),
+    payload: invocation.rawPayload
   });
 }
 

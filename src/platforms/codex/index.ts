@@ -1,12 +1,16 @@
 import type { HookInvocation, HookResult, PlatformAdapter } from "../../interfaces.js";
-import type { NamsRequestEvent } from "../../generated/nams-client.js";
-import { loadNamsConfig, type NamsRuntimeConfig } from "../../runtime/config.js";
+import { loadNamsConfig } from "../../runtime/config.js";
 import { sha256 } from "../../runtime/hashing.js";
-import { appendPlatformLog } from "../../runtime/logging.js";
+import {
+  appendNamsConfigDiagnostic,
+  appendNamsFailureDiagnostic,
+  appendRawPlatformLog,
+} from "../../runtime/logging.js";
 import {
   combineMemoryContexts,
-  NamsMemoryService,
+  createNamsMemoryService,
   serializeToolInput,
+  type NamsMemoryService,
 } from "../../runtime/memory-service.js";
 import {
   createInitialSessionState,
@@ -17,15 +21,8 @@ import {
 import { parseCodexPayload } from "./payload.js";
 import { readCodexTranscript, type CodexTranscriptEntry } from "./transcript.js";
 
-export interface CodexAdapterOptions {
-  env?: Record<string, string | undefined>;
-  fetch?: typeof fetch;
-}
-
 export class CodexAdapter implements PlatformAdapter {
-  constructor(private readonly options: CodexAdapterOptions = {}) {}
-
-  async startConversation(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
+  async startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
     const payloadInfo = parseCodexPayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({
       platform: invocation.platform,
@@ -33,9 +30,10 @@ export class CodexAdapter implements PlatformAdapter {
       projectDirectory: payloadInfo.projectDirectory,
     });
     const state =
-      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
-    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
+      initialState;
+    await appendRawPlatformLog(invocation, state);
+    await saveSessionState(invocation.platform, state.sessionKey, state);
 
     return { stdout: { continue: true, suppressOutput: true } };
   }
@@ -48,24 +46,26 @@ export class CodexAdapter implements PlatformAdapter {
       projectDirectory: payloadInfo.projectDirectory,
     });
     const state =
-      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
-    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
+      (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
+      initialState;
+    await appendRawPlatformLog(invocation, state);
 
     if (payloadInfo.prompt === undefined) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
-    const config = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
-    if (config === null) {
-      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
+    await appendNamsConfigDiagnostic(invocation, state, configResult);
+    if (!configResult.ok) {
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
+    const config = configResult.config;
 
     let additionalContext: string | undefined;
     try {
-      const memory = this.createMemoryService(config, invocation, payloadInfo.projectDirectory, state);
+      const memory = createNamsMemoryService(config, invocation, state);
 
       let conversationId = state.conversationId;
       if (conversationId === undefined) {
@@ -81,12 +81,12 @@ export class CodexAdapter implements PlatformAdapter {
         try {
           recallContexts.push(await memory.recall(conversationId));
         } catch {
-          await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
+          await appendNamsFailureDiagnostic(invocation, state);
         }
         try {
           recallContexts.push(await memory.searchEntities(payloadInfo.prompt));
         } catch {
-          await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
+          await appendNamsFailureDiagnostic(invocation, state);
         }
         state.lastRecallAt = new Date().toISOString();
         const recalledContext = combineMemoryContexts(recallContexts);
@@ -101,12 +101,12 @@ export class CodexAdapter implements PlatformAdapter {
         state.lastUserMessageHash = promptHash;
       }
     } catch {
-      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await appendNamsFailureDiagnostic(invocation, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput(additionalContext);
     }
 
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput(additionalContext);
   }
 
@@ -118,8 +118,9 @@ export class CodexAdapter implements PlatformAdapter {
       projectDirectory: payloadInfo.projectDirectory,
     });
     const state =
-      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
-    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
+      (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
+      initialState;
+    await appendRawPlatformLog(invocation, state);
     state.seenAssistantMessageHashes ??= [];
     state.seenTranscriptEntryIds ??= [];
     state.seenToolCallIds ??= [];
@@ -127,20 +128,21 @@ export class CodexAdapter implements PlatformAdapter {
     state.reasoningStepIdsByHash ??= {};
 
     if (state.conversationId === undefined) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
     const conversationId = state.conversationId;
 
-    const config = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
-    if (config === null) {
-      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
+    await appendNamsConfigDiagnostic(invocation, state, configResult);
+    if (!configResult.ok) {
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
+    const config = configResult.config;
 
     try {
-      const memory = this.createMemoryService(config, invocation, payloadInfo.projectDirectory, state);
+      const memory = createNamsMemoryService(config, invocation, state);
       const response = payloadInfo.lastAssistantMessage?.trim();
       if (response !== undefined && response !== "") {
         const responseDedupeHash = assistantMessageDedupeHash(
@@ -165,12 +167,12 @@ export class CodexAdapter implements PlatformAdapter {
         await recordTraceFromTranscript(conversationId, state, memory, entries);
       }
     } catch {
-      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await appendNamsFailureDiagnostic(invocation, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
   }
 
@@ -182,8 +184,9 @@ export class CodexAdapter implements PlatformAdapter {
       projectDirectory: payloadInfo.projectDirectory,
     });
     const state =
-      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
-    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
+      (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
+      initialState;
+    await appendRawPlatformLog(invocation, state);
     state.seenToolCallIds ??= [];
     state.seenReasoningStepHashes ??= [];
     state.reasoningStepIdsByHash ??= {};
@@ -191,16 +194,17 @@ export class CodexAdapter implements PlatformAdapter {
     const conversationId = state.conversationId;
     const toolName = payloadInfo.toolName;
     if (conversationId === undefined || toolName === undefined) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowPostToolUseOutput();
     }
 
-    const config = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
-    if (config === null) {
-      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
+    await appendNamsConfigDiagnostic(invocation, state, configResult);
+    if (!configResult.ok) {
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowPostToolUseOutput();
     }
+    const config = configResult.config;
 
     const toolInput = payloadInfo.toolInput ?? {};
     const toolCallId = codexToolCallId({
@@ -211,7 +215,7 @@ export class CodexAdapter implements PlatformAdapter {
       toolInput,
     });
     if (state.seenToolCallIds.includes(toolCallId)) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowPostToolUseOutput();
     }
 
@@ -222,7 +226,7 @@ export class CodexAdapter implements PlatformAdapter {
     });
 
     try {
-      const memory = this.createMemoryService(config, invocation, payloadInfo.projectDirectory, state);
+      const memory = createNamsMemoryService(config, invocation, state);
       let stepId: string | undefined = state.reasoningStepIdsByHash[reasoningHash];
       if (!state.seenReasoningStepHashes.includes(reasoningHash)) {
         stepId = await memory.recordReasoningStep({
@@ -242,27 +246,15 @@ export class CodexAdapter implements PlatformAdapter {
       });
       markToolCallSeen(state, toolCallId);
     } catch {
-      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await appendNamsFailureDiagnostic(invocation, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowPostToolUseOutput();
     }
 
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowPostToolUseOutput();
   }
 
-  private createMemoryService(
-    config: NamsRuntimeConfig,
-    invocation: HookInvocation,
-    projectDirectory: string,
-    state: SessionState,
-  ): NamsMemoryService {
-    return new NamsMemoryService({
-      ...config,
-      ...(this.options.fetch !== undefined ? { fetch: this.options.fetch } : {}),
-      onRequest: (event) => appendNamsRequestLog(invocation, projectDirectory, state, event, config.apiKey),
-    });
-  }
 }
 
 function allowOutput(additionalContext?: string): HookResult {
@@ -447,139 +439,5 @@ function markReasoningStepSeen(state: TraceState, hash: string, stepId: string |
 function markToolCallSeen(state: TraceState, toolCallId: string): void {
   if (!state.seenToolCallIds.includes(toolCallId)) {
     state.seenToolCallIds.push(toolCallId);
-  }
-}
-
-async function appendNamsConfigDiagnostic(
-  invocation: HookInvocation,
-  projectDirectory: string,
-  state: SessionState,
-): Promise<void> {
-  await appendCodexDiagnosticLog({
-    platform: invocation.platform,
-    event: invocation.event,
-    projectDirectory,
-    state,
-    payload: { message: "NAMS_API_KEY missing" },
-  });
-}
-
-async function appendNamsFailureDiagnostic(
-  invocation: HookInvocation,
-  projectDirectory: string,
-  state: SessionState,
-): Promise<void> {
-  await appendCodexDiagnosticLog({
-    platform: invocation.platform,
-    event: invocation.event,
-    projectDirectory,
-    state,
-    payload: { message: "NAMS request failed" },
-  });
-}
-
-async function appendNamsRequestLog(
-  invocation: HookInvocation,
-  projectDirectory: string,
-  state: SessionState,
-  payload: NamsRequestEvent,
-  apiKey: string,
-): Promise<void> {
-  try {
-    await appendPlatformLog({
-      platform: invocation.platform,
-      event: invocation.event,
-      kind: "nams.request",
-      projectDirectory,
-      payload: sanitizeNamsRequestLogPayload(payload, apiKey) as Record<string, unknown>,
-      sessionCreatedAt: state.createdAt,
-      sessionKey: state.sessionKey,
-    });
-  } catch {
-    // Codex hooks must not fail because observability writes failed.
-  }
-}
-
-function sanitizeNamsRequestLogPayload(value: unknown, apiKey: string): unknown {
-  if (typeof value === "string") {
-    if (/authorization|bearer|api[-_ ]?key/i.test(value)) {
-      return "[redacted]";
-    }
-    return redactSecretValue(value, apiKey);
-  }
-  if (Array.isArray(value)) {
-    return value.map((entry) => sanitizeNamsRequestLogPayload(entry, apiKey));
-  }
-  if (value === null || typeof value !== "object") {
-    return value;
-  }
-
-  const sanitized: Record<string, unknown> = {};
-  for (const [key, nestedValue] of Object.entries(value)) {
-    if (isSensitiveLogKey(key)) {
-      continue;
-    }
-    sanitized[key] = sanitizeNamsRequestLogPayload(nestedValue, apiKey);
-  }
-  return sanitized;
-}
-
-function isSensitiveLogKey(key: string): boolean {
-  const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
-  return (
-    normalized === "authorization" ||
-    normalized === "apikey" ||
-    normalized === "xapikey" ||
-    normalized.includes("token") ||
-    normalized.includes("secret")
-  );
-}
-
-function redactSecretValue(value: string, secret: string): string {
-  if (secret === "") {
-    return value;
-  }
-  return value.split(secret).join("[redacted]");
-}
-
-async function appendRawPlatformLog(
-  invocation: HookInvocation,
-  projectDirectory: string,
-  state: SessionState,
-): Promise<void> {
-  try {
-    await appendPlatformLog({
-      platform: invocation.platform,
-      event: invocation.event,
-      kind: "hook.event",
-      payload: invocation.rawPayload,
-      projectDirectory,
-      sessionCreatedAt: state.createdAt,
-      sessionKey: state.sessionKey,
-    });
-  } catch {
-    // Codex hooks must not fail because observability writes failed.
-  }
-}
-
-async function appendCodexDiagnosticLog(entry: {
-  platform: HookInvocation["platform"];
-  event: HookInvocation["event"];
-  projectDirectory: string;
-  state: SessionState;
-  payload: Record<string, unknown>;
-}): Promise<void> {
-  try {
-    await appendPlatformLog({
-      platform: entry.platform,
-      event: entry.event,
-      kind: "diagnostic",
-      projectDirectory: entry.projectDirectory,
-      payload: entry.payload,
-      sessionCreatedAt: entry.state.createdAt,
-      sessionKey: entry.state.sessionKey,
-    });
-  } catch {
-    // Diagnostics are best-effort and must never block a hook response.
   }
 }

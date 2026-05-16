@@ -40,7 +40,7 @@ Gemini hook payloads are the primary source for current-turn data. The Gemini tr
 - Direct entity creation from hooks.
 - Persisting private or unexposed hidden reasoning, token counts, or tool output that Gemini did not expose cleanly through hook payloads.
 - Live NAMS or live Gemini CLI testing as a Phase 1 completion gate.
-- `NAMS_USER_ID` or `NAMS_CONTEXT_LIMIT` configuration in Phase 1.
+- Configuration beyond `apiKey` and `baseUrl`.
 
 ## Phased Delivery
 
@@ -82,7 +82,7 @@ Tool output is not persisted. Transcript `toolCalls[]` fields such as `result`, 
 
 Phase 3 hardens `/chat save`, `/chat resume`, and chat-list resume behavior. Gemini keeps a stable session id for saved and resumed chats; the runtime should use that `session_id` to reconnect to the same local state and NAMS conversation.
 
-If local `.nams/state` is missing but the transcript header contains a stable `sessionId`, the runtime may rebuild enough local state to continue safely. Rebuild should remain conservative: it can recover transcript entry ids and create new local state, but it must not assume a remote NAMS conversation id unless that id is present in local state or another trusted local mapping.
+If user-local `~/.nams/state/gemini/` is missing but the transcript header contains a stable `sessionId`, the runtime may rebuild enough local state to continue safely. Rebuild should remain conservative: it can recover transcript entry ids and create new local state, but it must not assume a remote NAMS conversation id unless that id is present in local state or another trusted local mapping.
 
 ### Phase 4: Trace Polish
 
@@ -107,17 +107,17 @@ The CLI remains a gateway. It parses the typed event and dispatches through the 
 
 Phase 1 config supports only:
 
-- `NAMS_API_KEY`, required for NAMS requests
-- `NAMS_BASE_URL`, optional, defaulting to the generated client's default
+- `apiKey`, required for NAMS requests, from JSON config or `NAMS_API_KEY`
+- `baseUrl`, optional, from JSON config or `NAMS_BASE_URL`, defaulting to the generated client's default
 
-Configuration loads `.nams/.env` first, then process environment variables as fallback. Missing `NAMS_API_KEY` is non-blocking for Gemini; the runtime logs a sanitized diagnostic and returns allow output.
+Configuration loads `~/.nams/config.json` first, overlays `<project>/.nams/config.json` when present, then overlays `NAMS_API_KEY` and `NAMS_BASE_URL` when those environment variables are set. Missing `apiKey` is non-blocking for Gemini; the runtime logs a sanitized diagnostic and returns allow output. The diagnostic records which source supplied each config key, but it never records secret values.
 
 ### Session State Store
 
 Session state lives under:
 
 ```text
-.nams/state/sessions/gemini/<session-key>.json
+~/.nams/state/gemini/<session-hash>.json
 ```
 
 Gemini session key selection:
@@ -151,10 +151,10 @@ State shape:
 Gemini observability logs are session-scoped. All hook events and diagnostics for the same Gemini session append to one JSONL file:
 
 ```text
-.nams/logs/session-2026-05-11T15-40-1b11dfee.jsonl
+~/.nams/logs/gemini/session-2026-05-11T15-40-1b11dfee.jsonl
 ```
 
-The timestamp segment comes from local session state `createdAt`, so later hooks reuse the same log file. The suffix is a short stable session-key part; cwd fallback sessions use a short hash rather than a long project path. If a platform cannot resolve session metadata, logging may fall back to the older event-scoped filename, but Gemini should use session-scoped logs whenever it has local state.
+The timestamp segment comes from user-local session state `createdAt`, so later hooks reuse the same log file. The suffix is a short stable session-key part; cwd fallback sessions use a short hash rather than a long project path. Gemini logs are session-scoped only; there is no aggregate `nams-hooks.jsonl` log.
 
 Every JSONL record includes a `kind`. Raw hook payload observations use `kind: "hook.event"`. NAMS HTTP observations use `kind: "nams.request"` and include operation metadata plus request and response details:
 
@@ -266,7 +266,7 @@ The runtime must not persist transcript tool output fields, including `result`, 
 
 ### SessionEnd
 
-Session end is not required for Phase 1. Future support may flush diagnostics or mark local state timestamps, but it must not delete local state or remote NAMS data.
+Session end is not required for Phase 1. Future support must not flush runtime logs or state, and must not delete local state or remote NAMS data.
 
 ## Duplicate Suppression
 
@@ -290,9 +290,9 @@ Local duplicate suppression should prevent repeated writes caused by hook replay
 
 Hooks are non-blocking by default.
 
-If `NAMS_API_KEY` is missing:
+If `apiKey` is missing after JSON config and environment overlays:
 
-- log a fixed diagnostic under `.nams/logs/`
+- log a fixed diagnostic under `~/.nams/logs/gemini/`
 - return normal allow output
 - do not print secrets or raw config values
 
@@ -325,7 +325,9 @@ If transcript reading fails:
 - Persist Gemini transcript `thoughts` only when they are explicitly exposed in the transcript and only as NAMS reasoning steps, not as conversation messages.
 - Persist tool output only when Gemini exposes it cleanly through `AfterTool`.
 - Do not persist transcript `toolCalls[].result`, `resultDisplay`, `functionResponse`, or nested tool response output.
-- Keep `.nams/.env`, `.nams/state/`, and `.nams/logs/` local and gitignored.
+- Keep persistent runtime state and logs under user-local `~/.nams/`.
+- Keep project `.nams/config.json` as the only project-local NAMS file, and ensure it is gitignored.
+- Do not use `.env` files for the target configuration model.
 - Write only harness-specific JSON to stdout.
 
 ## Architecture Tests
@@ -366,14 +368,14 @@ Unit and fixture tests:
 - Phase 2 stores transcript `toolCalls[]` metadata while ignoring result/output fields.
 - Session key selection uses `session_id` first and cwd fallback second.
 - Duplicate suppression prevents repeat user and assistant writes.
-- Missing `NAMS_API_KEY` and failed NAMS calls are logged without blocking Gemini.
+- Missing `apiKey` and failed NAMS calls are logged without blocking Gemini.
 - ArchUnitTS rules enforce downstream-only module dependencies.
 
 Mocking strategy:
 
 - Use injected fetch or a test double around the generated `NamsClient`.
 - Gemini flow tests use a dev-only `fetch-mock` helper under `test/support/` to reduce duplicated NAMS route setup while preserving the zero-runtime-dependency rule.
-- Use OS temp directories for `.nams/` state, logs, and transcript fixtures.
+- Use OS temp directories for NAMS config, state, logs, and transcript fixtures.
 - Avoid network calls in all automated tests.
 
 ## Implementation Notes
