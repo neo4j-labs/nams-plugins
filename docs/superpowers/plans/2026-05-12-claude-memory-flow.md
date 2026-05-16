@@ -1,8 +1,8 @@
 # Claude Code Memory Flow Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking: `- [x]` for work already completed in the current branch, and `- [ ]` for remaining implementation work.
 
-**Goal:** Build Claude Code NAMS integration parity with the current Gemini implementation: lazy conversation creation, first-turn recall, user and assistant message persistence, and successful tool-call trace recording.
+**Goal:** Build Claude Code NAMS integration parity with the implemented Gemini, Codex, and OpenCode memory flows: lazy conversation creation, first-turn recall, user and assistant message persistence, session-scoped logs, and successful tool-call trace recording.
 
 **Architecture:** `src/cli.ts` stays a platform-agnostic typed NAMS event gateway. Claude hook templates translate native hooks to existing NAMS events (`UserPromptSubmit` -> `BeforeAgent`, `PostToolUse` -> `AfterTool`, `Stop` -> `AfterAgent`). Claude-specific payload parsing and orchestration live under `src/platforms/claude/`, while shared runtime modules continue to own config, local state, hashing, logging, and NAMS REST calls through the generated client.
 
@@ -14,10 +14,16 @@
 
 This plan implements the approved design in `docs/superpowers/specs/2026-05-12-claude-memory-flow-design.md`.
 
+Current branch baseline:
+
+- `src/platforms/claude/index.ts` already has a complete allow-only walking skeleton for `SessionStart`, `BeforeAgent`, `AfterAgent`, and `AfterTool`.
+- `templates/claude/settings.local.json` already translates Claude `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `Stop` to the shared NAMS events.
+- `test/claude-template.test.js` and `test/cli-session-start.test.js` already cover the current Claude template and typed-event routing.
+- Gemini, Codex, and OpenCode already use session-scoped logs and stateful memory flows; Claude should converge on those runtime patterns.
+
 Included:
 
-- Claude template mapping from native hooks to existing NAMS events.
-- Claude hook template updates in `templates/claude/settings.local.json`.
+- Completed Claude template mapping from native hooks to existing NAMS events.
 - Claude payload parser module and tests.
 - Claude `SessionStart` state initialization with session-scoped logs.
 - NAMS `BeforeAgent` handling for Claude `UserPromptSubmit`: conversation creation, recall, context injection, and user prompt persistence.
@@ -40,15 +46,16 @@ Create:
 
 Modify:
 
-- `src/platforms/claude/index.ts`: replace walking-skeleton logging with full Claude memory flow.
-- `src/runtime/memory-service.ts`: add serialized, untruncated tool output handling.
-- `templates/claude/settings.local.json`: add Claude hook commands.
-- `test/cli-session-start.test.js`: verify Claude uses existing NAMS event routing and update Claude log expectations.
+- `src/platforms/claude/index.ts`: replace the allow-only walking skeleton with full Claude memory flow.
+- `src/runtime/memory-service.ts`: add an opt-in untruncated explicit tool-output path while preserving the current capped default for Gemini, Codex, and OpenCode.
+- `test/cli-session-start.test.js`: update Claude log expectations when Claude moves to session-scoped logs.
+- `test/memory-service.test.js`: cover default capped output plus Claude's opt-in untruncated output path.
 
 Do not modify:
 
 - `src/interfaces.ts`: it keeps the existing NAMS event names.
 - `src/cli.ts`: it remains a platform-agnostic NAMS event gateway.
+- `templates/claude/settings.local.json`: the native-hook to NAMS-event mapping is already in place unless Claude hook configuration changes.
 
 ## Public APIs Introduced
 
@@ -73,19 +80,34 @@ export function parseClaudePayload(payload: Record<string, unknown>, processCwd:
 ```
 
 ```ts
-export function serializeToolOutput(output: unknown): string;
+export interface ToolCallInput {
+  stepId?: string;
+  toolName: string;
+  input: unknown;
+  output?: unknown;
+  status?: string;
+  durationMs?: number;
+  truncateOutput?: boolean;
+}
+```
+
+```ts
+export function serializeToolOutput(output: unknown, options?: { truncate?: boolean }): string;
 ```
 
 ---
 
 ### Task 1: Map Claude Hooks To NAMS Events
 
+Status: complete in the current branch. Keep this task as the audit trail for the already-merged walking skeleton and template work; start new implementation at Task 2.
+
 **Files:**
 
 - Modify: `templates/claude/settings.local.json`
 - Modify: `test/cli-session-start.test.js`
+- Modify: `test/claude-template.test.js`
 
-- [ ] **Step 1: Add Claude NAMS-event routing tests**
+- [x] **Step 1: Add Claude NAMS-event routing tests**
 
 Append to `test/cli-session-start.test.js`:
 
@@ -117,7 +139,7 @@ for (const [claudeHook, namsEvent] of claudeHookMappings) {
 }
 ```
 
-- [ ] **Step 2: Verify routing baseline**
+- [x] **Step 2: Verify routing baseline**
 
 Run:
 
@@ -130,7 +152,7 @@ Expected:
 - Build passes.
 - The new tests pass against the current platform-agnostic CLI because they use existing NAMS events.
 
-- [ ] **Step 3: Update Claude hook template**
+- [x] **Step 3: Update Claude hook template**
 
 Replace `templates/claude/settings.local.json` with:
 
@@ -183,22 +205,23 @@ Replace `templates/claude/settings.local.json` with:
 }
 ```
 
-- [ ] **Step 4: Verify template and routing tests**
+- [x] **Step 4: Verify template and routing tests**
 
 Run:
 
 ```bash
-npm run build && node --test test/cli-session-start.test.js
+npm run build && node --test test/cli-session-start.test.js test/claude-template.test.js
 ```
 
 Expected:
 
 - All CLI routing tests pass.
+- Claude template maps `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `Stop` to NAMS events.
 
-- [ ] **Step 5: Commit mapping changes**
+- [x] **Step 5: Commit mapping changes**
 
 ```bash
-git add templates/claude/settings.local.json test/cli-session-start.test.js
+git add templates/claude/settings.local.json test/cli-session-start.test.js test/claude-template.test.js
 git commit -m "feat: map claude hooks to nams events" -m "Co-authored-by: Codex <codex@openai.com>"
 ```
 
@@ -631,7 +654,7 @@ In `test/cli-session-start.test.js`, update the log path selection so Claude use
 
 ```js
 const logPath =
-  harness === "gemini" || harness === "claude"
+  harness === "gemini" || harness === "claude" || harness === "codex" || harness === "opencode"
     ? await singleSessionLogPath(projectDir)
     : path.join(projectDir, ".nams", "logs", `${harness}-session-start.jsonl`);
 ```
@@ -1154,15 +1177,40 @@ git commit -m "feat: persist claude assistant responses" -m "Co-authored-by: Cod
 
 - [ ] **Step 1: Add memory-service output serialization tests**
 
-Append to `test/memory-service.test.js`:
+Add or update tests in `test/memory-service.test.js` so the current capped behavior remains the default and Claude can opt into full explicit output:
 
 ```js
-test("serializeToolOutput serializes structured output without truncating", async () => {
+test("serializeToolOutput caps explicit output by default and supports untruncated output when requested", async () => {
   const { serializeToolOutput } = await import(serviceUrl);
 
   assert.equal(serializeToolOutput({ stdout: "ok" }), '{"stdout":"ok"}');
   assert.equal(serializeToolOutput("plain output"), "plain output");
-  assert.equal(serializeToolOutput("x".repeat(5000)).length, 5000);
+  assert.equal(serializeToolOutput("x".repeat(5000)).length, 4000);
+  assert.match(serializeToolOutput("x".repeat(5000)), /\.\.\.\[truncated\]$/);
+  assert.equal(serializeToolOutput("x".repeat(5000), { truncate: false }).length, 5000);
+});
+
+test("recordToolCall can send untruncated explicit tool output when requested", async () => {
+  const requests = [];
+  const { NamsMemoryService } = await import(serviceUrl);
+  const service = new NamsMemoryService({
+    apiKey: "key",
+    baseUrl: "https://memory.example.test",
+    fetch: async (url, init) => {
+      requests.push({ url, init });
+      return new Response(JSON.stringify({ id: "tool-call-1" }), { status: 201 });
+    },
+  });
+
+  await service.recordToolCall({
+    toolName: "claude-tool",
+    input: {},
+    output: "x".repeat(5000),
+    truncateOutput: false,
+  });
+
+  const body = JSON.parse(requests[0].init.body);
+  assert.equal(body.output.length, 5000);
 });
 ```
 
@@ -1307,21 +1355,36 @@ npm run build && node --test test/memory-service.test.js test/claude/claude-memo
 
 Expected:
 
-- Tests fail because `serializeToolOutput` and `ClaudeAdapter.afterTool` are not implemented for Claude.
+- Tests fail because `serializeToolOutput` does not yet accept the untruncated option and `ClaudeAdapter.afterTool` is not implemented for Claude.
 
 - [ ] **Step 4: Add output serialization**
 
-In `src/runtime/memory-service.ts`, update `recordToolCall()`:
+In `src/runtime/memory-service.ts`, extend `ToolCallInput`:
 
 ```ts
-      output: serializeToolOutput(input.output),
+export interface ToolCallInput {
+  stepId?: string;
+  toolName: string;
+  input: unknown;
+  output?: unknown;
+  status?: string;
+  durationMs?: number;
+  truncateOutput?: boolean;
+}
 ```
 
-Add the exported helper:
+Update `recordToolCall()`:
 
 ```ts
-export function serializeToolOutput(output: unknown): string {
-  return typeof output === "string" ? output : JSON.stringify(output ?? {});
+      output: serializeToolOutput(input.output ?? "", { truncate: input.truncateOutput ?? true }),
+```
+
+Update the exported helper while preserving the existing capped default:
+
+```ts
+export function serializeToolOutput(output: unknown, options: { truncate?: boolean } = {}): string {
+  const serialized = typeof output === "string" ? output : JSON.stringify(output ?? "");
+  return options.truncate === false ? serialized : capSerializedToolText(serialized);
 }
 ```
 
@@ -1389,6 +1452,7 @@ Add to `ClaudeAdapter`:
           ...(payloadInfo.toolResponse !== undefined ? { output: payloadInfo.toolResponse } : {}),
           status: "success",
           ...(payloadInfo.durationMs !== undefined ? { durationMs: payloadInfo.durationMs } : {}),
+          truncateOutput: false,
         });
         markSeen(state.seenToolCallIds, toolCallKeys.markKeys);
       }
@@ -1453,7 +1517,7 @@ npm run build && node --test test/memory-service.test.js test/claude/claude-memo
 
 Expected:
 
-- Tool output serialization tests pass without truncating memory output.
+- Tool output serialization tests preserve the default capped behavior and pass the untruncated opt-in path for Claude output.
 - Claude tool trace tests pass through NAMS `AfterTool`.
 
 - [ ] **Step 7: Commit AfterTool flow**
@@ -1507,7 +1571,7 @@ git diff --stat
 
 Expected:
 
-- Changes are limited to Claude platform code, shared event/runtime helpers, Claude tests, CLI routing, Claude template, and the plan/spec docs.
+- Changes are limited to Claude platform code, shared runtime helpers, Claude tests, CLI routing log expectations, and the plan/spec docs.
 
 - [ ] **Step 4: Commit documentation if it was not committed earlier**
 
@@ -1527,6 +1591,7 @@ git commit -m "docs: plan claude memory flow" -m "Co-authored-by: Codex <codex@o
 - [ ] Hooks never fail Claude work because NAMS is unavailable.
 - [ ] Diagnostics do not include API keys, arbitrary error text, prompts, or tool output.
 - [ ] Tool input is sanitized by `serializeToolInput()`.
-- [ ] Tool output is serialized without truncation by `serializeToolOutput()`.
+- [ ] Existing platforms keep the default capped `serializeToolOutput()` behavior.
+- [ ] Claude explicit `tool_response` is serialized without truncation by passing `truncateOutput: false`.
 - [ ] No runtime npm dependency was added.
 - [ ] `npm run check` passes before completion is claimed.

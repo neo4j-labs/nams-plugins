@@ -6,7 +6,7 @@ Repository: nams-hooks
 
 ## Summary
 
-This design brings Claude Code to the same integration level as the current Gemini CLI implementation on `devel`. Claude gets deterministic NAMS conversation creation, first-turn recall, user prompt persistence, assistant response persistence, tool-call metadata, raw local observability logs, and local session state under `.nams/`.
+This design brings Claude Code to the same integration level as the implemented Gemini, Codex, and OpenCode integrations on `devel`. Claude gets deterministic NAMS conversation creation, first-turn recall, user prompt persistence, assistant response persistence, tool-call metadata, raw local observability logs, and local session state under `.nams/`.
 
 The Claude path should use Claude Code hook payload fields directly, while translating Claude hook names to the existing NAMS lifecycle events used by the shared CLI. Unlike Gemini, Claude does not need a transcript-first or transcript-fallback path for v1 because the supported hooks expose the required current-turn data: `UserPromptSubmit.prompt`, `PostToolUse.tool_name`, `PostToolUse.tool_input`, `PostToolUse.tool_response`, `PostToolUse.tool_use_id`, `PostToolUse.duration_ms`, and `Stop.last_assistant_message`.
 
@@ -14,28 +14,32 @@ The Claude path should use Claude Code hook payload fields directly, while trans
 
 - Approved architecture: `docs/superpowers/specs/2026-05-10-nams-hooks-design.md`
 - OpenAPI client contract: `docs/superpowers/specs/2026-05-10-nams-openapi-client-build-design.md`
-- Gemini implementation design: `docs/superpowers/specs/2026-05-11-gemini-memory-flow-design.md`
-- Gemini implementation plan: `docs/superpowers/plans/2026-05-11-gemini-memory-flow.md`
+- Gemini implementation design and plan: `docs/superpowers/specs/2026-05-11-gemini-memory-flow-design.md`, `docs/superpowers/plans/2026-05-11-gemini-memory-flow.md`
+- Codex implementation design and plan: `docs/superpowers/specs/2026-05-12-codex-memory-flow-design.md`, `docs/superpowers/plans/2026-05-12-codex-memory-flow.md`
+- OpenCode implementation design and plan: `docs/superpowers/specs/2026-05-12-opencode-memory-flow-design.md`, `docs/superpowers/plans/2026-05-12-opencode-memory-flow.md`
 - Behavioral reference: `docs/nams-skill.md`
-- Current Gemini source: `src/platforms/gemini/index.ts`, `src/platforms/gemini/payload.ts`, `src/platforms/gemini/transcript.ts`
+- Current platform sources: `src/platforms/gemini/`, `src/platforms/codex/`, and `src/platforms/opencode/`
 - Current shared runtime: `src/runtime/config.ts`, `src/runtime/session-state.ts`, `src/runtime/memory-service.ts`, `src/runtime/logging.ts`
 - Claude Code hooks reference, checked on 2026-05-12: `https://code.claude.com/docs/en/hooks`
 
-## Current State On `devel`
+## Current State After Latest `devel` Merge
 
-The branch already has a complete Gemini memory flow:
+The branch already has complete Gemini, Codex, and OpenCode memory flows:
 
 - `src/cli.ts` accepts typed hook events from `--event` and keeps platform payload parsing out of the gateway.
 - `src/interfaces.ts` declares `SessionStart`, `BeforeAgent`, `AfterAgent`, and `AfterTool`.
 - `src/platforms/gemini/index.ts` owns session state, NAMS calls, context injection, assistant persistence, and tool traces.
+- `src/platforms/codex/index.ts` follows the same NAMS event contract with Codex-specific payload and transcript parsing.
+- `src/platforms/opencode/index.ts` follows the same NAMS event contract through an OpenCode plugin shim and pending context state.
 - `src/runtime/*` provides shared config loading, state persistence, hashing, logging, and `NamsMemoryService`.
 - `templates/gemini/hooks/hooks.json` wires Gemini `SessionStart`, `BeforeAgent`, `AfterAgent`, and `AfterTool`.
+- `templates/codex/hooks.json` and `templates/opencode/plugins/nams-hooks.js` translate native platform surfaces into the shared NAMS events.
 
-Claude currently has only the walking-skeleton adapter in `src/platforms/claude/index.ts`. It logs `SessionStart` payloads to `.nams/logs/claude-session-start.jsonl` and returns allow output. `templates/claude/settings.local.json` wires only `SessionStart`.
+Claude currently has a complete allow-only walking skeleton in `src/platforms/claude/index.ts`. It implements `startConversation`, `beforeAgent`, `afterAgent`, and `afterTool`, logs raw payloads to event-scoped files such as `.nams/logs/claude-session-start.jsonl` and `.nams/logs/claude-before-agent.jsonl`, and returns allow output. `templates/claude/settings.local.json` already translates Claude `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `Stop` to the shared NAMS events, with coverage in `test/claude-template.test.js` and `test/cli-session-start.test.js`.
 
 ## Goals
 
-- Add Claude Code memory flow parity with Gemini's implemented level.
+- Add Claude Code memory flow parity with the implemented Gemini, Codex, and OpenCode patterns.
 - Keep `src/cli.ts` platform-agnostic by accepting typed NAMS events; do not add Claude-native events or infer events from `hook_event_name`.
 - Keep Claude-specific parsing and orchestration under `src/platforms/claude/`.
 - Use the existing generated `NamsClient` through `NamsMemoryService`.
@@ -45,7 +49,7 @@ Claude currently has only the walking-skeleton adapter in `src/platforms/claude/
 - Persist every Claude user prompt observed through `UserPromptSubmit`.
 - Persist Claude assistant responses from `Stop.last_assistant_message`.
 - Record successful Claude `PostToolUse` events as a safe operational reasoning step plus NAMS tool-call metadata.
-- Store exposed tool output from `tool_response`, serialized without truncation, because Claude provides it explicitly in the hook payload.
+- Store exposed tool output from `tool_response` in full, because Claude provides it explicitly in the hook payload. This requires an opt-in untruncated output path because the current shared `NamsMemoryService.recordToolCall()` caps explicit tool output by default for existing platforms.
 - Keep hooks non-blocking on missing config, NAMS failures, and local log failures.
 
 ## Non-Goals
@@ -142,15 +146,26 @@ The Claude adapter implements `startConversation`, `beforeAgent`, `afterTool`, a
 
 ### Shared Runtime Changes
 
-`NamsMemoryService.recordToolCall()` currently serializes input and accepts an output string. Claude should add output serialization so structured `tool_response` objects can be persisted without truncation:
+`NamsMemoryService.recordToolCall()` currently sanitizes and caps tool input, and now also serializes and caps explicit tool output by default for Gemini, Codex, and OpenCode. Claude should preserve that default for existing platforms while adding an opt-in untruncated output path for explicit Claude `tool_response` data:
 
 ```ts
-export function serializeToolOutput(output: unknown): string {
-  return typeof output === "string" ? output : JSON.stringify(output ?? {});
+export interface ToolCallInput {
+  stepId?: string;
+  toolName: string;
+  input: unknown;
+  output?: unknown;
+  status?: string;
+  durationMs?: number;
+  truncateOutput?: boolean;
+}
+
+export function serializeToolOutput(output: unknown, options: { truncate?: boolean } = {}): string {
+  const serialized = typeof output === "string" ? output : JSON.stringify(output ?? "");
+  return options.truncate === false ? serialized : capSerializedToolText(serialized);
 }
 ```
 
-The exact helper name can live in `src/runtime/memory-service.ts` with `serializeToolInput` to avoid a new module.
+The exact helper name can stay in `src/runtime/memory-service.ts` with `serializeToolInput` to avoid a new module. Claude `AfterTool` should pass `truncateOutput: false`; existing platform calls should omit it and keep the current capped behavior.
 
 ## Hook Data Flow
 
@@ -229,6 +244,7 @@ Flow:
   "toolName": "<toolName>",
   "input": "<sanitized serialized input>",
   "output": "<serialized full tool_response>",
+  "truncateOutput": false,
   "status": "success",
   "durationMs": 12
 }
@@ -281,7 +297,7 @@ Claude does not populate `seenTranscriptEntryIds` in v1. It remains present beca
 
 ## Logging
 
-Claude should move from the current event-scoped walking-skeleton log to session-scoped logs when session state exists. That gives the same debugging ergonomics as Gemini:
+Claude should move from the current event-scoped walking-skeleton logs to session-scoped logs when session state exists. That gives the same debugging ergonomics as Gemini, Codex, and OpenCode:
 
 ```text
 .nams/logs/session-2026-05-12T09-00-1f3870be.jsonl
@@ -305,12 +321,12 @@ The adapter must not log raw thrown error text because errors can contain secret
 
 ## Template Wiring
 
-Update `templates/claude/settings.local.json`:
+`templates/claude/settings.local.json` already contains the complete native-hook to NAMS-event walking-skeleton wiring:
 
 - Keep `SessionStart` matcher `startup|resume|clear|compact`.
-- Add Claude `UserPromptSubmit` translated to NAMS `BeforeAgent`.
-- Add Claude `PostToolUse` translated to NAMS `AfterTool`.
-- Add Claude `Stop` translated to NAMS `AfterAgent`.
+- Claude `UserPromptSubmit` is translated to NAMS `BeforeAgent`.
+- Claude `PostToolUse` is translated to NAMS `AfterTool`.
+- Claude `Stop` is translated to NAMS `AfterAgent`.
 
 Template command mapping:
 
@@ -337,7 +353,7 @@ Claude hooks remain non-blocking:
 ## Privacy Rules
 
 - Persist user prompts and assistant responses as the canonical memory stream.
-- Persist Claude `tool_response` only because it is explicit hook output; serialize it without truncation.
+- Persist Claude `tool_response` only because it is explicit hook output; serialize it without truncation through the Claude-specific opt-in output path.
 - Sanitize tool input with the existing `serializeToolInput()` behavior before sending it to NAMS.
 - Do not parse Claude transcript internals for hidden reasoning in v1.
 - Do not create entities directly.
@@ -373,4 +389,4 @@ Run `npm run check` before claiming completion.
 
 ## Approval Notes
 
-This design intentionally follows the current Gemini implementation's shape while translating Claude's native hook names into NAMS lifecycle events. The main implementation risk is output privacy for `tool_response`; v1 mitigates that by accepting only explicit hook output, serializing it without truncation for NAMS memory, and continuing to sanitize inputs separately.
+This design intentionally follows the current Gemini, Codex, and OpenCode implementation shape while translating Claude's native hook names into NAMS lifecycle events. The main implementation risk is output privacy for `tool_response`; v1 mitigates that by accepting only explicit hook output, serializing it without truncation for Claude NAMS memory, and continuing to sanitize inputs separately.
