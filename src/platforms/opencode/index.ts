@@ -57,12 +57,13 @@ export class OpenCodeAdapter implements PlatformAdapter {
       return allowOutput();
     }
 
-    const config = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
-    if (config === null) {
+    const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
+    if (!configResult.ok) {
       await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state);
       await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
+    const config = configResult.config;
 
     try {
       const memory = this.createMemoryService(config, invocation, payloadInfo.projectDirectory, state);
@@ -146,12 +147,13 @@ export class OpenCodeAdapter implements PlatformAdapter {
       return allowOutput();
     }
 
-    const config = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
-    if (config === null) {
+    const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
+    if (!configResult.ok) {
       await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state);
       await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
+    const config = configResult.config;
 
     try {
       const memory = this.createMemoryService(config, invocation, payloadInfo.projectDirectory, state);
@@ -210,12 +212,13 @@ export class OpenCodeAdapter implements PlatformAdapter {
       return allowOutput();
     }
 
-    const config = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
-    if (config === null) {
+    const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
+    if (!configResult.ok) {
       await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state);
       await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
+    const config = configResult.config;
 
     try {
       const dedupeKey = opencodeToolCallDedupeKey(

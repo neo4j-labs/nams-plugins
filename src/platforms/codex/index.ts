@@ -56,12 +56,13 @@ export class CodexAdapter implements PlatformAdapter {
       return allowOutput();
     }
 
-    const config = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
-    if (config === null) {
+    const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
+    if (!configResult.ok) {
       await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state);
       await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
+    const config = configResult.config;
 
     let additionalContext: string | undefined;
     try {
@@ -132,12 +133,13 @@ export class CodexAdapter implements PlatformAdapter {
     }
     const conversationId = state.conversationId;
 
-    const config = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
-    if (config === null) {
+    const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
+    if (!configResult.ok) {
       await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state);
       await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
+    const config = configResult.config;
 
     try {
       const memory = this.createMemoryService(config, invocation, payloadInfo.projectDirectory, state);
@@ -195,12 +197,13 @@ export class CodexAdapter implements PlatformAdapter {
       return allowPostToolUseOutput();
     }
 
-    const config = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
-    if (config === null) {
+    const configResult = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
+    if (!configResult.ok) {
       await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state);
       await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
       return allowPostToolUseOutput();
     }
+    const config = configResult.config;
 
     const toolInput = payloadInfo.toolInput ?? {};
     const toolCallId = codexToolCallId({
