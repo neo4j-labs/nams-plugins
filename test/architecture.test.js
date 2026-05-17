@@ -92,3 +92,88 @@ test("only the platform registry imports all concrete adapters", async () => {
       ),
   );
 });
+
+test("platform adapters do not accept test-only runtime dependencies", async () => {
+  const content = await readFile("src/interfaces.ts", "utf8");
+
+  assert.equal(/\bPlatformAdapterOptions\b/.test(content), false);
+  assert.equal(/\bfetch\?: typeof fetch\b/.test(content), false);
+  assert.equal(/\bruntimeEnvironment\?:/.test(content), false);
+  assert.equal(/\benv\?:/.test(content), false);
+
+  for (const platform of ["gemini", "claude", "codex", "opencode"]) {
+    const filePath = `src/platforms/${platform}/index.ts`;
+    const platformContent = await readFile(filePath, "utf8");
+
+    assert.equal(/\bPlatformAdapterOptions\b/.test(platformContent), false);
+    assert.equal(/\bprivate readonly options\b|\bthis\.options\b/.test(platformContent), false);
+    assert.equal(/\bfetch\b/.test(platformContent), false);
+  }
+});
+
+test("platform session-start contract names local session initialization", async () => {
+  const interfaceContent = await readFile("src/interfaces.ts", "utf8");
+  const cliContent = await readFile("src/cli.ts", "utf8");
+
+  assert.match(interfaceContent, /\bstartSession\(invocation: HookInvocation<"SessionStart">\): Promise<HookResult>;/);
+  assert.equal(/\bstartConversation\b/.test(interfaceContent), false);
+  assert.match(cliContent, /\badapter\.startSession\(/);
+  assert.equal(/\badapter\.startConversation\b/.test(cliContent), false);
+
+  for (const platform of ["gemini", "claude", "codex", "opencode"]) {
+    const filePath = `src/platforms/${platform}/index.ts`;
+    const content = await readFile(filePath, "utf8");
+
+    assert.match(content, /\basync startSession\(invocation: HookInvocation<"SessionStart">\): Promise<HookResult>/);
+    assert.equal(/\bstartConversation\b/.test(content), false);
+  }
+});
+
+test("platform adapters do not manage runtime environment", async () => {
+  for (const platform of ["gemini", "claude", "codex", "opencode"]) {
+    const filePath = `src/platforms/${platform}/index.ts`;
+    const content = await readFile(filePath, "utf8");
+
+    assert.equal(/\bRuntimeEnvironment\b|\bruntimeEnvironment\b/.test(content), false, `${filePath} should not manage runtime environment`);
+  }
+});
+
+test("global runtime modules do not accept unused project directory plumbing", async () => {
+  const sessionState = await readFile("src/runtime/session-state.ts", "utf8");
+  const logging = await readFile("src/runtime/logging.ts", "utf8");
+
+  assert.equal(/loadSessionState\(\s*\n\s*projectDirectory:/.test(sessionState), false);
+  assert.equal(/saveSessionState\(\s*\n\s*projectDirectory:/.test(sessionState), false);
+  assert.equal(/\bvoid projectDirectory\b/.test(sessionState), false);
+  assert.equal(/\bprojectDirectory: string;/.test(logging), false);
+});
+
+test("runtime environment home lookup stays in paths module", async () => {
+  const config = await readFile("src/runtime/config.ts", "utf8");
+  const sessionState = await readFile("src/runtime/session-state.ts", "utf8");
+  const logging = await readFile("src/runtime/logging.ts", "utf8");
+
+  for (const [filePath, content] of Object.entries({
+    "src/runtime/config.ts": config,
+    "src/runtime/session-state.ts": sessionState,
+    "src/runtime/logging.ts": logging,
+  })) {
+    assert.equal(/\bHOME\b|\bUSERPROFILE\b/.test(content), false, `${filePath} should not resolve home directories`);
+  }
+});
+
+test("platform adapters use shared logging wrappers", async () => {
+  for (const platform of ["gemini", "codex", "opencode"]) {
+    const filePath = `src/platforms/${platform}/index.ts`;
+    const content = await readFile(filePath, "utf8");
+
+    assert.equal(
+      /async function append(?:NamsConfigDiagnostic|NamsFailureDiagnostic|NamsRequestLog|RawPlatformLog|[A-Z][A-Za-z]+DiagnosticLog)\b/.test(
+        content,
+      ),
+      false,
+      `${filePath} should reuse shared runtime logging helpers`,
+    );
+    assert.equal(/sanitizeNamsRequestLogPayload|isSensitiveLogKey|redactSecretValue/.test(content), false);
+  }
+});

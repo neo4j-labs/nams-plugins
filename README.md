@@ -11,7 +11,7 @@ It ensures deterministic memory persistence and context recall across different 
 - **Tool Logging**: Records tool-call metadata (name, input, status, duration) for observability.
 - **Platform Aware**: Full memory-flow support for **Gemini CLI** and **OpenCode**, with Claude Code and Codex adapter skeletons kept behind the same clean platform boundary.
 - **Zero Runtime Dependencies**: The hook runtime and generated distribution use only Node.js built-in modules, so target projects do not need extra package installs for transitive runtime libraries.
-- **Local-First Configuration**: Stores secrets and state in a local `.nams/` directory.
+- **JSON-First Runtime Storage**: Uses JSON configuration with user-local state and logs.
 
 ## Platform Support (v1)
 
@@ -54,12 +54,14 @@ npm run check
 npm run openapi:test
 ```
 
-### Runtime Logs
+### Runtime Configuration And Storage
 
-Gemini and OpenCode write local session-scoped JSONL diagnostics under the project `.nams/logs/` directory. Events for one session are kept in a single file named like:
+Runtime configuration is JSON-first: `~/.nams/config.json`, optional project `.nams/config.json`, then final `NAMS_API_KEY` and `NAMS_BASE_URL` environment overrides. Runtime state and logs are user-local under `~/.nams/state/<platform>/` and `~/.nams/logs/<platform>/`.
+
+Gemini and OpenCode write session-scoped JSONL diagnostics. Events for one session are kept in a single file named like:
 
 ```text
-.nams/logs/session-2026-05-11T15-40-1b11dfee.jsonl
+~/.nams/logs/gemini/session-2026-05-11T15-40-1b11dfee.jsonl
 ```
 
 Hook payload entries use `kind: "hook.event"` and keep the raw hook payload for local debugging. NAMS HTTP entries use `kind: "nams.request"` and include operation metadata plus logged request and response details. Request headers omit `Authorization`; request and response bodies are kept for debugging.

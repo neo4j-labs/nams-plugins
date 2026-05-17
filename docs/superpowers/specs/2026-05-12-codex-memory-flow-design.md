@@ -1,7 +1,7 @@
 # Codex Memory Flow Design
 
 Date: 2026-05-12
-Status: Draft design
+Status: Implemented design
 Repository: nams-hooks
 
 ## Summary
@@ -28,7 +28,7 @@ The implementation reuses the existing shared runtime modules and keeps Codex-sp
 
 ## Current State
 
-On `devel`, Codex has only the walking-skeleton `SessionStart` adapter. It logs the raw payload to `.nams/logs/codex-session-start.jsonl` and returns `{ "continue": true, "suppressOutput": true }`.
+Codex now implements the NAMS memory-flow integration for `SessionStart`, `UserPromptSubmit`, `Stop`, and `PostToolUse`. The template maps Codex-native hook names to generic NAMS lifecycle events, while Codex-specific parsing and transcript fallback remain under `src/platforms/codex/`.
 
 The repository Codex hook template should use the known-working Codex command-hook shape, not the older short-form command object:
 
@@ -67,8 +67,8 @@ The Codex integration should mirror those boundaries rather than copying Gemini 
 - Keep Codex behavior behind the Codex adapter boundary.
 - Keep `src/interfaces.ts` and `src/cli.ts` platform-agnostic by preserving the NAMS event vocabulary: `SessionStart`, `BeforeAgent`, `AfterAgent`, and `AfterTool`.
 - Use Codex `session_id` as the primary session key, with cwd fallback.
-- Persist local state under `.nams/state/sessions/codex/`.
-- Use session-scoped `.nams/logs/session-<created-at>-<session-part>.jsonl` logs for Codex, matching Gemini's observability model.
+- Persist user-local state under `~/.nams/state/codex/<session-hash>.json`.
+- Use session-scoped `~/.nams/logs/codex/session-<created-at>-<session-part>.jsonl` logs for Codex, matching the shared observability model.
 - Create a NAMS conversation lazily on the first NAMS `BeforeAgent` event mapped from Codex `UserPromptSubmit`.
 - Recall memory before the first response and inject it through Codex `UserPromptSubmit` additional context.
 - Persist each user prompt from Codex `UserPromptSubmit` while handling it as NAMS `BeforeAgent`.
@@ -93,7 +93,7 @@ As of 2026-05-12, the public Codex source defines command hook inputs for `Sessi
 
 This design uses:
 
-- `SessionStart`: initialize local state and write raw hook diagnostics. Codex may expose `source` values such as `startup`, `resume`, and `clear`, but the repository template intentionally matches the verified `startup|resume` walking-skeleton flow until `clear` behavior is validated separately.
+- `SessionStart`: initialize user-local state and write raw hook diagnostics. Codex may expose `source` values such as `startup`, `resume`, and `clear`, but the repository template intentionally matches the verified `startup|resume` flow until `clear` behavior is validated separately.
 - `UserPromptSubmit`: parse `prompt`, recall memory, persist the user message, and inject additional context.
 - `Stop`: parse `last_assistant_message` and persist the assistant response.
 - `PostToolUse`: parse tool metadata and persist a NAMS reasoning step plus tool call.
@@ -102,7 +102,7 @@ The shared TypeScript interfaces model NAMS lifecycle events, not every platform
 
 | Codex hook | NAMS event | Purpose |
 | --- | --- | --- |
-| `SessionStart` | `SessionStart` | Initialize session-scoped local state and raw hook logging. |
+| `SessionStart` | `SessionStart` | Initialize user-local session state and raw hook logging. |
 | `UserPromptSubmit` | `BeforeAgent` | Recall relevant memory, create the NAMS conversation lazily, and persist the submitted user prompt before Codex responds. |
 | `Stop` | `AfterAgent` | Persist the assistant response exposed by Codex after the turn completes. |
 | `PostToolUse` | `AfterTool` | Persist exposed tool metadata, sanitized input, and exposed output after a Codex tool finishes. |
@@ -152,7 +152,7 @@ Codex `UserPromptSubmit` maps to NAMS `BeforeAgent`. It resolves session state, 
 
 The `additionalContext` property is the correct JSON field for this injection path. In the current Codex source, `UserPromptSubmitHookSpecificOutputWire` uses serde `rename_all = "camelCase"` with an internal `additional_context` field, `output_parser.rs` extracts it from `hookSpecificOutput`, and `hook_runtime.rs` records it as additional developer context for the model.
 
-If recall is empty, the hook returns only the allow output. If NAMS is unavailable or `NAMS_API_KEY` is missing, the hook logs a sanitized diagnostic and allows Codex to continue.
+If recall is empty, the hook returns only the allow output. If NAMS is unavailable or `apiKey` is missing after JSON config and environment overlays, the hook logs a sanitized diagnostic and allows Codex to continue.
 
 `SessionStart` and `UserPromptSubmit` may run close together on the first prompt in some Codex versions. `UserPromptSubmit` must be able to create initial state when `SessionStart` has not written it yet.
 
@@ -188,7 +188,7 @@ Some Codex built-in tools, including web search in current Codex CLI rollouts, m
 
 ### Phase 4: Resume And Doctor Polish
 
-Resume support uses the same `session_id` mapping as normal sessions. If local state exists, a resumed Codex `UserPromptSubmit` mapped to NAMS `BeforeAgent` continues the existing NAMS conversation. If local state is missing, the adapter may create a new conversation and should not guess an old remote `conversationId` from transcript content.
+Resume support uses the same `session_id` mapping as normal sessions. If user-local state exists, a resumed Codex `UserPromptSubmit` mapped to NAMS `BeforeAgent` continues the existing NAMS conversation. If user-local state is missing, the adapter may create a new conversation and should not guess an old remote `conversationId` from transcript content.
 
 Installer and `doctor` behavior are outside this plan, but the design expects a later doctor command to report Codex hook availability, trusted project-hook status, and whether the installed Codex version supports `PostToolUse`.
 
@@ -247,7 +247,7 @@ The existing runtime modules remain shared:
 - `src/runtime/memory-service.ts`
 - `src/runtime/session-state.ts`
 
-`SessionState.harness` already supports `"codex"`, and the existing `.nams/state/sessions/<platform>/` layout works for Codex.
+`SessionState.harness` already supports `"codex"`, and Codex uses the shared `~/.nams/state/<platform>/<session-hash>.json` layout.
 
 `NamsMemoryService` may need one small addition: a safe tool-output serializer/cap so Codex `tool_response` cannot produce unbounded NAMS payloads.
 
@@ -318,7 +318,7 @@ Duplicate suppression is local-only and must not require a NAMS query.
 
 Codex hooks must fail open for memory concerns:
 
-- Missing `NAMS_API_KEY`: log a fixed sanitized diagnostic and allow.
+- Missing `apiKey` after JSON config and environment overlays: log a fixed sanitized diagnostic and allow.
 - NAMS request failure: log endpoint/request metadata without API keys and allow.
 - Transcript parse failure: log a diagnostic and skip transcript fallback.
 - Observability log write failure: do not block hook output.
@@ -333,7 +333,9 @@ The hook runner should never print API keys or raw secret values to stdout, stde
 - Store Codex `PostToolUse` output only from exposed hook payload fields, with capping.
 - Store transcript-derived Codex tool metadata only from explicit tool-call response items such as `web_search_call`; do not persist encrypted reasoning or infer hidden tool output from UI text.
 - Sanitize tool input with the existing recursive output-field removal before storage.
-- Keep `.nams/.env`, `.nams/state/`, and `.nams/logs/` local and gitignored.
+- Keep persistent runtime state and logs under user-local `~/.nams/`.
+- Keep project `.nams/config.json` as the only project-local NAMS file, and ensure it is gitignored.
+- Do not use `.env` files for the target configuration model.
 - Write only Codex hook-compatible JSON to stdout.
 
 ## Testing Plan

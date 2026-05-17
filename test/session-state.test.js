@@ -9,6 +9,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const stateUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "runtime", "session-state.js")).href;
 
+function useRuntimeHome(homeDir) {
+  process.env.HOME = homeDir;
+  process.env.USERPROFILE = homeDir;
+}
+
 test("uses session id as Gemini session key when present", async () => {
   const { resolveSessionKey } = await import(stateUrl);
   const key = resolveSessionKey({ platform: "gemini", sessionId: "session-1", projectDirectory: "/tmp/project" });
@@ -34,10 +39,12 @@ test("initializes reasoning step id map for new session state", async () => {
   assert.deepEqual(state.reasoningStepIdsByHash, {});
 });
 
-test("persists session state under .nams/state/sessions using safe session filenames", async () => {
+test("persists session state under user-local .nams/state using safe session filenames", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "nams-home-"));
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-state-"));
   try {
     const { loadSessionState, saveSessionState } = await import(stateUrl);
+    useRuntimeHome(homeDir);
     const state = {
       harness: "gemini",
       harnessSessionId: "session/1",
@@ -51,21 +58,24 @@ test("persists session state under .nams/state/sessions using safe session filen
       seenToolCallIds: [],
     };
 
-    await saveSessionState(projectDir, "gemini", "session/1", state);
+    await saveSessionState("gemini", "session/1", state);
 
-    const savedPath = path.join(projectDir, ".nams", "state", "sessions", "gemini", `${sha256("session/1")}.json`);
+    const savedPath = path.join(homeDir, ".nams", "state", "gemini", `${sha256("session/1")}.json`);
     assert.deepEqual(JSON.parse(await readFile(savedPath, "utf8")), state);
-    assert.deepEqual(await loadSessionState(projectDir, "gemini", "session/1"), state);
+    assert.deepEqual(await loadSessionState("gemini", "session/1"), state);
   } finally {
+    await rm(homeDir, { recursive: true, force: true });
     await rm(projectDir, { recursive: true, force: true });
   }
 });
 
 test("loads legacy lastMemorySearchAt as lastRecallAt", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "nams-home-"));
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-state-"));
   try {
     const { loadSessionState } = await import(stateUrl);
-    const statePath = path.join(projectDir, ".nams", "state", "sessions", "gemini", `${sha256("session-1")}.json`);
+    useRuntimeHome(homeDir);
+    const statePath = path.join(homeDir, ".nams", "state", "gemini", `${sha256("session-1")}.json`);
     await mkdir(path.dirname(statePath), { recursive: true });
     await writeFile(
       statePath,
@@ -84,11 +94,12 @@ test("loads legacy lastMemorySearchAt as lastRecallAt", async () => {
       "utf8",
     );
 
-    const state = await loadSessionState(projectDir, "gemini", "session-1");
+    const state = await loadSessionState("gemini", "session-1");
 
     assert.equal(state.lastRecallAt, "2026-05-11T12:01:00.000Z");
     assert.equal(Object.hasOwn(state, "lastMemorySearchAt"), false);
   } finally {
+    await rm(homeDir, { recursive: true, force: true });
     await rm(projectDir, { recursive: true, force: true });
   }
 });
@@ -98,9 +109,11 @@ function sha256(value) {
 }
 
 test("persists colliding-looking session keys in separate state files", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "nams-home-"));
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-state-"));
   try {
     const { loadSessionState, saveSessionState } = await import(stateUrl);
+    useRuntimeHome(homeDir);
     const baseState = {
       harness: "gemini",
       projectDirectory: projectDir,
@@ -123,12 +136,13 @@ test("persists colliding-looking session keys in separate state files", async ()
       conversationId: "conversation-underscore",
     };
 
-    await saveSessionState(projectDir, "gemini", "session/1", slashState);
-    await saveSessionState(projectDir, "gemini", "session_1", underscoreState);
+    await saveSessionState("gemini", "session/1", slashState);
+    await saveSessionState("gemini", "session_1", underscoreState);
 
-    assert.equal((await loadSessionState(projectDir, "gemini", "session/1")).conversationId, "conversation-slash");
-    assert.equal((await loadSessionState(projectDir, "gemini", "session_1")).conversationId, "conversation-underscore");
+    assert.equal((await loadSessionState("gemini", "session/1")).conversationId, "conversation-slash");
+    assert.equal((await loadSessionState("gemini", "session_1")).conversationId, "conversation-underscore");
   } finally {
+    await rm(homeDir, { recursive: true, force: true });
     await rm(projectDir, { recursive: true, force: true });
   }
 });

@@ -1,23 +1,35 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createNamsFetchMock } from "../support/nams-fetch-mock.js";
+import { readSingleSessionLog as readRuntimeSingleSessionLog } from "../support/runtime-home.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const opencodeUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "platforms", "opencode", "index.js")).href;
 const stateUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "runtime", "session-state.js")).href;
+
+function testEnv(projectDir, overrides = {}) {
+  const env = { HOME: path.join(projectDir, "home"), USERPROFILE: path.join(projectDir, "home"), ...overrides };
+  for (const key of ["HOME", "USERPROFILE", "NAMS_API_KEY", "NAMS_BASE_URL"]) {
+    delete process.env[key];
+  }
+  Object.assign(process.env, env);
+  return env;
+}
+
 
 test("initializes OpenCode session state on session.created without creating a conversation", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
   try {
     const { OpenCodeAdapter } = await import(opencodeUrl);
     const { loadSessionState } = await import(stateUrl);
+    testEnv(projectDir);
     const adapter = new OpenCodeAdapter();
 
-    const result = await adapter.startConversation({
+    const result = await adapter.startSession({
       platform: "opencode",
       event: "SessionStart",
       processCwd: projectDir,
@@ -37,7 +49,7 @@ test("initializes OpenCode session state on session.created without creating a c
     });
 
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
-    const state = await loadSessionState(projectDir, "opencode", "session-1");
+    const state = await loadSessionState("opencode", "session-1");
     assert.notEqual(state, null);
     assert.equal(state.sessionKey, "session-1");
     assert.equal(state.conversationId, undefined);
@@ -62,10 +74,8 @@ test("OpenCode chat.message creates conversation, recalls memory, and stores use
       .message();
     const { OpenCodeAdapter } = await import(opencodeUrl);
     const { loadSessionState } = await import(stateUrl);
-    const adapter = new OpenCodeAdapter({
-      env: { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" },
-      fetch: nams.fetch,
-    });
+    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
+    const adapter = new OpenCodeAdapter();
 
     const result = await adapter.beforeAgent({
       platform: "opencode",
@@ -87,9 +97,19 @@ test("OpenCode chat.message creates conversation, recalls memory, and stores use
       content: prompt,
     });
 
-    const state = await loadSessionState(projectDir, "opencode", "session-1");
+    const state = await loadSessionState("opencode", "session-1");
     assert.match(state.pendingMemoryContext.content, /User prefers fixture-driven tests\./);
     assert.equal(state.pendingMemoryContext.messageId, "user-1");
+
+    const { lines } = await readSingleSessionLog(projectDir);
+    const configDiagnostics = lines.filter(
+      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS config loaded",
+    );
+    assert.equal(configDiagnostics.length, 1);
+    assert.deepEqual(configDiagnostics[0].payload.configSources, {
+      apiKey: "env:NAMS_API_KEY",
+      baseUrl: "env:NAMS_BASE_URL",
+    });
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -104,10 +124,8 @@ test("OpenCode system transform returns and consumes pending memory context", as
       .searchEntities()
       .message();
     const { OpenCodeAdapter } = await import(opencodeUrl);
-    const adapter = new OpenCodeAdapter({
-      env: { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" },
-      fetch: nams.fetch,
-    });
+    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
+    const adapter = new OpenCodeAdapter();
 
     await adapter.beforeAgent({
       platform: "opencode",
@@ -153,7 +171,8 @@ test("OpenCode BeforeAgent continues when NAMS_API_KEY is missing", async () => 
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
   try {
     const { OpenCodeAdapter } = await import(opencodeUrl);
-    const adapter = new OpenCodeAdapter({ env: {} });
+    testEnv(projectDir);
+    const adapter = new OpenCodeAdapter();
 
     const result = await adapter.beforeAgent({
       platform: "opencode",
@@ -163,9 +182,52 @@ test("OpenCode BeforeAgent continues when NAMS_API_KEY is missing", async () => 
     });
 
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
-    const { log } = await readSingleSessionLog(projectDir);
-    assert.match(log, /NAMS_API_KEY missing/);
+    const { log, lines } = await readSingleSessionLog(projectDir);
+    assert.match(log, /NAMS apiKey missing/);
+    const diagnostics = lines.filter(
+      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS apiKey missing",
+    );
+    assert.equal(diagnostics.length, 1);
+    assert.deepEqual(diagnostics[0].payload.configSources, {
+      apiKey: "missing",
+      baseUrl: "default",
+    });
     assert.doesNotMatch(log, /Bearer|key/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("OpenCode BeforeAgent logs invalid config diagnostics without raw JSON contents", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
+  try {
+    await mkdir(path.join(projectDir, ".nams"), { recursive: true });
+    await writeFile(path.join(projectDir, ".nams", "config.json"), '{"apiKey":"secret-config-value"', "utf8");
+    const { OpenCodeAdapter } = await import(opencodeUrl);
+    testEnv(projectDir);
+    const adapter = new OpenCodeAdapter();
+
+    const result = await adapter.beforeAgent({
+      platform: "opencode",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: chatMessagePayload(projectDir, "session-1", "user-1", "Hello"),
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    const { log, lines } = await readSingleSessionLog(projectDir);
+    const diagnostics = lines.filter((entry) => entry.kind === "diagnostic");
+    assert.deepEqual(diagnostics.map((entry) => entry.payload), [
+      {
+        message: "NAMS config invalid",
+        configSources: {
+          apiKey: "missing",
+          baseUrl: "default",
+        },
+        errorSource: "project:.nams/config.json",
+      },
+    ]);
+    assert.doesNotMatch(log, /secret-config-value/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -175,13 +237,12 @@ test("OpenCode BeforeAgent continues when NAMS request fails", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
   try {
     const { OpenCodeAdapter } = await import(opencodeUrl);
-    const adapter = new OpenCodeAdapter({
-      env: {
+    createNamsFetchMock().all({ error: "service unavailable" }, 503);
+    testEnv(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: createNamsFetchMock().all({ error: "service unavailable" }, 503).fetch,
-    });
+      });
+    const adapter = new OpenCodeAdapter();
 
     const result = await adapter.beforeAgent({
       platform: "opencode",
@@ -203,15 +264,14 @@ test("OpenCode NAMS failure diagnostics do not include arbitrary error text", as
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
   try {
     const { OpenCodeAdapter } = await import(opencodeUrl);
-    const adapter = new OpenCodeAdapter({
-      env: {
+    createNamsFetchMock()
+        .throws(new Error('Authorization: Bearer secret NAMS_API_KEY {"prompt":"do not log me"}'))
+        ;
+    testEnv(projectDir, {
         NAMS_API_KEY: "key",
         NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: createNamsFetchMock()
-        .throws(new Error('Authorization: Bearer secret NAMS_API_KEY {"prompt":"do not log me"}'))
-        .fetch,
-    });
+      });
+    const adapter = new OpenCodeAdapter();
 
     const result = await adapter.beforeAgent({
       platform: "opencode",
@@ -223,7 +283,7 @@ test("OpenCode NAMS failure diagnostics do not include arbitrary error text", as
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
     const { log } = await readSingleSessionLog(projectDir);
     assert.match(log, /NAMS request failed/);
-    assert.doesNotMatch(log, /Authorization|Bearer|NAMS_API_KEY|do not log me/);
+    assert.doesNotMatch(log, /Authorization|Bearer|do not log me/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -234,10 +294,8 @@ test("Duplicate OpenCode chat.message does not store user prompt twice", async (
   try {
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     const { OpenCodeAdapter } = await import(opencodeUrl);
-    const adapter = new OpenCodeAdapter({
-      env: { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" },
-      fetch: nams.fetch,
-    });
+    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
+    const adapter = new OpenCodeAdapter();
     const invocation = {
       platform: "opencode",
       event: "BeforeAgent",
@@ -260,10 +318,8 @@ test("OpenCode chat.message stores same content for distinct message ids", async
     const prompt = "Same content can be a new user turn.";
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     const { OpenCodeAdapter } = await import(opencodeUrl);
-    const adapter = new OpenCodeAdapter({
-      env: { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" },
-      fetch: nams.fetch,
-    });
+    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
+    const adapter = new OpenCodeAdapter();
 
     await adapter.beforeAgent({
       platform: "opencode",
@@ -294,10 +350,8 @@ test("OpenCode chat.message stores repeated template-shaped input for distinct m
     const prompt = "Same template-shaped user prompt.";
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     const { OpenCodeAdapter } = await import(opencodeUrl);
-    const adapter = new OpenCodeAdapter({
-      env: { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" },
-      fetch: nams.fetch,
-    });
+    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
+    const adapter = new OpenCodeAdapter();
 
     await adapter.beforeAgent({
       platform: "opencode",
@@ -327,10 +381,8 @@ test("OpenCode experimental.text.complete stores assistant text", async () => {
   try {
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     const { OpenCodeAdapter } = await import(opencodeUrl);
-    const adapter = new OpenCodeAdapter({
-      env: { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" },
-      fetch: nams.fetch,
-    });
+    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
+    const adapter = new OpenCodeAdapter();
 
     await adapter.beforeAgent({
       platform: "opencode",
@@ -366,10 +418,8 @@ test("OpenCode AfterAgent ignores non text-complete output text", async () => {
   try {
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     const { OpenCodeAdapter } = await import(opencodeUrl);
-    const adapter = new OpenCodeAdapter({
-      env: { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" },
-      fetch: nams.fetch,
-    });
+    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
+    const adapter = new OpenCodeAdapter();
 
     await adapter.beforeAgent({
       platform: "opencode",
@@ -402,10 +452,8 @@ test("Duplicate OpenCode experimental.text.complete does not store assistant tex
   try {
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     const { OpenCodeAdapter } = await import(opencodeUrl);
-    const adapter = new OpenCodeAdapter({
-      env: { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" },
-      fetch: nams.fetch,
-    });
+    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
+    const adapter = new OpenCodeAdapter();
 
     await adapter.beforeAgent({
       platform: "opencode",
@@ -448,10 +496,8 @@ test("OpenCode tool.execute.after records sanitized tool metadata", async () => 
       .reasoningStep({ id: "step-1" })
       .toolCall();
     const { OpenCodeAdapter } = await import(opencodeUrl);
-    const adapter = new OpenCodeAdapter({
-      env: { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" },
-      fetch: nams.fetch,
-    });
+    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
+    const adapter = new OpenCodeAdapter();
 
     await adapter.beforeAgent({
       platform: "opencode",
@@ -510,10 +556,8 @@ test("Duplicate OpenCode tool.execute.after does not store tool metadata twice",
       .reasoningStep({ id: "step-1" })
       .toolCall();
     const { OpenCodeAdapter } = await import(opencodeUrl);
-    const adapter = new OpenCodeAdapter({
-      env: { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" },
-      fetch: nams.fetch,
-    });
+    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
+    const adapter = new OpenCodeAdapter();
 
     await adapter.beforeAgent({
       platform: "opencode",
@@ -554,10 +598,8 @@ test("OpenCode tool.execute.after fallback dedupe uses sanitized input", async (
       .reasoningStep({ id: "step-1" })
       .toolCall();
     const { OpenCodeAdapter } = await import(opencodeUrl);
-    const adapter = new OpenCodeAdapter({
-      env: { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" },
-      fetch: nams.fetch,
-    });
+    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
+    const adapter = new OpenCodeAdapter();
 
     await adapter.beforeAgent({
       platform: "opencode",
@@ -608,10 +650,8 @@ test("OpenCode assistant part dedupe does not collide on raw delimiters", async 
   try {
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     const { OpenCodeAdapter } = await import(opencodeUrl);
-    const adapter = new OpenCodeAdapter({
-      env: { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" },
-      fetch: nams.fetch,
-    });
+    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
+    const adapter = new OpenCodeAdapter();
 
     await adapter.beforeAgent({
       platform: "opencode",
@@ -656,13 +696,11 @@ test("OpenCode assistant part dedupe does not collide on raw delimiters", async 
 });
 
 async function readSingleSessionLog(projectDir) {
-  const logDir = path.join(projectDir, ".nams", "logs");
-  const logFiles = (await readdir(logDir)).filter((fileName) => /^session-.*\.jsonl$/.test(fileName));
-  assert.equal(logFiles.length, 1, `expected one session log file, got ${logFiles.join(", ")}`);
-  const log = await readFile(path.join(logDir, logFiles[0]), "utf8");
+  const { logPath, lines } = await readRuntimeSingleSessionLog(testEnv(projectDir).HOME, "opencode");
+  const log = await readFile(logPath, "utf8");
   return {
     log,
-    lines: log.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line)),
+    lines,
   };
 }
 

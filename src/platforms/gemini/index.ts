@@ -1,9 +1,16 @@
 import type { HookInvocation, HookResult, PlatformAdapter } from "../../interfaces.js";
-import type { NamsRequestEvent } from "../../generated/nams-client.js";
-import { loadNamsConfig, type NamsRuntimeConfig } from "../../runtime/config.js";
+import { loadNamsConfig } from "../../runtime/config.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
-import { appendPlatformLog } from "../../runtime/logging.js";
-import { combineMemoryContexts, NamsMemoryService } from "../../runtime/memory-service.js";
+import {
+  appendNamsConfigDiagnostic,
+  appendNamsFailureDiagnostic,
+  appendRawPlatformLog,
+} from "../../runtime/logging.js";
+import {
+  combineMemoryContexts,
+  createNamsMemoryService,
+  type NamsMemoryService,
+} from "../../runtime/memory-service.js";
 import {
   createInitialSessionState,
   loadSessionState,
@@ -13,24 +20,19 @@ import {
 import { parseGeminiPayload } from "./payload.js";
 import { readGeminiTranscript, type GeminiTranscriptEntry } from "./transcript.js";
 
-export interface GeminiAdapterOptions {
-  env?: Record<string, string | undefined>;
-  fetch?: typeof fetch;
-}
-
 export class GeminiAdapter implements PlatformAdapter {
-  constructor(private readonly options: GeminiAdapterOptions = {}) {}
-
-  async startConversation(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
+  async startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
     const payloadInfo = parseGeminiPayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({
       platform: invocation.platform,
       sessionId: payloadInfo.sessionId,
       projectDirectory: payloadInfo.projectDirectory,
     });
-    const state = (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
-    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    const state =
+      (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
+      initialState;
+    await appendRawPlatformLog(invocation, state);
+    await saveSessionState(invocation.platform, state.sessionKey, state);
 
     return { stdout: { continue: true, suppressOutput: true } };
   }
@@ -43,24 +45,26 @@ export class GeminiAdapter implements PlatformAdapter {
       projectDirectory: payloadInfo.projectDirectory,
     });
     const state =
-      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
-    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
+      (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
+      initialState;
+    await appendRawPlatformLog(invocation, state);
 
     if (payloadInfo.prompt === undefined) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
-    const config = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
-    if (config === null) {
-      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
+    await appendNamsConfigDiagnostic(invocation, state, configResult);
+    if (!configResult.ok) {
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
+    const config = configResult.config;
 
     let additionalContext: string | undefined;
     try {
-      const memory = this.createMemoryService(config, invocation, payloadInfo.projectDirectory, state);
+      const memory = createNamsMemoryService(config, invocation, state);
 
       let conversationId = state.conversationId;
       if (conversationId === undefined) {
@@ -76,12 +80,12 @@ export class GeminiAdapter implements PlatformAdapter {
         try {
           recallContexts.push(await memory.recall(conversationId));
         } catch {
-          await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
+          await appendNamsFailureDiagnostic(invocation, state);
         }
         try {
           recallContexts.push(await memory.searchEntities(payloadInfo.prompt));
         } catch {
-          await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
+          await appendNamsFailureDiagnostic(invocation, state);
         }
         state.lastRecallAt = new Date().toISOString();
         const recalledContext = combineMemoryContexts(recallContexts);
@@ -96,12 +100,12 @@ export class GeminiAdapter implements PlatformAdapter {
         state.lastUserMessageHash = promptHash;
       }
     } catch {
-      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await appendNamsFailureDiagnostic(invocation, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput(additionalContext);
     }
 
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput(additionalContext);
   }
 
@@ -113,8 +117,9 @@ export class GeminiAdapter implements PlatformAdapter {
       projectDirectory: payloadInfo.projectDirectory,
     });
     const state =
-      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
-    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
+      (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
+      initialState;
+    await appendRawPlatformLog(invocation, state);
     state.seenAssistantMessageHashes ??= [];
     state.seenTranscriptEntryIds ??= [];
     state.seenReasoningStepHashes ??= [];
@@ -122,20 +127,21 @@ export class GeminiAdapter implements PlatformAdapter {
     state.reasoningStepIdsByHash ??= {};
 
     if (state.conversationId === undefined) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
     const conversationId = state.conversationId;
 
-    const config = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
-    if (config === null) {
-      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
+    await appendNamsConfigDiagnostic(invocation, state, configResult);
+    if (!configResult.ok) {
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
+    const config = configResult.config;
 
     try {
-      const memory = this.createMemoryService(config, invocation, payloadInfo.projectDirectory, state);
+      const memory = createNamsMemoryService(config, invocation, state);
       const response = payloadInfo.promptResponse?.trim();
       if (response !== undefined && response !== "") {
         const responseHash = sha256([invocation.platform, state.sessionKey, "assistant", response].join("\n"));
@@ -153,12 +159,12 @@ export class GeminiAdapter implements PlatformAdapter {
         await recordTraceFromTranscript(conversationId, state, memory, entries);
       }
     } catch {
-      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await appendNamsFailureDiagnostic(invocation, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
   }
 
@@ -170,29 +176,31 @@ export class GeminiAdapter implements PlatformAdapter {
       projectDirectory: payloadInfo.projectDirectory,
     });
     const state =
-      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
-    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
+      (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
+      initialState;
+    await appendRawPlatformLog(invocation, state);
     state.seenToolCallIds ??= [];
     state.seenReasoningStepHashes ??= [];
     state.reasoningStepIdsByHash ??= {};
 
     if (state.conversationId === undefined) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
     const toolPayload = parseGeminiAfterToolPayload(invocation.rawPayload);
     if (toolPayload.toolName === undefined) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
-    const config = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
-    if (config === null) {
-      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
+    await appendNamsConfigDiagnostic(invocation, state, configResult);
+    if (!configResult.ok) {
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
+    const config = configResult.config;
 
     try {
       const toolCallKeys = geminiToolCallDedupeKeys(
@@ -202,7 +210,7 @@ export class GeminiAdapter implements PlatformAdapter {
         toolPayload.input,
       );
       if (!hasSeenAny(state.seenToolCallIds, toolCallKeys.lookupKeys)) {
-        const memory = this.createMemoryService(config, invocation, payloadInfo.projectDirectory, state);
+        const memory = createNamsMemoryService(config, invocation, state);
         const reasoningStep = {
           conversationId: state.conversationId,
           reasoning: `Gemini invoked ${toolPayload.toolName} with the provided tool input.`,
@@ -232,27 +240,15 @@ export class GeminiAdapter implements PlatformAdapter {
         markSeen(state.seenToolCallIds, toolCallKeys.markKeys);
       }
     } catch {
-      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await appendNamsFailureDiagnostic(invocation, state);
+        await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
   }
 
-  private createMemoryService(
-    config: NamsRuntimeConfig,
-    invocation: HookInvocation,
-    projectDirectory: string,
-    state: SessionState,
-  ): NamsMemoryService {
-    return new NamsMemoryService({
-      ...config,
-      ...(this.options.fetch !== undefined ? { fetch: this.options.fetch } : {}),
-      onRequest: (event) => appendNamsRequestLog(invocation, projectDirectory, state, event),
-    });
-  }
 }
 
 function allowOutput(additionalContext?: string): HookResult {
@@ -372,93 +368,6 @@ function optionalString<K extends string>(key: K, value: string | undefined): { 
 
 function optionalNumber<K extends string>(key: K, value: number | undefined): { [P in K]?: number } {
   return value !== undefined ? ({ [key]: value } as { [P in K]: number }) : {};
-}
-
-async function appendNamsConfigDiagnostic(
-  invocation: HookInvocation,
-  projectDirectory: string,
-  state: SessionState,
-): Promise<void> {
-  await appendGeminiDiagnosticLog({
-    platform: invocation.platform,
-    event: invocation.event,
-    projectDirectory,
-    state,
-    payload: { message: "NAMS_API_KEY missing" },
-  });
-}
-
-async function appendNamsFailureDiagnostic(
-  invocation: HookInvocation,
-  projectDirectory: string,
-  state: SessionState,
-): Promise<void> {
-  await appendGeminiDiagnosticLog({
-    platform: invocation.platform,
-    event: invocation.event,
-    projectDirectory,
-    state,
-    payload: { message: "NAMS request failed" },
-  });
-}
-
-async function appendNamsRequestLog(
-  invocation: HookInvocation,
-  projectDirectory: string,
-  state: SessionState,
-  payload: NamsRequestEvent,
-): Promise<void> {
-  await appendPlatformLog({
-    platform: invocation.platform,
-    event: invocation.event,
-    kind: "nams.request",
-    projectDirectory,
-    payload: { ...payload },
-    sessionCreatedAt: state.createdAt,
-    sessionKey: state.sessionKey,
-  });
-}
-
-async function appendRawPlatformLog(
-  invocation: HookInvocation,
-  projectDirectory: string,
-  state: SessionState,
-): Promise<void> {
-  try {
-    await appendPlatformLog({
-      platform: invocation.platform,
-      event: invocation.event,
-      kind: "hook.event",
-      payload: invocation.rawPayload,
-      projectDirectory,
-      sessionCreatedAt: state.createdAt,
-      sessionKey: state.sessionKey,
-    });
-  } catch {
-    // Gemini hooks must not fail because observability writes failed.
-  }
-}
-
-async function appendGeminiDiagnosticLog(entry: {
-  platform: HookInvocation["platform"];
-  event: HookInvocation["event"];
-  projectDirectory: string;
-  state: SessionState;
-  payload: Record<string, unknown>;
-}): Promise<void> {
-  try {
-    await appendPlatformLog({
-      platform: entry.platform,
-      event: entry.event,
-      kind: "diagnostic",
-      projectDirectory: entry.projectDirectory,
-      payload: entry.payload,
-      sessionCreatedAt: entry.state.createdAt,
-      sessionKey: entry.state.sessionKey,
-    });
-  } catch {
-    // Diagnostics are best-effort and must never block a hook response.
-  }
 }
 
 type AssistantMessageState = {

@@ -1,22 +1,18 @@
 import type { HookInvocation, HookResult, PlatformAdapter } from "../../interfaces.js";
-import type { NamsRequestEvent } from "../../generated/nams-client.js";
-import { loadNamsConfig, type NamsRuntimeConfig } from "../../runtime/config.js";
+import { loadNamsConfig } from "../../runtime/config.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
-import { appendPlatformLog } from "../../runtime/logging.js";
-import { combineMemoryContexts, NamsMemoryService, serializeToolInput } from "../../runtime/memory-service.js";
+import {
+  appendNamsConfigDiagnostic,
+  appendNamsFailureDiagnostic,
+  appendRawPlatformLog,
+} from "../../runtime/logging.js";
+import { combineMemoryContexts, createNamsMemoryService, serializeToolInput } from "../../runtime/memory-service.js";
 import { createInitialSessionState, loadSessionState, saveSessionState } from "../../runtime/session-state.js";
 import type { SessionState } from "../../runtime/session-state.js";
 import { parseOpenCodePayload, type OpenCodePayloadInfo } from "./payload.js";
 
-export interface OpenCodeAdapterOptions {
-  env?: Record<string, string | undefined>;
-  fetch?: typeof fetch;
-}
-
 export class OpenCodeAdapter implements PlatformAdapter {
-  constructor(private readonly options: OpenCodeAdapterOptions = {}) {}
-
-  async startConversation(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
+  async startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
     const payloadInfo = parseOpenCodePayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({
       platform: invocation.platform,
@@ -24,10 +20,11 @@ export class OpenCodeAdapter implements PlatformAdapter {
       sessionId: payloadInfo.sessionId,
     });
     const state =
-      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
+      (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
+      initialState;
 
-    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    await appendRawPlatformLog(invocation, state);
+    await saveSessionState(invocation.platform, state.sessionKey, state);
 
     return allowOutput();
   }
@@ -47,25 +44,27 @@ export class OpenCodeAdapter implements PlatformAdapter {
       sessionId: payloadInfo.sessionId,
     });
     const state =
-      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
-    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
+      (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
+      initialState;
+    await appendRawPlatformLog(invocation, state);
     state.seenUserMessageIds ??= [];
 
     const userPrompt = payloadInfo.userPrompt;
     if (userPrompt === undefined || userPrompt.trim() === "") {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
-    const config = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
-    if (config === null) {
-      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
+    await appendNamsConfigDiagnostic(invocation, state, configResult);
+    if (!configResult.ok) {
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
+    const config = configResult.config;
 
     try {
-      const memory = this.createMemoryService(config, invocation, payloadInfo.projectDirectory, state);
+      const memory = createNamsMemoryService(config, invocation, state);
 
       let conversationId = state.conversationId;
       if (conversationId === undefined) {
@@ -81,12 +80,12 @@ export class OpenCodeAdapter implements PlatformAdapter {
         try {
           recallContexts.push(await memory.recall(conversationId));
         } catch {
-          await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
+          await appendNamsFailureDiagnostic(invocation, state);
         }
         try {
           recallContexts.push(await memory.searchEntities(userPrompt));
         } catch {
-          await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
+          await appendNamsFailureDiagnostic(invocation, state);
         }
         const createdAt = new Date().toISOString();
         state.lastRecallAt = createdAt;
@@ -101,19 +100,19 @@ export class OpenCodeAdapter implements PlatformAdapter {
       }
 
       if (hasSeenUserMessage(state, payloadInfo.messageId, invocation.platform, userPrompt)) {
-        await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+        await saveSessionState(invocation.platform, state.sessionKey, state);
         return allowOutput();
       }
 
       await memory.storeUserMessage(conversationId, userPrompt);
       markUserMessageSeen(state, payloadInfo.messageId, invocation.platform, userPrompt);
     } catch {
-      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await appendNamsFailureDiagnostic(invocation, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
   }
 
@@ -125,40 +124,42 @@ export class OpenCodeAdapter implements PlatformAdapter {
       sessionId: payloadInfo.sessionId,
     });
     const state =
-      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
-    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
+      (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
+      initialState;
+    await appendRawPlatformLog(invocation, state);
     state.seenAssistantPartIds ??= [];
     state.seenAssistantMessageHashes ??= [];
 
     if (payloadInfo.hookName !== "experimental.text.complete") {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
     if (state.conversationId === undefined) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
     const assistantText = payloadInfo.assistantText?.trim();
     if (assistantText === undefined || assistantText === "") {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
-    const config = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
-    if (config === null) {
-      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
+    await appendNamsConfigDiagnostic(invocation, state, configResult);
+    if (!configResult.ok) {
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
+    const config = configResult.config;
 
     try {
-      const memory = this.createMemoryService(config, invocation, payloadInfo.projectDirectory, state);
+      const memory = createNamsMemoryService(config, invocation, state);
       const assistantPartId = assistantPartKey(payloadInfo);
       if (assistantPartId !== undefined) {
         if (state.seenAssistantPartIds.includes(assistantPartId)) {
-          await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+          await saveSessionState(invocation.platform, state.sessionKey, state);
           return allowOutput();
         }
 
@@ -172,12 +173,12 @@ export class OpenCodeAdapter implements PlatformAdapter {
         }
       }
     } catch {
-      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await appendNamsFailureDiagnostic(invocation, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
   }
 
@@ -189,33 +190,35 @@ export class OpenCodeAdapter implements PlatformAdapter {
       sessionId: payloadInfo.sessionId,
     });
     const state =
-      (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
-    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
+      (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
+      initialState;
+    await appendRawPlatformLog(invocation, state);
     state.seenToolCallIds ??= [];
     state.seenReasoningStepHashes ??= [];
     state.reasoningStepIdsByHash ??= {};
 
     if (state.conversationId === undefined) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
     if (payloadInfo.hookName !== "tool.execute.after") {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
     if (payloadInfo.toolName === undefined || payloadInfo.toolName.trim() === "") {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
-    const config = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
-    if (config === null) {
-      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
+    await appendNamsConfigDiagnostic(invocation, state, configResult);
+    if (!configResult.ok) {
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
+    const config = configResult.config;
 
     try {
       const dedupeKey = opencodeToolCallDedupeKey(
@@ -225,7 +228,7 @@ export class OpenCodeAdapter implements PlatformAdapter {
         payloadInfo.toolInput,
       );
       if (!state.seenToolCallIds.includes(dedupeKey)) {
-        const memory = this.createMemoryService(config, invocation, payloadInfo.projectDirectory, state);
+        const memory = createNamsMemoryService(config, invocation, state);
         const reasoningStep = {
           conversationId: state.conversationId,
           reasoning: `OpenCode invoked ${payloadInfo.toolName} with the provided tool input.`,
@@ -255,27 +258,15 @@ export class OpenCodeAdapter implements PlatformAdapter {
         markSeen(state.seenToolCallIds, [dedupeKey]);
       }
     } catch {
-      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await appendNamsFailureDiagnostic(invocation, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
   }
 
-  private createMemoryService(
-    config: NamsRuntimeConfig,
-    invocation: HookInvocation,
-    projectDirectory: string,
-    state: SessionState,
-  ): NamsMemoryService {
-    return new NamsMemoryService({
-      ...config,
-      ...(this.options.fetch !== undefined ? { fetch: this.options.fetch } : {}),
-      onRequest: (event) => appendNamsRequestLog(invocation, projectDirectory, state, event),
-    });
-  }
 }
 
 function allowOutput(): HookResult {
@@ -292,17 +283,18 @@ async function consumePendingContext(
     sessionId: payloadInfo.sessionId,
   });
   const state =
-    (await loadSessionState(payloadInfo.projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
-  await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
+    (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
+    initialState;
+  await appendRawPlatformLog(invocation, state);
 
   const pendingContext = state.pendingMemoryContext;
   if (pendingContext === undefined) {
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
   }
 
   delete state.pendingMemoryContext;
-  await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+  await saveSessionState(invocation.platform, state.sessionKey, state);
   return {
     stdout: {
       continue: true,
@@ -382,92 +374,5 @@ function markSeen(seen: string[], keys: string[]): void {
     if (!seen.includes(key)) {
       seen.push(key);
     }
-  }
-}
-
-async function appendNamsConfigDiagnostic(
-  invocation: HookInvocation,
-  projectDirectory: string,
-  state: SessionState,
-): Promise<void> {
-  await appendOpenCodeDiagnosticLog({
-    platform: invocation.platform,
-    event: invocation.event,
-    projectDirectory,
-    state,
-    payload: { message: "NAMS_API_KEY missing" },
-  });
-}
-
-async function appendNamsFailureDiagnostic(
-  invocation: HookInvocation,
-  projectDirectory: string,
-  state: SessionState,
-): Promise<void> {
-  await appendOpenCodeDiagnosticLog({
-    platform: invocation.platform,
-    event: invocation.event,
-    projectDirectory,
-    state,
-    payload: { message: "NAMS request failed" },
-  });
-}
-
-async function appendNamsRequestLog(
-  invocation: HookInvocation,
-  projectDirectory: string,
-  state: SessionState,
-  payload: NamsRequestEvent,
-): Promise<void> {
-  await appendPlatformLog({
-    platform: invocation.platform,
-    event: invocation.event,
-    kind: "nams.request",
-    projectDirectory,
-    payload: { ...payload },
-    sessionCreatedAt: state.createdAt,
-    sessionKey: state.sessionKey,
-  });
-}
-
-async function appendRawPlatformLog(
-  invocation: HookInvocation,
-  projectDirectory: string,
-  state: SessionState,
-): Promise<void> {
-  try {
-    await appendPlatformLog({
-      platform: invocation.platform,
-      event: invocation.event,
-      kind: "hook.event",
-      payload: invocation.rawPayload,
-      projectDirectory,
-      sessionCreatedAt: state.createdAt,
-      sessionKey: state.sessionKey,
-    });
-  } catch {
-    // OpenCode hooks must not fail because observability writes failed.
-  }
-}
-
-async function appendOpenCodeDiagnosticLog(entry: {
-  platform: HookInvocation["platform"];
-  event: HookInvocation["event"];
-  projectDirectory: string;
-  state: SessionState;
-  payload: Record<string, unknown>;
-}): Promise<void> {
-  try {
-    await appendPlatformLog({
-      platform: entry.platform,
-      event: entry.event,
-      kind: "diagnostic",
-      projectDirectory: entry.projectDirectory,
-      payload: entry.payload,
-      sessionCreatedAt: entry.state.createdAt,
-      sessionKey: entry.state.sessionKey,
-    });
-  } catch {
-    // Diagnostics are best-effort and must never block a hook response.
   }
 }

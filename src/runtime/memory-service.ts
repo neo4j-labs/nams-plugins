@@ -1,10 +1,8 @@
-import { NamsClient, type ContextResponse, type NamsRequestEvent } from "../generated/nams-client.js";
+import { NamsClient, type ContextResponse } from "../generated/nams-client.js";
+import type { HookInvocation } from "../interfaces.js";
 import type { NamsRuntimeConfig } from "./config.js";
-
-export interface NamsMemoryServiceOptions extends NamsRuntimeConfig {
-  fetch?: typeof fetch;
-  onRequest?: (event: NamsRequestEvent) => void | Promise<void>;
-}
+import { appendNamsRequestLog } from "./logging.js";
+import type { SessionState } from "./session-state.js";
 
 export interface CreateConversationInput {
   harness: string;
@@ -32,16 +30,7 @@ const memoryContextHeader = "Relevant memory context:";
 const memoryContextInstruction = "Use this context silently when it is relevant. Do not narrate memory mechanics.";
 
 export class NamsMemoryService {
-  private readonly client: NamsClient;
-
-  constructor(options: NamsMemoryServiceOptions) {
-    this.client = new NamsClient({
-      apiKey: options.apiKey,
-      ...(options.baseUrl !== undefined ? { baseUrl: options.baseUrl } : {}),
-      ...(options.fetch !== undefined ? { fetch: options.fetch } : {}),
-      ...(options.onRequest !== undefined ? { onRequest: options.onRequest } : {}),
-    });
-  }
+  constructor(private readonly client: NamsClient) {}
 
   async createConversation(input: CreateConversationInput): Promise<string> {
     const response = await this.client.createConversation({
@@ -93,6 +82,19 @@ export class NamsMemoryService {
       ...(input.durationMs !== undefined ? { durationMs: input.durationMs } : {}),
     });
   }
+}
+
+export function createNamsMemoryService(
+  config: NamsRuntimeConfig,
+  invocation: HookInvocation,
+  state: SessionState,
+): NamsMemoryService {
+  const client = new NamsClient({
+    apiKey: config.apiKey,
+    ...(config.baseUrl !== undefined ? { baseUrl: config.baseUrl } : {}),
+    onRequest: (event) => appendNamsRequestLog(invocation, state, event),
+  });
+  return new NamsMemoryService(client);
 }
 
 export function formatMemoryContext(context: ContextResponse): string {

@@ -56,7 +56,7 @@ async function routeEvent(
 ): Promise<HookResult> {
   switch (invocation.event) {
     case "SessionStart":
-      return adapter.startConversation({ ...invocation, event: "SessionStart" });
+      return adapter.startSession({ ...invocation, event: "SessionStart" });
     case "BeforeAgent":
       return adapter.beforeAgent?.({ ...invocation, event: "BeforeAgent" }) ?? allowHook();
     case "AfterAgent":

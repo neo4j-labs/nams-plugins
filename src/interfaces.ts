@@ -16,7 +16,7 @@ export interface HookResult {
 }
 
 export interface PlatformAdapter {
-  startConversation(invocation: HookInvocation<"SessionStart">): Promise<HookResult>;
+  startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult>;
   beforeAgent?(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult>;
   afterAgent?(invocation: HookInvocation<"AfterAgent">): Promise<HookResult>;
   afterTool?(invocation: HookInvocation<"AfterTool">): Promise<HookResult>;
