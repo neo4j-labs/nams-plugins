@@ -115,6 +115,8 @@ Add `tsx` to `devDependencies`.
 
 Add a test TypeScript config such as `tsconfig.test.json`. It should extend the production config or mirror its relevant compiler options, include `src/**/*.ts` and `test/**/*.ts`, and use `noEmit` for type checking.
 
+Add `test/tsconfig.json` as a thin editor-facing config that extends `../tsconfig.test.json`. This lets TypeScript language servers attach open test files to the same Node-aware test project that `npm run test:typecheck` uses, without broadening the production build config.
+
 The production `tsconfig.json` should continue to include only `src/**/*.ts`. This avoids accidentally emitting tests into production build output or generated release artifacts.
 
 Package scripts should make the new responsibilities explicit:
