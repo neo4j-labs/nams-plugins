@@ -3,12 +3,18 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { configDiagnosticPayload, loadNamsConfig } from "../src/runtime/config.js";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const configUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "runtime", "config.js")).href;
+interface ConfigFixture {
+  fixtureDir: string;
+  homeDir: string;
+  projectDir: string;
+}
 
-async function withFixture(fn) {
+type RuntimeEnvOverrides = Record<string, string | undefined>;
+type JsonObject = Record<string, unknown>;
+
+async function withFixture(fn: (fixture: ConfigFixture) => Promise<void>): Promise<void> {
   const fixtureDir = await mkdtemp(path.join(tmpdir(), "nams-config-"));
   const homeDir = path.join(fixtureDir, "home");
   const projectDir = path.join(fixtureDir, "project");
@@ -21,19 +27,19 @@ async function withFixture(fn) {
   }
 }
 
-function useRuntimeEnv(homeDir, overrides = {}) {
+function useRuntimeEnv(homeDir: string, overrides: RuntimeEnvOverrides = {}): void {
   for (const key of ["HOME", "USERPROFILE", "NAMS_API_KEY", "NAMS_BASE_URL"]) {
     delete process.env[key];
   }
   Object.assign(process.env, { HOME: homeDir, USERPROFILE: homeDir, ...overrides });
 }
 
-async function writeGlobalConfig(homeDir, config) {
+async function writeGlobalConfig(homeDir: string, config: JsonObject): Promise<void> {
   await mkdir(path.join(homeDir, ".nams"), { recursive: true });
   await writeFile(path.join(homeDir, ".nams", "config.json"), JSON.stringify(config), "utf8");
 }
 
-async function writeProjectConfig(projectDir, config) {
+async function writeProjectConfig(projectDir: string, config: JsonObject): Promise<void> {
   await mkdir(path.join(projectDir, ".nams"), { recursive: true });
   await writeFile(path.join(projectDir, ".nams", "config.json"), JSON.stringify(config), "utf8");
 }
@@ -44,8 +50,6 @@ test("loads global JSON config by default", async () => {
       apiKey: "global-key",
       baseUrl: "https://global.example.test",
     });
-
-    const { loadNamsConfig } = await import(configUrl);
     useRuntimeEnv(homeDir);
     const result = await loadNamsConfig(projectDir);
 
@@ -72,8 +76,6 @@ test("project JSON config overlays global JSON config", async () => {
     await writeProjectConfig(projectDir, {
       apiKey: "project-key",
     });
-
-    const { loadNamsConfig } = await import(configUrl);
     useRuntimeEnv(homeDir);
     const result = await loadNamsConfig(projectDir);
 
@@ -101,8 +103,6 @@ test("environment variables overlay project and global JSON config", async () =>
       apiKey: "project-key",
       baseUrl: "https://project.example.test",
     });
-
-    const { loadNamsConfig } = await import(configUrl);
     useRuntimeEnv(homeDir, {
       NAMS_API_KEY: "env-key",
       NAMS_BASE_URL: "https://env.example.test",
@@ -131,8 +131,6 @@ test("does not read project dotenv config files", async () => {
       "NAMS_API_KEY=file-key\nNAMS_BASE_URL=https://file.example.test\n",
       "utf8",
     );
-
-    const { loadNamsConfig } = await import(configUrl);
     useRuntimeEnv(homeDir);
     const result = await loadNamsConfig(projectDir);
 
@@ -149,7 +147,6 @@ test("does not read project dotenv config files", async () => {
 
 test("missing apiKey returns structured non-ok result", async () => {
   await withFixture(async ({ homeDir, projectDir }) => {
-    const { loadNamsConfig } = await import(configUrl);
     useRuntimeEnv(homeDir);
     const result = await loadNamsConfig(projectDir);
 
@@ -168,8 +165,6 @@ test("invalid JSON returns structured non-ok result without raw file content", a
   await withFixture(async ({ homeDir, projectDir }) => {
     await mkdir(path.join(homeDir, ".nams"), { recursive: true });
     await writeFile(path.join(homeDir, ".nams", "config.json"), '{"apiKey":"secret-key"', "utf8");
-
-    const { loadNamsConfig } = await import(configUrl);
     useRuntimeEnv(homeDir);
     const result = await loadNamsConfig(projectDir);
 
@@ -192,8 +187,6 @@ test("invalid project JSON preserves global source metadata", async () => {
     });
     await mkdir(path.join(projectDir, ".nams"), { recursive: true });
     await writeFile(path.join(projectDir, ".nams", "config.json"), '{"apiKey":"secret-project-key"', "utf8");
-
-    const { loadNamsConfig } = await import(configUrl);
     useRuntimeEnv(homeDir);
     const result = await loadNamsConfig(projectDir);
 
@@ -214,8 +207,6 @@ test("configDiagnosticPayload includes sources but not secret values", async () 
       apiKey: "secret-global-key",
       baseUrl: "https://global.example.test",
     });
-
-    const { configDiagnosticPayload, loadNamsConfig } = await import(configUrl);
     useRuntimeEnv(homeDir);
     const loaded = await loadNamsConfig(projectDir);
     useRuntimeEnv(path.join(homeDir, "empty"));
@@ -228,7 +219,7 @@ test("configDiagnosticPayload includes sources but not secret values", async () 
         apiKey: "missing",
         baseUrl: "default",
       },
-    };
+    } as const;
 
     assert.deepEqual(configDiagnosticPayload(loaded), {
       message: "NAMS config loaded",

@@ -11,8 +11,22 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const cliPath = path.join(repoRoot, ".build", "tsc", "cli.js");
 const codexHooksTemplatePath = path.join(repoRoot, "templates", "codex", "hooks.json");
 
-function runCliWithEvent(harness, event, payload, cwd, homeDir = testHome(cwd)) {
-  return new Promise((resolve, reject) => {
+interface CliResult {
+  code: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+type HookPayload = Record<string, unknown>;
+
+function runCliWithEvent(
+  harness: string,
+  event: string,
+  payload: HookPayload,
+  cwd: string,
+  homeDir = testHome(cwd),
+): Promise<CliResult> {
+  return new Promise<CliResult>((resolve, reject) => {
     const child = spawn(process.execPath, [cliPath, "run", harness, "--event", event], {
       cwd,
       env: runtimeEnv(homeDir, process.env),
@@ -36,12 +50,17 @@ function runCliWithEvent(harness, event, payload, cwd, homeDir = testHome(cwd)) 
   });
 }
 
-function runCli(harness, payload, cwd, homeDir) {
+function runCli(harness: string, payload: HookPayload, cwd: string, homeDir?: string): Promise<CliResult> {
   return runCliWithEvent(harness, "SessionStart", payload, cwd, homeDir);
 }
 
-function runCliWithoutEvent(harness, payload, cwd, homeDir = testHome(cwd)) {
-  return new Promise((resolve, reject) => {
+function runCliWithoutEvent(
+  harness: string,
+  payload: HookPayload,
+  cwd: string,
+  homeDir = testHome(cwd),
+): Promise<CliResult> {
+  return new Promise<CliResult>((resolve, reject) => {
     const child = spawn(process.execPath, [cliPath, "run", harness], {
       cwd,
       env: runtimeEnv(homeDir, process.env),
@@ -65,7 +84,7 @@ function runCliWithoutEvent(harness, payload, cwd, homeDir = testHome(cwd)) {
   });
 }
 
-function testHome(cwd) {
+function testHome(cwd: string): string {
   return path.join(cwd, "home");
 }
 

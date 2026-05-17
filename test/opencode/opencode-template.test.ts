@@ -8,6 +8,22 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const templatePath = path.join(repoRoot, "templates", "opencode", "plugins", "nams-hooks.js");
 
+interface TemplateFixture {
+  directory: string;
+  commandPath: string;
+  callsPath: string;
+  cleanup(): Promise<void>;
+}
+
+interface TemplateModule {
+  NamsHooks(context: Record<string, string>): Promise<Record<string, any>>;
+}
+
+interface TemplateCall {
+  args: string[];
+  payload: Record<string, any>;
+}
+
 test("opencode plugin template exposes NAMS hook handlers", async () => {
   const source = await readFile(templatePath, "utf8");
 
@@ -130,7 +146,7 @@ test("tool.execute.after handler sends tool payload to AfterTool", async () => {
   }
 });
 
-async function createNamsHooksStub() {
+async function createNamsHooksStub(): Promise<TemplateFixture> {
   const directory = await mkdtemp(path.join(os.tmpdir(), "nams-opencode-template-"));
   const commandPath = path.join(directory, "nams-hooks-stub.js");
   const callsPath = path.join(directory, "calls.jsonl");
@@ -166,26 +182,26 @@ process.stdin.on("end", () => {
   };
 }
 
-async function importTemplateWithCommand(commandPath) {
+async function importTemplateWithCommand(commandPath: string): Promise<TemplateModule> {
   const previousCommand = process.env.NAMS_HOOKS_COMMAND;
   process.env.NAMS_HOOKS_COMMAND = commandPath;
   try {
-    return await import(`${pathToFileURL(templatePath).href}?test=${Date.now()}-${Math.random()}`);
+    return (await import(`${pathToFileURL(templatePath).href}?test=${Date.now()}-${Math.random()}`)) as TemplateModule;
   } finally {
     restoreEnv("NAMS_HOOKS_COMMAND", previousCommand);
   }
 }
 
-async function readCalls(callsPath) {
+async function readCalls(callsPath: string): Promise<TemplateCall[]> {
   const source = await readFile(callsPath, "utf8");
   return source
     .trim()
     .split("\n")
     .filter(Boolean)
-    .map((line) => JSON.parse(line));
+    .map((line) => JSON.parse(line) as TemplateCall);
 }
 
-function restoreEnv(name, value) {
+function restoreEnv(name: string, value: string | undefined): void {
   if (value === undefined) {
     delete process.env[name];
     return;
