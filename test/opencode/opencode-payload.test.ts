@@ -1,13 +1,8 @@
 import assert from "node:assert/strict";
-import path from "node:path";
 import { test } from "node:test";
-import { fileURLToPath, pathToFileURL } from "node:url";
-
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const payloadUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "platforms", "opencode", "payload.js")).href;
+import { parseOpenCodePayload } from "../../src/platforms/opencode/payload.js";
 
 test("extracts OpenCode event session metadata", async () => {
-  const { parseOpenCodePayload } = await import(payloadUrl);
   const info = parseOpenCodePayload(
     {
       hook: "event",
@@ -29,7 +24,6 @@ test("extracts OpenCode event session metadata", async () => {
 });
 
 test("extracts OpenCode chat message prompt from non-ignored text parts", async () => {
-  const { parseOpenCodePayload } = await import(payloadUrl);
   const info = parseOpenCodePayload(
     {
       hook: "chat.message",
@@ -61,7 +55,6 @@ test("extracts OpenCode chat message prompt from non-ignored text parts", async 
 });
 
 test("extracts OpenCode chat message id from real template input shape", async () => {
-  const { parseOpenCodePayload } = await import(payloadUrl);
   const info = parseOpenCodePayload(
     {
       hook: "chat.message",
@@ -89,7 +82,6 @@ test("extracts OpenCode chat message id from real template input shape", async (
 });
 
 test("extracts OpenCode assistant text completion metadata", async () => {
-  const { parseOpenCodePayload } = await import(payloadUrl);
   const info = parseOpenCodePayload(
     {
       hook: "experimental.text.complete",
@@ -117,7 +109,6 @@ test("extracts OpenCode assistant text completion metadata", async () => {
 });
 
 test("extracts assistant text from output text regardless of hook name", async () => {
-  const { parseOpenCodePayload } = await import(payloadUrl);
   const info = parseOpenCodePayload(
     {
       hook: "custom.assistant.surface",
@@ -136,7 +127,6 @@ test("extracts assistant text from output text regardless of hook name", async (
 });
 
 test("extracts OpenCode tool execution fields with completed status by default", async () => {
-  const { parseOpenCodePayload } = await import(payloadUrl);
   const toolInput = { command: "npm test" };
   const info = parseOpenCodePayload(
     {
@@ -169,7 +159,6 @@ test("extracts OpenCode tool execution fields with completed status by default",
 });
 
 test("ignores non-spec tool source fields when conflicting fields are present", async () => {
-  const { parseOpenCodePayload } = await import(payloadUrl);
   const toolInput = { command: "npm test" };
   const info = parseOpenCodePayload(
     {
@@ -209,7 +198,6 @@ test("ignores non-spec tool source fields when conflicting fields are present", 
 });
 
 test("omits tool details that are only present in non-spec source fields", async () => {
-  const { parseOpenCodePayload } = await import(payloadUrl);
   const info = parseOpenCodePayload(
     {
       hook: "tool.execute.after",

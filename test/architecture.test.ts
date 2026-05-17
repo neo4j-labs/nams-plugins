@@ -4,12 +4,21 @@ import path from "node:path";
 import { test } from "node:test";
 import { projectFiles } from "archunit";
 
-async function assertNoViolations(rule) {
+interface ArchRule {
+  check(): Promise<unknown[]>;
+}
+
+interface SourceFile {
+  path: string;
+  content: string;
+}
+
+async function assertNoViolations(rule: ArchRule): Promise<void> {
   const violations = await rule.check();
   assert.deepEqual(violations, []);
 }
 
-async function assertNoGeneratedImportsFrom(folder) {
+async function assertNoGeneratedImportsFrom(folder: string): Promise<void> {
   const generatedClient = await readFile("src/generated/nams-client.ts", "utf8");
   const importPattern = new RegExp(
     String.raw`(?:import|export)\s+(?:[^"'();]+?\s+from\s+)?["'][^"']*${folder}/|import\s*\(\s*["'][^"']*${folder}/`,
@@ -18,7 +27,7 @@ async function assertNoGeneratedImportsFrom(folder) {
   assert.equal(importPattern.test(generatedClient), false);
 }
 
-function importedSourcePaths(filePath, content) {
+function importedSourcePaths(filePath: string, content: string): string[] {
   const importPattern =
     /(?:import|export)\s+(?:[^"'();]+?\s+from\s+)?["']([^"']+)["']|import\s*\(\s*["']([^"']+)["']/g;
 
@@ -31,7 +40,7 @@ function importedSourcePaths(filePath, content) {
     });
 }
 
-function importsConcreteAdapter(file) {
+function importsConcreteAdapter(file: SourceFile): boolean {
   const concreteAdapters = new Set([
     "src/platforms/gemini/index.ts",
     "src/platforms/claude/index.ts",

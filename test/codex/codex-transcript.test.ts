@@ -3,12 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { fileURLToPath, pathToFileURL } from "node:url";
-
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const transcriptUrl = pathToFileURL(
-  path.join(repoRoot, ".build", "tsc", "platforms", "codex", "transcript.js"),
-).href;
+import { readCodexTranscript } from "../../src/platforms/codex/transcript.js";
 
 test("reads Codex user and assistant messages from nested response items", async () => {
   const tempDir = await mkdtemp(path.join(tmpdir(), "nams-codex-transcript-"));
@@ -53,7 +48,6 @@ test("reads Codex user and assistant messages from nested response items", async
       "utf8",
     );
 
-    const { readCodexTranscript } = await import(transcriptUrl);
     const entries = await readCodexTranscript(transcriptPath);
 
     assert.deepEqual(entries, [
@@ -93,8 +87,6 @@ test("reads Codex messages from root response items", async () => {
       ].join("\n"),
       "utf8",
     );
-
-    const { readCodexTranscript } = await import(transcriptUrl);
     const entries = await readCodexTranscript(transcriptPath);
 
     assert.deepEqual(entries, [
@@ -148,8 +140,6 @@ test("reads Codex web search response items as tool metadata", async () => {
       ].join("\n"),
       "utf8",
     );
-
-    const { readCodexTranscript } = await import(transcriptUrl);
     const entries = await readCodexTranscript(transcriptPath);
 
     assert.deepEqual(entries, [
@@ -197,8 +187,6 @@ test("ignores developer system blank and unsupported Codex messages", async () =
       ].join("\n"),
       "utf8",
     );
-
-    const { readCodexTranscript } = await import(transcriptUrl);
     const entries = await readCodexTranscript(transcriptPath);
 
     assert.deepEqual(entries, []);
@@ -224,8 +212,6 @@ test("joins multiple Codex text parts and omits blank ids", async () => {
       }),
       "utf8",
     );
-
-    const { readCodexTranscript } = await import(transcriptUrl);
     const entries = await readCodexTranscript(transcriptPath);
 
     assert.deepEqual(entries, [{ kind: "user", content: "First line\nSecond line" }]);

@@ -1,13 +1,8 @@
 import assert from "node:assert/strict";
-import path from "node:path";
 import { test } from "node:test";
-import { fileURLToPath, pathToFileURL } from "node:url";
-
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const payloadUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "platforms", "codex", "payload.js")).href;
+import { parseCodexPayload } from "../../src/platforms/codex/payload.js";
 
 test("extracts Codex common and prompt fields from hook payload", async () => {
-  const { parseCodexPayload } = await import(payloadUrl);
   const info = parseCodexPayload(
     {
       session_id: "session-1",
@@ -37,7 +32,6 @@ test("extracts Codex common and prompt fields from hook payload", async () => {
 });
 
 test("extracts Codex stop and post-tool fields from hook payload", async () => {
-  const { parseCodexPayload } = await import(payloadUrl);
   const toolInput = { command: "npm test" };
   const info = parseCodexPayload(
     {
@@ -64,7 +58,6 @@ test("extracts Codex stop and post-tool fields from hook payload", async () => {
 });
 
 test("falls back to process cwd, ignores blank strings, and accepts camelCase aliases", async () => {
-  const { parseCodexPayload } = await import(payloadUrl);
   const info = parseCodexPayload(
     {
       session_id: " ",

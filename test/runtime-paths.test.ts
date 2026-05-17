@@ -4,16 +4,18 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { fileURLToPath, pathToFileURL } from "node:url";
-
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const pathsUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "runtime", "paths.js")).href;
+import {
+  RuntimeEnvironment,
+  globalConfigPath,
+  platformLogDirectory,
+  projectConfigPath,
+  resolveNamsHome,
+  sessionStatePath,
+} from "../src/runtime/paths.js";
 
 test("resolves NAMS home from HOME", async () => {
   const homeDir = await mkdtemp(path.join(tmpdir(), "nams-home-"));
   try {
-    const { RuntimeEnvironment, resolveNamsHome } = await import(pathsUrl);
-
     assert.equal(resolveNamsHome({ HOME: homeDir }), path.join(homeDir, ".nams"));
     assert.equal(RuntimeEnvironment.from({ HOME: homeDir }).namsHome(), path.join(homeDir, ".nams"));
   } finally {
@@ -24,8 +26,6 @@ test("resolves NAMS home from HOME", async () => {
 test("resolves NAMS home from USERPROFILE when HOME is absent", async () => {
   const homeDir = await mkdtemp(path.join(tmpdir(), "nams-home-"));
   try {
-    const { resolveNamsHome } = await import(pathsUrl);
-
     assert.equal(resolveNamsHome({ USERPROFILE: homeDir }), path.join(homeDir, ".nams"));
   } finally {
     await rm(homeDir, { recursive: true, force: true });
@@ -35,8 +35,6 @@ test("resolves NAMS home from USERPROFILE when HOME is absent", async () => {
 test("builds config, state, and log paths under NAMS home", async () => {
   const homeDir = await mkdtemp(path.join(tmpdir(), "nams-home-"));
   try {
-    const { RuntimeEnvironment, globalConfigPath, platformLogDirectory, projectConfigPath, sessionStatePath } =
-      await import(pathsUrl);
     const runtimeEnvironment = RuntimeEnvironment.from({ HOME: homeDir });
 
     assert.equal(runtimeEnvironment.homeDirectory(), homeDir);
@@ -61,11 +59,9 @@ test("builds config, state, and log paths under NAMS home", async () => {
 });
 
 test("throws a stable error when no home directory is available", async () => {
-  const { resolveNamsHome } = await import(pathsUrl);
-
   assert.throws(() => resolveNamsHome({}), /Unable to resolve NAMS home directory/);
 });
 
-function sha256(value) {
+function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }

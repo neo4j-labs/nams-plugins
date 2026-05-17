@@ -1,13 +1,8 @@
 import assert from "node:assert/strict";
-import path from "node:path";
 import { test } from "node:test";
-import { fileURLToPath, pathToFileURL } from "node:url";
-
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const payloadUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "platforms", "gemini", "payload.js")).href;
+import { parseGeminiPayload } from "../../src/platforms/gemini/payload.js";
 
 test("extracts Gemini prompt and response fields from hook payload", async () => {
-  const { parseGeminiPayload } = await import(payloadUrl);
   const info = parseGeminiPayload(
     {
       session_id: "session-1",
@@ -29,14 +24,12 @@ test("extracts Gemini prompt and response fields from hook payload", async () =>
 });
 
 test("falls back to process cwd when Gemini cwd is absent", async () => {
-  const { parseGeminiPayload } = await import(payloadUrl);
   const info = parseGeminiPayload({ session_id: "session-1" }, "/fallback");
 
   assert.equal(info.projectDirectory, "/fallback");
 });
 
 test("accepts camelCase aliases and ignores blank values", async () => {
-  const { parseGeminiPayload } = await import(payloadUrl);
   const info = parseGeminiPayload(
     {
       session_id: " ",
