@@ -14,23 +14,23 @@ This preserves the existing test style and avoids a Jest migration. Production r
 
 - Approved hook architecture: `docs/superpowers/specs/2026-05-10-nams-hooks-design.md`
 - OpenAPI client build design: `docs/superpowers/specs/2026-05-10-nams-openapi-client-build-design.md`
-- Current project config: `package.json`, `tsconfig.json`, and `test/**/*.test.js`
+- Pre-migration project config: `package.json`, `tsconfig.json`, and `test/**/*.test.js`
 - User preference: keep Node `>=20`, author tests in TypeScript, use `tsx` with `node:test`
 - TypeScript unit testing article shared by the user: `https://www.testim.io/blog/typescript-unit-testing-101/`
 - Node TypeScript execution guidance: `https://nodejs.org/learn/typescript/run`
 - `tsx` documentation: `https://tsx.hirok.io/`
 
-## Current State
+## Pre-Migration State
 
-The repository currently keeps production TypeScript under `src/` and JavaScript tests under `test/`.
+Before this migration, the repository kept production TypeScript under `src/` and JavaScript tests under `test/`.
 
-`tsconfig.json` includes only `src/**/*.ts`, so the normal TypeScript build emits production runtime files to `.build/tsc`. The test command runs JavaScript tests directly:
+`tsconfig.json` included only `src/**/*.ts`, so the normal TypeScript build emitted production runtime files to `.build/tsc`. The test command ran JavaScript tests directly:
 
 ```bash
 node --test test/*.test.js test/**/*.test.js
 ```
 
-Many tests dynamically import compiled files from `.build/tsc`, for example `.build/tsc/runtime/memory-service.js`. This means test execution depends on a successful build and mostly validates emitted JavaScript. That has useful distribution parity, but it also means tests are not type-checked as tests, test imports are noisier than source imports, and test fixtures/helpers cannot share TypeScript types directly.
+Many tests dynamically imported compiled files from `.build/tsc`, for example `.build/tsc/runtime/memory-service.js`. This meant test execution depended on a successful build and mostly validated emitted JavaScript. That had useful distribution parity, but it also meant tests were not type-checked as tests, test imports were noisier than source imports, and test fixtures/helpers could not share TypeScript types directly.
 
 ## Goals
 
@@ -67,17 +67,17 @@ Because runtime execution through `tsx` does not type-check tests, add a dedicat
 The expected command shape is:
 
 ```bash
-tsc -p tsconfig.test.json --noEmit
+tsc -p tsconfig.test.json
 ```
 
 `npm run check` should run:
 
-1. `npm run openapi:check`
+1. `npm run openapi:generate`
 2. `npm run build`
 3. the test type-check target
 4. `npm test`
 
-This keeps OpenAPI freshness, production compilation, test type safety, and test execution as separate, readable gates.
+This keeps OpenAPI client generation, production compilation, test type safety, and test execution as separate, readable gates.
 
 ## Alternatives Considered
 
@@ -122,8 +122,8 @@ Package scripts should make the new responsibilities explicit:
 - `build`: compile production TypeScript to `.build/tsc`
 - `test:typecheck`: type-check source plus tests without emitting
 - `test`: run `.ts` tests through `node:test` with `tsx`
-- `check`: run OpenAPI check, production build, test type-check, and test execution
-- `openapi:test`: keep its OpenAPI-specific regeneration/build/test behavior, updated for the `.ts` test filename
+- `check`: run OpenAPI generation, production build, test type-check, and test execution
+- generated client tests: continue to run through `test/nams-client-generator.test.ts` as part of `npm test`
 
 Do not use `npx` in package scripts. `tsx` should be a declared dev dependency, and npm scripts automatically place local binaries and packages on the execution path. Avoiding `npx` prevents accidental package fetching or prompts during deterministic verification.
 
@@ -133,7 +133,7 @@ Normal verification should flow as:
 
 ```text
 docs/nams-openapi.json
-  -> openapi:check
+  -> openapi:generate
 
 src/**/*.ts
   -> npm run build
@@ -185,7 +185,7 @@ Add no new behavioral runtime features as part of this migration. The desired ob
 - `npm test` runs TypeScript tests through `tsx` and Node's built-in test runner.
 - Tests import source TypeScript directly except where compiled CLI output is intentionally under test.
 - `npm run test:typecheck` type-checks source and tests.
-- `npm run check` runs OpenAPI freshness, production build, test type-check, and the full TypeScript test suite.
-- `npm run openapi:test` still validates the generated NAMS client workflow.
+- `npm run check` runs OpenAPI generation, production build, test type-check, and the full TypeScript test suite.
+- Generated NAMS client tests still validate the generated client workflow as part of `npm test`.
 - `dependencies` remains free of test tooling.
 - Runtime source and generated release artifacts do not import or require `tsx`.
