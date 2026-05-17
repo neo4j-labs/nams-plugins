@@ -67,17 +67,17 @@ Because runtime execution through `tsx` does not type-check tests, add a dedicat
 The expected command shape is:
 
 ```bash
-tsc -p tsconfig.test.json --noEmit
+tsc -p tsconfig.test.json
 ```
 
 `npm run check` should run:
 
-1. `npm run openapi:check`
+1. `npm run openapi:generate`
 2. `npm run build`
 3. the test type-check target
 4. `npm test`
 
-This keeps OpenAPI freshness, production compilation, test type safety, and test execution as separate, readable gates.
+This keeps OpenAPI client generation, production compilation, test type safety, and test execution as separate, readable gates.
 
 ## Alternatives Considered
 
@@ -115,6 +115,8 @@ Add `tsx` to `devDependencies`.
 
 Add a test TypeScript config such as `tsconfig.test.json`. It should extend the production config or mirror its relevant compiler options, include `src/**/*.ts` and `test/**/*.ts`, and use `noEmit` for type checking.
 
+Add `test/tsconfig.json` as a thin editor-facing config that extends `../tsconfig.test.json`. This lets TypeScript language servers attach open test files to the same Node-aware test project that `npm run test:typecheck` uses, without broadening the production build config.
+
 The production `tsconfig.json` should continue to include only `src/**/*.ts`. This avoids accidentally emitting tests into production build output or generated release artifacts.
 
 Package scripts should make the new responsibilities explicit:
@@ -122,8 +124,8 @@ Package scripts should make the new responsibilities explicit:
 - `build`: compile production TypeScript to `.build/tsc`
 - `test:typecheck`: type-check source plus tests without emitting
 - `test`: run `.ts` tests through `node:test` with `tsx`
-- `check`: run OpenAPI check, production build, test type-check, and test execution
-- `openapi:test`: keep its OpenAPI-specific regeneration/build/test behavior, updated for the `.ts` test filename
+- `check`: run OpenAPI generation, production build, test type-check, and test execution
+- generated client tests: continue to run through `test/nams-client-generator.test.ts` as part of `npm test`
 
 Do not use `npx` in package scripts. `tsx` should be a declared dev dependency, and npm scripts automatically place local binaries and packages on the execution path. Avoiding `npx` prevents accidental package fetching or prompts during deterministic verification.
 
@@ -133,7 +135,7 @@ Normal verification should flow as:
 
 ```text
 docs/nams-openapi.json
-  -> openapi:check
+  -> openapi:generate
 
 src/**/*.ts
   -> npm run build
@@ -185,7 +187,7 @@ Add no new behavioral runtime features as part of this migration. The desired ob
 - `npm test` runs TypeScript tests through `tsx` and Node's built-in test runner.
 - Tests import source TypeScript directly except where compiled CLI output is intentionally under test.
 - `npm run test:typecheck` type-checks source and tests.
-- `npm run check` runs OpenAPI freshness, production build, test type-check, and the full TypeScript test suite.
-- `npm run openapi:test` still validates the generated NAMS client workflow.
+- `npm run check` runs OpenAPI generation, production build, test type-check, and the full TypeScript test suite.
+- Generated NAMS client tests still validate the generated client workflow as part of `npm test`.
 - `dependencies` remains free of test tooling.
 - Runtime source and generated release artifacts do not import or require `tsx`.

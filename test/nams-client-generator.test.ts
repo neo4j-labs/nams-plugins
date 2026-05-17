@@ -6,13 +6,56 @@ import path from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import type { NamsRequestEvent } from "../src/generated/nams-client.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const generatedClientPath = path.join(repoRoot, ".build", "tsc", "generated", "nams-client.js");
 const generatedClientUrl = pathToFileURL(generatedClientPath).href;
 const generatorScriptPath = path.join(repoRoot, "scripts", "generate-nams-client.mjs");
 const execFileAsync = promisify(execFile);
-const expectedEndpoints = [
+
+type GeneratedClientModule = typeof import("../src/generated/nams-client.js");
+
+interface ExpectedEndpoint {
+  methodName: string;
+  httpMethod: "GET" | "POST";
+  path: string;
+  successStatus: string;
+  bodyRequired: boolean;
+  pathArgs: Array<{ parameterName: string }>;
+}
+
+interface OpenApiParameter {
+  in: string;
+  name: string;
+  required?: boolean;
+  type?: string;
+  schema?: { $ref?: string };
+}
+
+interface OpenApiOperation {
+  parameters?: OpenApiParameter[];
+  responses?: Record<string, { schema?: { $ref?: string } }>;
+}
+
+interface OpenApiSpec {
+  paths: Record<string, Partial<Record<Lowercase<ExpectedEndpoint["httpMethod"]>, OpenApiOperation>>>;
+}
+
+interface CapturedRequest {
+  url: string | URL | Request;
+  init: RequestInit & {
+    body?: string;
+    headers: Record<string, string>;
+    method: string;
+  };
+}
+
+async function importGeneratedClient(): Promise<GeneratedClientModule> {
+  return (await import(generatedClientUrl)) as GeneratedClientModule;
+}
+
+const expectedEndpoints: ExpectedEndpoint[] = [
   {
     methodName: "createConversation",
     httpMethod: "POST",
@@ -80,12 +123,13 @@ const expectedEndpoints = [
 ];
 
 test("generated NAMS client endpoint table matches the pinned OpenAPI spec", async () => {
-  const spec = JSON.parse(await readFile(path.join(repoRoot, "docs", "nams-openapi.json"), "utf8"));
-  const { NAMS_CLIENT_ENDPOINTS } = await import(generatedClientUrl);
+  const spec = JSON.parse(await readFile(path.join(repoRoot, "docs", "nams-openapi.json"), "utf8")) as OpenApiSpec;
+  const { NAMS_CLIENT_ENDPOINTS } = await importGeneratedClient();
 
   assert.deepEqual(NAMS_CLIENT_ENDPOINTS, expectedEndpoints.map(toPublicEndpoint));
   for (const endpoint of expectedEndpoints) {
-    const operation = spec.paths[endpoint.path]?.[endpoint.httpMethod.toLowerCase()];
+    const httpMethod = endpoint.httpMethod.toLowerCase() as Lowercase<ExpectedEndpoint["httpMethod"]>;
+    const operation = spec.paths[endpoint.path]?.[httpMethod];
     assert.ok(operation, `expected ${endpoint.httpMethod} ${endpoint.path} in OpenAPI spec`);
 
     const pathParameters = (operation.parameters ?? []).filter((parameter) => parameter.in === "path");
@@ -118,8 +162,8 @@ test("generator rejects endpoint path placeholders missing from manifest args", 
           "    pathArgs: [],",
         ),
       ),
-    (error) => {
-      assert.match(error.stderr, /missing pathArgs for id/);
+    (error: unknown) => {
+      assert.match((error as { stderr: string }).stderr, /missing pathArgs for id/);
       return true;
     },
   );
@@ -134,14 +178,14 @@ test("generator rejects manifest path args missing from endpoint path", async ()
           '    path: "/v1/entities/search",\n    pathArgs: [{ argumentName: "conversationId", parameterName: "id" }],\n    successStatus: "200",',
         ),
       ),
-    (error) => {
-      assert.match(error.stderr, /extra pathArgs for id/);
+    (error: unknown) => {
+      assert.match((error as { stderr: string }).stderr, /extra pathArgs for id/);
       return true;
     },
   );
 });
 
-async function runGeneratorWithManifestMutation(mutateSource) {
+async function runGeneratorWithManifestMutation(mutateSource: (source: string) => string): Promise<void> {
   const tempRoot = await mkdtemp(path.join(tmpdir(), "nams-generator-"));
   try {
     const tempScriptPath = path.join(tempRoot, "scripts", "generate-nams-client.mjs");
@@ -170,13 +214,13 @@ test("generated NAMS client source does not read OpenAPI at runtime", async () =
 });
 
 test("generated NAMS client sends bearer JSON requests", async () => {
-  const { NamsClient } = await import(generatedClientUrl);
-  const requests = [];
+  const { NamsClient } = await importGeneratedClient();
+  const requests: CapturedRequest[] = [];
   const client = new NamsClient({
     apiKey: "test-key",
     baseUrl: "https://memory.example.test/",
     fetch: async (url, init) => {
-      requests.push({ url, init });
+      requests.push({ url, init: init as CapturedRequest["init"] });
       return new Response(JSON.stringify({ id: "conversation-1" }), {
         headers: { "Content-Type": "application/json" },
         status: 201,
@@ -195,8 +239,8 @@ test("generated NAMS client sends bearer JSON requests", async () => {
 });
 
 test("generated NAMS client reports request and response details", async () => {
-  const { NamsClient } = await import(generatedClientUrl);
-  const events = [];
+  const { NamsClient } = await importGeneratedClient();
+  const events: NamsRequestEvent[] = [];
   const client = new NamsClient({
     apiKey: "test-key",
     baseUrl: "https://memory.example.test",
@@ -242,8 +286,8 @@ test("generated NAMS client reports request and response details", async () => {
 });
 
 test("generated NAMS client reports failed request and response before throwing", async () => {
-  const { NamsClient, NamsClientError } = await import(generatedClientUrl);
-  const events = [];
+  const { NamsClient, NamsClientError } = await importGeneratedClient();
+  const events: NamsRequestEvent[] = [];
   const client = new NamsClient({
     apiKey: "test-key",
     baseUrl: "https://memory.example.test",
@@ -286,8 +330,8 @@ test("generated NAMS client reports failed request and response before throwing"
 });
 
 test("generated NAMS client reports network failure metadata before throwing", async () => {
-  const { NamsClient } = await import(generatedClientUrl);
-  const events = [];
+  const { NamsClient } = await importGeneratedClient();
+  const events: NamsRequestEvent[] = [];
   const client = new NamsClient({
     apiKey: "test-key",
     baseUrl: "https://memory.example.test",
@@ -320,13 +364,13 @@ test("generated NAMS client reports network failure metadata before throwing", a
 });
 
 test("generated NAMS client encodes path parameters", async () => {
-  const { NamsClient } = await import(generatedClientUrl);
-  const requests = [];
+  const { NamsClient } = await importGeneratedClient();
+  const requests: CapturedRequest[] = [];
   const client = new NamsClient({
     apiKey: "test-key",
     baseUrl: "https://memory.example.test",
     fetch: async (url, init) => {
-      requests.push({ url, init });
+      requests.push({ url, init: init as CapturedRequest["init"] });
       return new Response(JSON.stringify({ id: "message-1" }), {
         headers: { "Content-Type": "application/json" },
         status: 201,
@@ -342,13 +386,13 @@ test("generated NAMS client encodes path parameters", async () => {
 });
 
 test("generated NAMS client sends GET requests without JSON body headers", async () => {
-  const { NamsClient } = await import(generatedClientUrl);
-  const requests = [];
+  const { NamsClient } = await importGeneratedClient();
+  const requests: CapturedRequest[] = [];
   const client = new NamsClient({
     apiKey: "test-key",
     baseUrl: "https://memory.example.test",
     fetch: async (url, init) => {
-      requests.push({ url, init });
+      requests.push({ url, init: init as CapturedRequest["init"] });
       return new Response(JSON.stringify({ recentMessages: [] }), {
         headers: { "Content-Type": "application/json" },
         status: 200,
@@ -365,7 +409,7 @@ test("generated NAMS client sends GET requests without JSON body headers", async
 });
 
 test("generated NAMS client throws stable NAMS errors", async () => {
-  const { NamsClient, NamsClientError } = await import(generatedClientUrl);
+  const { NamsClient, NamsClientError } = await importGeneratedClient();
   const client = new NamsClient({
     apiKey: "test-key",
     baseUrl: "https://memory.example.test",
@@ -385,10 +429,18 @@ test("generated NAMS client throws stable NAMS errors", async () => {
   );
 });
 
-function toPublicEndpoint({ methodName, httpMethod, path }) {
+function toPublicEndpoint({
+  methodName,
+  httpMethod,
+  path,
+}: {
+  methodName: string;
+  httpMethod: string;
+  path: string;
+}): { methodName: string; httpMethod: string; path: string } {
   return { methodName, httpMethod, path };
 }
 
-function pathPlaceholders(endpointPath) {
+function pathPlaceholders(endpointPath: string): string[] {
   return [...endpointPath.matchAll(/\{([^}]+)\}/g)].map((match) => match[1]);
 }

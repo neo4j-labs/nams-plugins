@@ -1,15 +1,14 @@
 import assert from "node:assert/strict";
-import path from "node:path";
 import { test } from "node:test";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { NamsClient, type NamsClientOptions } from "../src/generated/nams-client.js";
+import { formatMemoryContext, NamsMemoryService } from "../src/runtime/memory-service.js";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const clientUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "generated", "nams-client.js")).href;
-const serviceUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "runtime", "memory-service.js")).href;
+interface CapturedRequest {
+  url: string | URL | Request;
+  init: RequestInit & { body: string };
+}
 
-async function createService(options) {
-  const { NamsClient } = await import(clientUrl);
-  const { NamsMemoryService } = await import(serviceUrl);
+function createService(options: Partial<NamsClientOptions> = {}): NamsMemoryService {
   return new NamsMemoryService(
     new NamsClient({
       apiKey: "key",
@@ -20,10 +19,10 @@ async function createService(options) {
 }
 
 test("createConversation sends minimal Gemini metadata and returns conversation id", async () => {
-  const requests = [];
+  const requests: CapturedRequest[] = [];
   const service = await createService({
     fetch: async (url, init) => {
-      requests.push({ url, init });
+      requests.push({ url, init: init as CapturedRequest["init"] });
       return new Response(JSON.stringify({ id: "conversation-1" }), { status: 201 });
     },
   });
@@ -44,7 +43,6 @@ test("createConversation sends minimal Gemini metadata and returns conversation 
 });
 
 test("formatMemoryContext formats memories for Gemini additionalContext", async () => {
-  const { formatMemoryContext } = await import(serviceUrl);
   const context = formatMemoryContext({
     reflections: [{ content: "User prefers fixture-driven tests." }],
     observations: [{ content: "Project uses Node test runner." }],
@@ -60,10 +58,10 @@ test("formatMemoryContext formats memories for Gemini additionalContext", async 
 });
 
 test("recordToolCall serializes sanitized capped input and sends explicit tool output", async () => {
-  const requests = [];
+  const requests: CapturedRequest[] = [];
   const service = await createService({
     fetch: async (url, init) => {
-      requests.push({ url, init });
+      requests.push({ url, init: init as CapturedRequest["init"] });
       return new Response(JSON.stringify({ id: "tool-call-1" }), { status: 201 });
     },
   });
@@ -112,10 +110,10 @@ test("recordToolCall serializes sanitized capped input and sends explicit tool o
 });
 
 test("recordToolCall serializes capped explicit tool output", async () => {
-  const requests = [];
+  const requests: CapturedRequest[] = [];
   const service = await createService({
     fetch: async (url, init) => {
-      requests.push({ url, init });
+      requests.push({ url, init: init as CapturedRequest["init"] });
       return new Response(JSON.stringify({ id: "tool-call-1" }), { status: 201 });
     },
   });
