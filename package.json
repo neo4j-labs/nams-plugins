@@ -15,8 +15,9 @@
   "scripts": {
     "openapi:generate": "node scripts/generate-nams-client.mjs",
     "build": "rm -rf .build/tsc && tsc -p tsconfig.json --outDir .build/tsc",
+    "test:typecheck": "tsc -p tsconfig.test.json",
     "test": "node --test test/*.test.js test/**/*.test.js",
-    "check": "npm run openapi:generate && npm run build && npm test",
+    "check": "npm run openapi:generate && npm run build && npm run test:typecheck && npm test",
     "dist": "rm -rf .build && tsc -p tsconfig.json --outDir .build/tsc && node scripts/build-dist.mjs",
     "dist:check": "node scripts/check-dist.mjs",
     "package:check": "npm run check && npm run dist && npm run dist:check"
@@ -28,6 +29,7 @@
     "@types/node": "^24.0.0",
     "archunit": "^2.3.0",
     "fetch-mock": "^12.6.0",
+    "tsx": "^4.22.1",
     "typescript": "^5.9.3"
   },
   "license": "Apache-2.0"
