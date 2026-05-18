@@ -4,9 +4,9 @@
 
 **Goal:** Build Claude Code NAMS integration parity with the implemented Gemini, Codex, and OpenCode memory flows: lazy conversation creation, first-turn recall, user and assistant message persistence, session-scoped logs, and successful tool-call trace recording.
 
-**Architecture:** `src/cli.ts` stays a platform-agnostic typed NAMS event gateway. Claude hook templates translate native hooks to existing NAMS events (`UserPromptSubmit` -> `BeforeAgent`, `PostToolUse` -> `AfterTool`, `Stop` -> `AfterAgent`). Claude-specific payload parsing and orchestration live under `src/platforms/claude/`, while shared runtime modules continue to own config, local state, hashing, logging, and NAMS REST calls through the generated client.
+**Architecture:** `src/cli.ts` stays a platform-agnostic typed NAMS event gateway. Claude hook templates translate native hooks to existing NAMS events (`UserPromptSubmit` -> `BeforeAgent`, `PostToolUse` -> `AfterTool`, `Stop` -> `AfterAgent`). Claude-specific payload parsing and orchestration live under `src/platforms/claude/`, while shared runtime modules continue to own JSON config loading, global runtime storage, local state, hashing, logging, and NAMS REST calls through the generated client.
 
-**Tech Stack:** TypeScript, Node.js built-ins at runtime, generated `NamsClient`, Node's `node:test`, `fetch-mock` test support, and existing ArchUnitTS architecture checks.
+**Tech Stack:** TypeScript, Node.js built-ins at runtime, generated `NamsClient`, Node's `node:test`, TypeScript-authored tests run through `tsx`, `tsconfig.test.json` for test type-checking, `fetch-mock` test support, and existing ArchUnitTS architecture checks.
 
 ---
 
@@ -18,8 +18,10 @@ Current branch baseline:
 
 - `src/platforms/claude/index.ts` already has a complete allow-only walking skeleton for `SessionStart`, `BeforeAgent`, `AfterAgent`, and `AfterTool`.
 - `templates/claude/settings.local.json` already translates Claude `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `Stop` to the shared NAMS events.
-- `test/claude-template.test.js` and `test/cli-session-start.test.js` already cover the current Claude template and typed-event routing.
+- `test/claude-template.test.ts` and `test/cli-session-start.test.ts` already cover the current Claude template and typed-event routing.
 - Gemini, Codex, and OpenCode already use session-scoped logs and stateful memory flows; Claude should converge on those runtime patterns.
+- Configuration now loads from `~/.nams/config.json`, then `<project>/.nams/config.json`, then `NAMS_API_KEY` and `NAMS_BASE_URL` environment overrides. Adapters receive a structured config result and log sanitized diagnostics with source metadata.
+- Runtime state and logs now live under `~/.nams/state/<platform>/` and `~/.nams/logs/<platform>/`, not under the project `.nams/` directory.
 
 Included:
 
@@ -41,15 +43,15 @@ Deferred:
 Create:
 
 - `src/platforms/claude/payload.ts`: Claude-only payload extraction helpers.
-- `test/claude/claude-payload.test.js`: parser tests.
-- `test/claude/claude-memory-flow.test.js`: fixture-driven Claude adapter tests.
+- `test/claude/claude-payload.test.ts`: parser tests.
+- `test/claude/claude-memory-flow.test.ts`: fixture-driven Claude adapter tests.
 
 Modify:
 
 - `src/platforms/claude/index.ts`: replace the allow-only walking skeleton with full Claude memory flow.
 - `src/runtime/memory-service.ts`: add an opt-in untruncated explicit tool-output path while preserving the current capped default for Gemini, Codex, and OpenCode.
-- `test/cli-session-start.test.js`: update Claude log expectations when Claude moves to session-scoped logs.
-- `test/memory-service.test.js`: cover default capped output plus Claude's opt-in untruncated output path.
+- `test/cli-session-start.test.ts`: update Claude log expectations when Claude moves to session-scoped logs.
+- `test/memory-service.test.ts`: cover default capped output plus Claude's opt-in untruncated output path.
 
 Do not modify:
 
@@ -104,14 +106,14 @@ Status: complete in the current branch. Keep this task as the audit trail for th
 **Files:**
 
 - Modify: `templates/claude/settings.local.json`
-- Modify: `test/cli-session-start.test.js`
-- Modify: `test/claude-template.test.js`
+- Modify: `test/cli-session-start.test.ts`
+- Modify: `test/claude-template.test.ts`
 
 - [x] **Step 1: Add Claude NAMS-event routing tests**
 
-Append to `test/cli-session-start.test.js`:
+Append to `test/cli-session-start.test.ts`:
 
-```js
+```ts
 const claudeHookMappings = [
   ["UserPromptSubmit", "BeforeAgent"],
   ["PostToolUse", "AfterTool"],
@@ -144,12 +146,12 @@ for (const [claudeHook, namsEvent] of claudeHookMappings) {
 Run:
 
 ```bash
-npm run build && node --test test/cli-session-start.test.js
+npm run test:typecheck && node --import=tsx --test test/cli-session-start.test.ts
 ```
 
 Expected:
 
-- Build passes.
+- TypeScript test type-checking passes.
 - The new tests pass against the current platform-agnostic CLI because they use existing NAMS events.
 
 - [x] **Step 3: Update Claude hook template**
@@ -210,7 +212,7 @@ Replace `templates/claude/settings.local.json` with:
 Run:
 
 ```bash
-npm run build && node --test test/cli-session-start.test.js test/claude-template.test.js
+npm run test:typecheck && node --import=tsx --test test/cli-session-start.test.ts test/claude-template.test.ts
 ```
 
 Expected:
@@ -221,7 +223,7 @@ Expected:
 - [x] **Step 5: Commit mapping changes**
 
 ```bash
-git add templates/claude/settings.local.json test/cli-session-start.test.js test/claude-template.test.js
+git add templates/claude/settings.local.json test/cli-session-start.test.ts test/claude-template.test.ts
 git commit -m "feat: map claude hooks to nams events" -m "Co-authored-by: Codex <codex@openai.com>"
 ```
 
@@ -232,24 +234,18 @@ git commit -m "feat: map claude hooks to nams events" -m "Co-authored-by: Codex 
 **Files:**
 
 - Create: `src/platforms/claude/payload.ts`
-- Create: `test/claude/claude-payload.test.js`
+- Create: `test/claude/claude-payload.test.ts`
 
 - [ ] **Step 1: Write parser tests**
 
-Create `test/claude/claude-payload.test.js`:
+Create `test/claude/claude-payload.test.ts`:
 
-```js
+```ts
 import assert from "node:assert/strict";
-import path from "node:path";
 import { test } from "node:test";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { parseClaudePayload } from "../../src/platforms/claude/payload.js";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const payloadUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "platforms", "claude", "payload.js")).href;
-
-test("extracts Claude prompt and session fields", async () => {
-  const { parseClaudePayload } = await import(payloadUrl);
-
+test("extracts Claude prompt and session fields", () => {
   assert.deepEqual(
     parseClaudePayload(
       {
@@ -271,9 +267,7 @@ test("extracts Claude prompt and session fields", async () => {
   );
 });
 
-test("extracts Claude tool fields and numeric duration", async () => {
-  const { parseClaudePayload } = await import(payloadUrl);
-
+test("extracts Claude tool fields and numeric duration", () => {
   assert.deepEqual(
     parseClaudePayload(
       {
@@ -297,9 +291,7 @@ test("extracts Claude tool fields and numeric duration", async () => {
   );
 });
 
-test("extracts Claude stop assistant message and falls back to process cwd", async () => {
-  const { parseClaudePayload } = await import(payloadUrl);
-
+test("extracts Claude stop assistant message and falls back to process cwd", () => {
   assert.deepEqual(
     parseClaudePayload(
       {
@@ -316,9 +308,7 @@ test("extracts Claude stop assistant message and falls back to process cwd", asy
   );
 });
 
-test("ignores blank string aliases", async () => {
-  const { parseClaudePayload } = await import(payloadUrl);
-
+test("ignores blank string aliases", () => {
   assert.deepEqual(
     parseClaudePayload(
       {
@@ -342,7 +332,7 @@ test("ignores blank string aliases", async () => {
 Run:
 
 ```bash
-npm run build && node --test test/claude/claude-payload.test.js
+npm run test:typecheck && node --import=tsx --test test/claude/claude-payload.test.ts
 ```
 
 Expected:
@@ -426,7 +416,7 @@ function firstNumber(...values: unknown[]): number | undefined {
 Run:
 
 ```bash
-npm run build && node --test test/claude/claude-payload.test.js
+npm run test:typecheck && node --import=tsx --test test/claude/claude-payload.test.ts
 ```
 
 Expected:
@@ -436,7 +426,7 @@ Expected:
 - [ ] **Step 5: Commit parser**
 
 ```bash
-git add src/platforms/claude/payload.ts test/claude/claude-payload.test.js
+git add src/platforms/claude/payload.ts test/claude/claude-payload.test.ts
 git commit -m "feat: parse claude hook payloads" -m "Co-authored-by: Codex <codex@openai.com>"
 ```
 
@@ -446,35 +436,46 @@ git commit -m "feat: parse claude hook payloads" -m "Co-authored-by: Codex <code
 
 **Files:**
 
-- Create: `test/claude/claude-memory-flow.test.js`
+- Create: `test/claude/claude-memory-flow.test.ts`
 - Modify: `src/platforms/claude/index.ts`
-- Modify: `test/cli-session-start.test.js`
+- Modify: `test/cli-session-start.test.ts`
 
 - [ ] **Step 1: Write SessionStart state test**
 
-Create the first test in `test/claude/claude-memory-flow.test.js`:
+Create the first test in `test/claude/claude-memory-flow.test.ts`:
 
-```js
+```ts
 import assert from "node:assert/strict";
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import { createNamsFetchMock } from "../support/nams-fetch-mock.js";
+import { ClaudeAdapter } from "../../src/platforms/claude/index.js";
+import { loadSessionState } from "../../src/runtime/session-state.js";
+import { namsHome, readSingleSessionLog as readRuntimeSingleSessionLog } from "../support/runtime-home.js";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const claudeUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "platforms", "claude", "index.js")).href;
-const stateUrl = pathToFileURL(path.join(repoRoot, ".build", "tsc", "runtime", "session-state.js")).href;
+type TestEnvOverrides = Record<string, string | undefined>;
+interface TestEnv extends TestEnvOverrides {
+  HOME: string;
+  USERPROFILE: string;
+}
+
+function testEnv(projectDir: string, overrides: TestEnvOverrides = {}): TestEnv {
+  const env = { HOME: path.join(projectDir, "home"), USERPROFILE: path.join(projectDir, "home"), ...overrides };
+  for (const key of ["HOME", "USERPROFILE", "NAMS_API_KEY", "NAMS_BASE_URL"]) {
+    delete process.env[key];
+  }
+  Object.assign(process.env, env);
+  return env;
+}
 
 test("initializes Claude session state on SessionStart without creating a conversation", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-claude-flow-"));
   try {
-    const { ClaudeAdapter } = await import(claudeUrl);
-    const { loadSessionState } = await import(stateUrl);
+    const env = testEnv(projectDir);
     const adapter = new ClaudeAdapter();
 
-    const result = await adapter.startConversation({
+    const result = await adapter.startSession({
       platform: "claude",
       event: "SessionStart",
       processCwd: projectDir,
@@ -486,12 +487,13 @@ test("initializes Claude session state on SessionStart without creating a conver
     });
 
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
-    const state = await loadSessionState(projectDir, "claude", "session-1");
+    const state = await loadSessionState("claude", "session-1");
     assert.notEqual(state, null);
-    assert.equal(state.sessionKey, "session-1");
-    assert.equal(state.conversationId, undefined);
+    assert.equal(state?.sessionKey, "session-1");
+    assert.equal(state?.conversationId, undefined);
+    assert.equal((await readdir(path.join(namsHome(env.HOME), "state", "claude"))).length, 1);
 
-    const { lines } = await readSingleSessionLog(projectDir);
+    const { lines } = await readRuntimeSingleSessionLog(env.HOME, "claude");
     assert.equal(lines.length, 1);
     assert.equal(lines[0].harness, "claude");
     assert.equal(lines[0].event, "SessionStart");
@@ -500,22 +502,6 @@ test("initializes Claude session state on SessionStart without creating a conver
     await rm(projectDir, { recursive: true, force: true });
   }
 });
-
-async function readSingleSessionLog(projectDir) {
-  const logDir = path.join(projectDir, ".nams", "logs");
-  const logFiles = (await readdir(logDir)).filter((fileName) => /^session-.*\.jsonl$/.test(fileName));
-  assert.equal(logFiles.length, 1, `expected one session log file, got ${logFiles.join(", ")}`);
-  const log = await readFile(path.join(logDir, logFiles[0]), "utf8");
-  return {
-    fileName: logFiles[0],
-    log,
-    lines: log
-      .trim()
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => JSON.parse(line)),
-  };
-}
 ```
 
 - [ ] **Step 2: Verify red**
@@ -523,23 +509,20 @@ async function readSingleSessionLog(projectDir) {
 Run:
 
 ```bash
-npm run build && node --test test/claude/claude-memory-flow.test.js
+npm run test:typecheck && node --import=tsx --test test/claude/claude-memory-flow.test.ts
 ```
 
 Expected:
 
 - Test fails because Claude still writes the event-scoped walking-skeleton log and does not create session state.
 
-- [ ] **Step 3: Refactor Claude adapter constructor and SessionStart**
+- [ ] **Step 3: Refactor Claude adapter SessionStart**
 
-Replace `src/platforms/claude/index.ts` with the adapter shell:
+Replace `src/platforms/claude/index.ts` with the adapter shell, using the current shared runtime helpers:
 
 ```ts
 import type { HookInvocation, HookResult, PlatformAdapter } from "../../interfaces.js";
-import type { NamsRequestEvent } from "../../generated/nams-client.js";
-import { loadNamsConfig, type NamsRuntimeConfig } from "../../runtime/config.js";
-import { appendPlatformLog } from "../../runtime/logging.js";
-import { NamsMemoryService } from "../../runtime/memory-service.js";
+import { appendRawPlatformLog } from "../../runtime/logging.js";
 import {
   createInitialSessionState,
   loadSessionState,
@@ -548,33 +531,13 @@ import {
 } from "../../runtime/session-state.js";
 import { parseClaudePayload } from "./payload.js";
 
-export interface ClaudeAdapterOptions {
-  env?: Record<string, string | undefined>;
-  fetch?: typeof fetch;
-}
-
 export class ClaudeAdapter implements PlatformAdapter {
-  constructor(private readonly options: ClaudeAdapterOptions = {}) {}
-
-  async startConversation(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
+  async startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
     const payloadInfo = parseClaudePayload(invocation.rawPayload, invocation.processCwd);
     const state = await loadOrCreateClaudeState(invocation, payloadInfo.projectDirectory, payloadInfo.sessionId);
-    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    await appendRawPlatformLog(invocation, state);
+    await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
-  }
-
-  private createMemoryService(
-    config: NamsRuntimeConfig,
-    invocation: HookInvocation,
-    projectDirectory: string,
-    state: SessionState,
-  ): NamsMemoryService {
-    return new NamsMemoryService({
-      ...config,
-      ...(this.options.fetch !== undefined ? { fetch: this.options.fetch } : {}),
-      onRequest: (event) => appendNamsRequestLog(invocation, projectDirectory, state, event),
-    });
   }
 }
 
@@ -605,44 +568,7 @@ async function loadOrCreateClaudeState(
     sessionId,
     projectDirectory,
   });
-  return (await loadSessionState(projectDirectory, invocation.platform, initialState.sessionKey)) ?? initialState;
-}
-
-async function appendRawPlatformLog(
-  invocation: HookInvocation,
-  projectDirectory: string,
-  state: SessionState,
-): Promise<void> {
-  try {
-    await appendPlatformLog({
-      platform: invocation.platform,
-      event: invocation.event,
-      kind: "hook.event",
-      payload: invocation.rawPayload,
-      projectDirectory,
-      sessionCreatedAt: state.createdAt,
-      sessionKey: state.sessionKey,
-    });
-  } catch {
-    // Claude hooks must not fail because observability writes failed.
-  }
-}
-
-async function appendNamsRequestLog(
-  invocation: HookInvocation,
-  projectDirectory: string,
-  state: SessionState,
-  payload: NamsRequestEvent,
-): Promise<void> {
-  await appendPlatformLog({
-    platform: invocation.platform,
-    event: invocation.event,
-    kind: "nams.request",
-    projectDirectory,
-    payload: { ...payload },
-    sessionCreatedAt: state.createdAt,
-    sessionKey: state.sessionKey,
-  });
+  return (await loadSessionState(invocation.platform, initialState.sessionKey)) ?? initialState;
 }
 ```
 
@@ -650,13 +576,10 @@ Remove imports that are not used by this step so TypeScript passes.
 
 - [ ] **Step 4: Update walking-skeleton log expectation**
 
-In `test/cli-session-start.test.js`, update the log path selection so Claude uses `singleSessionLogPath()`:
+In `test/cli-session-start.test.ts`, update the log path selection so Claude uses the same global runtime session log helper as the implemented platforms:
 
-```js
-const logPath =
-  harness === "gemini" || harness === "claude" || harness === "codex" || harness === "opencode"
-    ? await singleSessionLogPath(projectDir)
-    : path.join(projectDir, ".nams", "logs", `${harness}-session-start.jsonl`);
+```ts
+const logPath = await singleSessionLogPath(homeDir, harness);
 ```
 
 - [ ] **Step 5: Verify session tests**
@@ -664,7 +587,7 @@ const logPath =
 Run:
 
 ```bash
-npm run build && node --test test/claude/claude-memory-flow.test.js test/cli-session-start.test.js
+npm run test:typecheck && node --import=tsx --test test/claude/claude-memory-flow.test.ts test/cli-session-start.test.ts
 ```
 
 Expected:
@@ -675,7 +598,7 @@ Expected:
 - [ ] **Step 6: Commit SessionStart flow**
 
 ```bash
-git add src/platforms/claude/index.ts test/claude/claude-memory-flow.test.js test/cli-session-start.test.js
+git add src/platforms/claude/index.ts test/claude/claude-memory-flow.test.ts test/cli-session-start.test.ts
 git commit -m "feat: initialize claude session state" -m "Co-authored-by: Codex <codex@openai.com>"
 ```
 
@@ -686,16 +609,20 @@ git commit -m "feat: initialize claude session state" -m "Co-authored-by: Codex 
 **Files:**
 
 - Modify: `src/platforms/claude/index.ts`
-- Modify: `test/claude/claude-memory-flow.test.js`
+- Modify: `test/claude/claude-memory-flow.test.ts`
 
 - [ ] **Step 1: Add BeforeAgent tests**
 
-Append to `test/claude/claude-memory-flow.test.js`:
+Append to `test/claude/claude-memory-flow.test.ts`. Also import `createNamsFetchMock` from `../support/nams-fetch-mock.js` if it is not already imported:
 
-```js
+```ts
 test("creates Claude conversation, recalls memory, and stores first UserPromptSubmit prompt through BeforeAgent", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-claude-flow-"));
   try {
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
     const prompt = "Please remember that I prefer fixture-driven tests.";
     const nams = createNamsFetchMock()
       .createConversation()
@@ -704,14 +631,7 @@ test("creates Claude conversation, recalls memory, and stores first UserPromptSu
         entities: [{ name: "Fixture-driven tests", description: "User prefers fixture-driven tests." }],
       })
       .message();
-    const { ClaudeAdapter } = await import(claudeUrl);
-    const adapter = new ClaudeAdapter({
-      env: {
-        NAMS_API_KEY: "key",
-        NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
-    });
+    const adapter = new ClaudeAdapter();
 
     const result = await adapter.beforeAgent({
       platform: "claude",
@@ -752,16 +672,13 @@ test("creates Claude conversation, recalls memory, and stores first UserPromptSu
 test("does not store duplicate Claude UserPromptSubmit prompt twice through BeforeAgent", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-claude-flow-"));
   try {
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
     const prompt = "Remember this only once.";
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
-    const { ClaudeAdapter } = await import(claudeUrl);
-    const adapter = new ClaudeAdapter({
-      env: {
-        NAMS_API_KEY: "key",
-        NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
-    });
+    const adapter = new ClaudeAdapter();
     const invocation = {
       platform: "claude",
       event: "BeforeAgent",
@@ -772,7 +689,7 @@ test("does not store duplicate Claude UserPromptSubmit prompt twice through Befo
         cwd: projectDir,
         prompt,
       },
-    };
+    } as const;
 
     await adapter.beforeAgent(invocation);
     await adapter.beforeAgent(invocation);
@@ -783,11 +700,11 @@ test("does not store duplicate Claude UserPromptSubmit prompt twice through Befo
   }
 });
 
-test("Claude UserPromptSubmit through BeforeAgent continues when NAMS_API_KEY is missing", async () => {
+test("Claude UserPromptSubmit through BeforeAgent continues when apiKey is missing", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-claude-flow-"));
   try {
-    const { ClaudeAdapter } = await import(claudeUrl);
-    const adapter = new ClaudeAdapter({ env: {} });
+    const env = testEnv(projectDir);
+    const adapter = new ClaudeAdapter();
 
     const result = await adapter.beforeAgent({
       platform: "claude",
@@ -802,9 +719,11 @@ test("Claude UserPromptSubmit through BeforeAgent continues when NAMS_API_KEY is
     });
 
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
-    const { log } = await readSingleSessionLog(projectDir);
-    assert.match(log, /NAMS_API_KEY missing/);
-    assert.doesNotMatch(log, /Bearer|key/);
+    const { lines } = await readRuntimeSingleSessionLog(env.HOME, "claude");
+    assert.equal(lines.at(-1)?.payload.message, "NAMS apiKey missing");
+    assert.deepEqual(lines.at(-1)?.payload.configSources, { apiKey: "missing", baseUrl: "default" });
+    const log = JSON.stringify(lines);
+    assert.doesNotMatch(log, /Bearer|secret|env-key|project-key|global-key/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -816,7 +735,7 @@ test("Claude UserPromptSubmit through BeforeAgent continues when NAMS_API_KEY is
 Run:
 
 ```bash
-npm run build && node --test test/claude/claude-memory-flow.test.js
+npm run test:typecheck && node --import=tsx --test test/claude/claude-memory-flow.test.ts
 ```
 
 Expected:
@@ -828,8 +747,10 @@ Expected:
 Add imports in `src/platforms/claude/index.ts`:
 
 ```ts
+import { loadNamsConfig } from "../../runtime/config.js";
 import { sha256 } from "../../runtime/hashing.js";
-import { combineMemoryContexts } from "../../runtime/memory-service.js";
+import { appendNamsConfigDiagnostic, appendNamsFailureDiagnostic } from "../../runtime/logging.js";
+import { combineMemoryContexts, createNamsMemoryService } from "../../runtime/memory-service.js";
 ```
 
 Add the method to `ClaudeAdapter`:
@@ -838,23 +759,24 @@ Add the method to `ClaudeAdapter`:
   async beforeAgent(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult> {
     const payloadInfo = parseClaudePayload(invocation.rawPayload, invocation.processCwd);
     const state = await loadOrCreateClaudeState(invocation, payloadInfo.projectDirectory, payloadInfo.sessionId);
-    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
+    await appendRawPlatformLog(invocation, state);
 
     if (payloadInfo.prompt === undefined) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
-    const config = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
-    if (config === null) {
-      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
+    await appendNamsConfigDiagnostic(invocation, state, configResult);
+    if (!configResult.ok) {
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
+    const config = configResult.config;
 
     let additionalContext: string | undefined;
     try {
-      const memory = this.createMemoryService(config, invocation, payloadInfo.projectDirectory, state);
+      const memory = createNamsMemoryService(config, invocation, state);
       let conversationId = state.conversationId;
       if (conversationId === undefined) {
         conversationId = await memory.createConversation({
@@ -869,12 +791,12 @@ Add the method to `ClaudeAdapter`:
         try {
           recallContexts.push(await memory.recall(conversationId));
         } catch {
-          await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
+          await appendNamsFailureDiagnostic(invocation, state);
         }
         try {
           recallContexts.push(await memory.searchEntities(payloadInfo.prompt));
         } catch {
-          await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
+          await appendNamsFailureDiagnostic(invocation, state);
         }
         state.lastRecallAt = new Date().toISOString();
         const recalledContext = combineMemoryContexts(recallContexts);
@@ -889,63 +811,24 @@ Add the method to `ClaudeAdapter`:
         state.lastUserMessageHash = promptHash;
       }
     } catch {
-      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await appendNamsFailureDiagnostic(invocation, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput(additionalContext, "UserPromptSubmit");
     }
 
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput(additionalContext, "UserPromptSubmit");
   }
 ```
 
-Add diagnostics helpers:
-
-```ts
-async function appendNamsConfigDiagnostic(
-  invocation: HookInvocation,
-  projectDirectory: string,
-  state: SessionState,
-): Promise<void> {
-  await appendClaudeDiagnosticLog(invocation, projectDirectory, state, { message: "NAMS_API_KEY missing" });
-}
-
-async function appendNamsFailureDiagnostic(
-  invocation: HookInvocation,
-  projectDirectory: string,
-  state: SessionState,
-): Promise<void> {
-  await appendClaudeDiagnosticLog(invocation, projectDirectory, state, { message: "NAMS request failed" });
-}
-
-async function appendClaudeDiagnosticLog(
-  invocation: HookInvocation,
-  projectDirectory: string,
-  state: SessionState,
-  payload: Record<string, unknown>,
-): Promise<void> {
-  try {
-    await appendPlatformLog({
-      platform: invocation.platform,
-      event: invocation.event,
-      kind: "diagnostic",
-      projectDirectory,
-      payload,
-      sessionCreatedAt: state.createdAt,
-      sessionKey: state.sessionKey,
-    });
-  } catch {
-    // Diagnostics are best-effort and must never block a hook response.
-  }
-}
-```
+Use the shared diagnostics helpers instead of adding Claude-local diagnostic logging functions; they already write fixed messages and sanitized config source metadata through the platform logger.
 
 - [ ] **Step 4: Verify BeforeAgent tests**
 
 Run:
 
 ```bash
-npm run build && node --test test/claude/claude-memory-flow.test.js
+npm run test:typecheck && node --import=tsx --test test/claude/claude-memory-flow.test.ts
 ```
 
 Expected:
@@ -955,7 +838,7 @@ Expected:
 - [ ] **Step 5: Commit BeforeAgent flow**
 
 ```bash
-git add src/platforms/claude/index.ts test/claude/claude-memory-flow.test.js
+git add src/platforms/claude/index.ts test/claude/claude-memory-flow.test.ts
 git commit -m "feat: persist claude user prompts" -m "Co-authored-by: Codex <codex@openai.com>"
 ```
 
@@ -966,25 +849,22 @@ git commit -m "feat: persist claude user prompts" -m "Co-authored-by: Codex <cod
 **Files:**
 
 - Modify: `src/platforms/claude/index.ts`
-- Modify: `test/claude/claude-memory-flow.test.js`
+- Modify: `test/claude/claude-memory-flow.test.ts`
 
 - [ ] **Step 1: Add AfterAgent tests**
 
-Append to `test/claude/claude-memory-flow.test.js`:
+Append to `test/claude/claude-memory-flow.test.ts`:
 
-```js
+```ts
 test("stores Claude Stop last_assistant_message as an assistant message through AfterAgent", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-claude-flow-"));
   try {
-    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
-    const { ClaudeAdapter } = await import(claudeUrl);
-    const adapter = new ClaudeAdapter({
-      env: {
-        NAMS_API_KEY: "key",
-        NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_BASE_URL: "https://memory.example.test",
     });
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    const adapter = new ClaudeAdapter();
 
     await adapter.beforeAgent({
       platform: "claude",
@@ -1023,15 +903,12 @@ test("stores Claude Stop last_assistant_message as an assistant message through 
 test("does not duplicate Claude Stop assistant messages through AfterAgent", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-claude-flow-"));
   try {
-    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
-    const { ClaudeAdapter } = await import(claudeUrl);
-    const adapter = new ClaudeAdapter({
-      env: {
-        NAMS_API_KEY: "key",
-        NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_BASE_URL: "https://memory.example.test",
     });
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    const adapter = new ClaudeAdapter();
 
     await adapter.beforeAgent({
       platform: "claude",
@@ -1054,7 +931,7 @@ test("does not duplicate Claude Stop assistant messages through AfterAgent", asy
         cwd: projectDir,
         last_assistant_message: "Hello!",
       },
-    };
+    } as const;
 
     await adapter.afterAgent(invocation);
     await adapter.afterAgent(invocation);
@@ -1074,7 +951,7 @@ test("does not duplicate Claude Stop assistant messages through AfterAgent", asy
 Run:
 
 ```bash
-npm run build && node --test test/claude/claude-memory-flow.test.js
+npm run test:typecheck && node --import=tsx --test test/claude/claude-memory-flow.test.ts
 ```
 
 Expected:
@@ -1089,23 +966,24 @@ Add to `ClaudeAdapter`:
   async afterAgent(invocation: HookInvocation<"AfterAgent">): Promise<HookResult> {
     const payloadInfo = parseClaudePayload(invocation.rawPayload, invocation.processCwd);
     const state = await loadOrCreateClaudeState(invocation, payloadInfo.projectDirectory, payloadInfo.sessionId);
-    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
+    await appendRawPlatformLog(invocation, state);
     state.seenAssistantMessageHashes ??= [];
 
     if (state.conversationId === undefined || payloadInfo.lastAssistantMessage === undefined) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
-    const config = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
-    if (config === null) {
-      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
+    await appendNamsConfigDiagnostic(invocation, state, configResult);
+    if (!configResult.ok) {
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
+    const config = configResult.config;
 
     try {
-      const memory = this.createMemoryService(config, invocation, payloadInfo.projectDirectory, state);
+      const memory = createNamsMemoryService(config, invocation, state);
       const response = payloadInfo.lastAssistantMessage.trim();
       if (response !== "") {
         const responseHash = sha256([invocation.platform, state.sessionKey, "assistant", response].join("\n"));
@@ -1115,12 +993,12 @@ Add to `ClaudeAdapter`:
         markAssistantMessageSeen(state, responseHash);
       }
     } catch {
-      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await appendNamsFailureDiagnostic(invocation, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
   }
 ```
@@ -1150,7 +1028,7 @@ function markAssistantMessageSeen(state: AssistantMessageState, messageHash: str
 Run:
 
 ```bash
-npm run build && node --test test/claude/claude-memory-flow.test.js
+npm run test:typecheck && node --import=tsx --test test/claude/claude-memory-flow.test.ts
 ```
 
 Expected:
@@ -1160,7 +1038,7 @@ Expected:
 - [ ] **Step 5: Commit AfterAgent flow**
 
 ```bash
-git add src/platforms/claude/index.ts test/claude/claude-memory-flow.test.js
+git add src/platforms/claude/index.ts test/claude/claude-memory-flow.test.ts
 git commit -m "feat: persist claude assistant responses" -m "Co-authored-by: Codex <codex@openai.com>"
 ```
 
@@ -1172,17 +1050,15 @@ git commit -m "feat: persist claude assistant responses" -m "Co-authored-by: Cod
 
 - Modify: `src/runtime/memory-service.ts`
 - Modify: `src/platforms/claude/index.ts`
-- Modify: `test/claude/claude-memory-flow.test.js`
-- Modify: `test/memory-service.test.js`
+- Modify: `test/claude/claude-memory-flow.test.ts`
+- Modify: `test/memory-service.test.ts`
 
 - [ ] **Step 1: Add memory-service output serialization tests**
 
-Add or update tests in `test/memory-service.test.js` so the current capped behavior remains the default and Claude can opt into full explicit output:
+Add `serializeToolOutput` to the `test/memory-service.test.ts` runtime import, then add or update tests so the current capped behavior remains the default and Claude can opt into full explicit output:
 
-```js
-test("serializeToolOutput caps explicit output by default and supports untruncated output when requested", async () => {
-  const { serializeToolOutput } = await import(serviceUrl);
-
+```ts
+test("serializeToolOutput caps explicit output by default and supports untruncated output when requested", () => {
   assert.equal(serializeToolOutput({ stdout: "ok" }), '{"stdout":"ok"}');
   assert.equal(serializeToolOutput("plain output"), "plain output");
   assert.equal(serializeToolOutput("x".repeat(5000)).length, 4000);
@@ -1191,13 +1067,10 @@ test("serializeToolOutput caps explicit output by default and supports untruncat
 });
 
 test("recordToolCall can send untruncated explicit tool output when requested", async () => {
-  const requests = [];
-  const { NamsMemoryService } = await import(serviceUrl);
-  const service = new NamsMemoryService({
-    apiKey: "key",
-    baseUrl: "https://memory.example.test",
+  const requests: CapturedRequest[] = [];
+  const service = createService({
     fetch: async (url, init) => {
-      requests.push({ url, init });
+      requests.push({ url, init: init as CapturedRequest["init"] });
       return new Response(JSON.stringify({ id: "tool-call-1" }), { status: 201 });
     },
   });
@@ -1216,12 +1089,16 @@ test("recordToolCall can send untruncated explicit tool output when requested", 
 
 - [ ] **Step 2: Add AfterTool adapter tests**
 
-Append to `test/claude/claude-memory-flow.test.js`:
+Append to `test/claude/claude-memory-flow.test.ts`:
 
-```js
+```ts
 test("records Claude PostToolUse payload as a reasoning step with tool output through AfterTool", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-claude-flow-"));
   try {
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
     const nams = createNamsFetchMock()
       .createConversation()
       .context()
@@ -1229,14 +1106,7 @@ test("records Claude PostToolUse payload as a reasoning step with tool output th
       .message()
       .reasoningStep({ id: "step-post-tool-1" })
       .toolCall();
-    const { ClaudeAdapter } = await import(claudeUrl);
-    const adapter = new ClaudeAdapter({
-      env: {
-        NAMS_API_KEY: "key",
-        NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
-    });
+    const adapter = new ClaudeAdapter();
 
     await adapter.beforeAgent({
       platform: "claude",
@@ -1292,6 +1162,10 @@ test("records Claude PostToolUse payload as a reasoning step with tool output th
 test("does not duplicate Claude PostToolUse metadata for the same tool_use_id through AfterTool", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-claude-flow-"));
   try {
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
     const nams = createNamsFetchMock()
       .createConversation()
       .context()
@@ -1299,14 +1173,7 @@ test("does not duplicate Claude PostToolUse metadata for the same tool_use_id th
       .message()
       .reasoningStep({ id: "step-post-tool-1" })
       .toolCall();
-    const { ClaudeAdapter } = await import(claudeUrl);
-    const adapter = new ClaudeAdapter({
-      env: {
-        NAMS_API_KEY: "key",
-        NAMS_BASE_URL: "https://memory.example.test",
-      },
-      fetch: nams.fetch,
-    });
+    const adapter = new ClaudeAdapter();
 
     await adapter.beforeAgent({
       platform: "claude",
@@ -1333,7 +1200,7 @@ test("does not duplicate Claude PostToolUse metadata for the same tool_use_id th
         tool_input: { command: "npm test" },
         tool_response: { stdout: "tests passed" },
       },
-    };
+    } as const;
 
     await adapter.afterTool(invocation);
     await adapter.afterTool(invocation);
@@ -1350,7 +1217,7 @@ test("does not duplicate Claude PostToolUse metadata for the same tool_use_id th
 Run:
 
 ```bash
-npm run build && node --test test/memory-service.test.js test/claude/claude-memory-flow.test.js
+npm run test:typecheck && node --import=tsx --test test/memory-service.test.ts test/claude/claude-memory-flow.test.ts
 ```
 
 Expected:
@@ -1402,22 +1269,23 @@ Add to `ClaudeAdapter`:
   async afterTool(invocation: HookInvocation<"AfterTool">): Promise<HookResult> {
     const payloadInfo = parseClaudePayload(invocation.rawPayload, invocation.processCwd);
     const state = await loadOrCreateClaudeState(invocation, payloadInfo.projectDirectory, payloadInfo.sessionId);
-    await appendRawPlatformLog(invocation, payloadInfo.projectDirectory, state);
+    await appendRawPlatformLog(invocation, state);
     state.seenToolCallIds ??= [];
     state.seenReasoningStepHashes ??= [];
     state.reasoningStepIdsByHash ??= {};
 
     if (state.conversationId === undefined || payloadInfo.toolName === undefined) {
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
-    const config = await loadNamsConfig(payloadInfo.projectDirectory, this.options.env);
-    if (config === null) {
-      await appendNamsConfigDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
+    await appendNamsConfigDiagnostic(invocation, state, configResult);
+    if (!configResult.ok) {
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
+    const config = configResult.config;
 
     try {
       const toolCallKeys = claudeToolCallDedupeKeys(
@@ -1427,7 +1295,7 @@ Add to `ClaudeAdapter`:
         payloadInfo.toolInput,
       );
       if (!hasSeenAny(state.seenToolCallIds, toolCallKeys.lookupKeys)) {
-        const memory = this.createMemoryService(config, invocation, payloadInfo.projectDirectory, state);
+        const memory = createNamsMemoryService(config, invocation, state);
         const reasoningStep = {
           conversationId: state.conversationId,
           reasoning: `Claude Code ran ${payloadInfo.toolName} with the provided tool input.`,
@@ -1457,12 +1325,12 @@ Add to `ClaudeAdapter`:
         markSeen(state.seenToolCallIds, toolCallKeys.markKeys);
       }
     } catch {
-      await appendNamsFailureDiagnostic(invocation, payloadInfo.projectDirectory, state);
-      await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+      await appendNamsFailureDiagnostic(invocation, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
-    await saveSessionState(payloadInfo.projectDirectory, invocation.platform, state.sessionKey, state);
+    await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
   }
 ```
@@ -1512,7 +1380,7 @@ function markSeen(seen: string[], keys: string[]): void {
 Run:
 
 ```bash
-npm run build && node --test test/memory-service.test.js test/claude/claude-memory-flow.test.js
+npm run test:typecheck && node --import=tsx --test test/memory-service.test.ts test/claude/claude-memory-flow.test.ts
 ```
 
 Expected:
@@ -1523,7 +1391,7 @@ Expected:
 - [ ] **Step 7: Commit AfterTool flow**
 
 ```bash
-git add src/runtime/memory-service.ts src/platforms/claude/index.ts test/memory-service.test.js test/claude/claude-memory-flow.test.js
+git add src/runtime/memory-service.ts src/platforms/claude/index.ts test/memory-service.test.ts test/claude/claude-memory-flow.test.ts
 git commit -m "feat: record claude tool traces" -m "Co-authored-by: Codex <codex@openai.com>"
 ```
 
@@ -1540,7 +1408,7 @@ git commit -m "feat: record claude tool traces" -m "Co-authored-by: Codex <codex
 Run:
 
 ```bash
-npm run build && node --test test/claude/claude-payload.test.js test/claude/claude-memory-flow.test.js
+npm run test:typecheck && node --import=tsx --test test/claude/claude-payload.test.ts test/claude/claude-memory-flow.test.ts
 ```
 
 Expected:
@@ -1557,9 +1425,10 @@ npm run check
 
 Expected:
 
-- OpenAPI freshness check passes.
+- OpenAPI client generation passes.
 - TypeScript build passes.
-- Full Node test suite passes.
+- TypeScript test type-checking passes.
+- Full Node test suite passes through `tsx`.
 
 - [ ] **Step 3: Inspect changed files**
 
@@ -1587,7 +1456,7 @@ git commit -m "docs: plan claude memory flow" -m "Co-authored-by: Codex <codex@o
 - [ ] The CLI still dispatches only from typed `--event`.
 - [ ] `src/cli.ts` does not parse Claude payload fields.
 - [ ] Claude-specific parsing stays under `src/platforms/claude/`.
-- [ ] Runtime imports still flow downstream under `test/architecture.test.js`.
+- [ ] Runtime imports still flow downstream under `test/architecture.test.ts`.
 - [ ] Hooks never fail Claude work because NAMS is unavailable.
 - [ ] Diagnostics do not include API keys, arbitrary error text, prompts, or tool output.
 - [ ] Tool input is sanitized by `serializeToolInput()`.

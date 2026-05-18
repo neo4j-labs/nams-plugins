@@ -6,7 +6,7 @@ Repository: nams-hooks
 
 ## Summary
 
-This design brings Claude Code to the same integration level as the implemented Gemini, Codex, and OpenCode integrations on `devel`. Claude gets deterministic NAMS conversation creation, first-turn recall, user prompt persistence, assistant response persistence, tool-call metadata, raw local observability logs, and local session state under `.nams/`.
+This design brings Claude Code to the same integration level as the implemented Gemini, Codex, and OpenCode integrations on `devel`. Claude gets deterministic NAMS conversation creation, first-turn recall, user prompt persistence, assistant response persistence, tool-call metadata, raw local observability logs, and local session state under the shared runtime storage rooted at `~/.nams/`.
 
 The Claude path should use Claude Code hook payload fields directly, while translating Claude hook names to the existing NAMS lifecycle events used by the shared CLI. Unlike Gemini, Claude does not need a transcript-first or transcript-fallback path for v1 because the supported hooks expose the required current-turn data: `UserPromptSubmit.prompt`, `PostToolUse.tool_name`, `PostToolUse.tool_input`, `PostToolUse.tool_response`, `PostToolUse.tool_use_id`, `PostToolUse.duration_ms`, and `Stop.last_assistant_message`.
 
@@ -17,6 +17,8 @@ The Claude path should use Claude Code hook payload fields directly, while trans
 - Gemini implementation design and plan: `docs/superpowers/specs/2026-05-11-gemini-memory-flow-design.md`, `docs/superpowers/plans/2026-05-11-gemini-memory-flow.md`
 - Codex implementation design and plan: `docs/superpowers/specs/2026-05-12-codex-memory-flow-design.md`, `docs/superpowers/plans/2026-05-12-codex-memory-flow.md`
 - OpenCode implementation design and plan: `docs/superpowers/specs/2026-05-12-opencode-memory-flow-design.md`, `docs/superpowers/plans/2026-05-12-opencode-memory-flow.md`
+- Global runtime storage and JSON config plan: `docs/superpowers/plans/2026-05-16-json-config-global-runtime-storage.md`
+- TypeScript test runner design and plan: `docs/superpowers/specs/2026-05-16-typescript-test-runner-design.md`, `docs/superpowers/plans/2026-05-17-typescript-test-runner.md`
 - Behavioral reference: `docs/nams-skill.md`
 - Current platform sources: `src/platforms/gemini/`, `src/platforms/codex/`, and `src/platforms/opencode/`
 - Current shared runtime: `src/runtime/config.ts`, `src/runtime/session-state.ts`, `src/runtime/memory-service.ts`, `src/runtime/logging.ts`
@@ -31,11 +33,15 @@ The branch already has complete Gemini, Codex, and OpenCode memory flows:
 - `src/platforms/gemini/index.ts` owns session state, NAMS calls, context injection, assistant persistence, and tool traces.
 - `src/platforms/codex/index.ts` follows the same NAMS event contract with Codex-specific payload and transcript parsing.
 - `src/platforms/opencode/index.ts` follows the same NAMS event contract through an OpenCode plugin shim and pending context state.
-- `src/runtime/*` provides shared config loading, state persistence, hashing, logging, and `NamsMemoryService`.
+- `src/runtime/*` provides shared JSON config loading, global runtime paths, state persistence, hashing, logging, and `NamsMemoryService`.
 - `templates/gemini/hooks/hooks.json` wires Gemini `SessionStart`, `BeforeAgent`, `AfterAgent`, and `AfterTool`.
 - `templates/codex/hooks.json` and `templates/opencode/plugins/nams-hooks.js` translate native platform surfaces into the shared NAMS events.
 
-Claude currently has a complete allow-only walking skeleton in `src/platforms/claude/index.ts`. It implements `startConversation`, `beforeAgent`, `afterAgent`, and `afterTool`, logs raw payloads to event-scoped files such as `.nams/logs/claude-session-start.jsonl` and `.nams/logs/claude-before-agent.jsonl`, and returns allow output. `templates/claude/settings.local.json` already translates Claude `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `Stop` to the shared NAMS events, with coverage in `test/claude-template.test.js` and `test/cli-session-start.test.js`.
+Configuration now loads from `~/.nams/config.json`, then `<project>/.nams/config.json`, then `NAMS_API_KEY` and `NAMS_BASE_URL` environment overrides. Loading returns a structured result, so adapters log sanitized configuration diagnostics with source metadata instead of throwing or inspecting `.env` files. Runtime state and logs are stored under `~/.nams/state/<platform>/` and `~/.nams/logs/<platform>/`.
+
+Tests are authored in TypeScript and run with Node's built-in `node:test` through `tsx`. `npm run check` now runs OpenAPI generation, TypeScript build, test type-checking through `tsconfig.test.json`, and the full TypeScript test suite.
+
+Claude currently has a complete allow-only walking skeleton in `src/platforms/claude/index.ts`. It implements `startSession`, `beforeAgent`, `afterAgent`, and `afterTool`, logs raw payloads through the shared platform logger, and returns allow output. `templates/claude/settings.local.json` already translates Claude `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `Stop` to the shared NAMS events, with TypeScript coverage in `test/claude-template.test.ts` and `test/cli-session-start.test.ts`.
 
 ## Goals
 
@@ -92,7 +98,7 @@ The adapter contract does not gain Claude-native methods:
 export const hookEvents = ["SessionStart", "BeforeAgent", "AfterAgent", "AfterTool"] as const;
 
 export interface PlatformAdapter {
-  startConversation(invocation: HookInvocation<"SessionStart">): Promise<HookResult>;
+  startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult>;
   beforeAgent?(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult>;
   afterAgent?(invocation: HookInvocation<"AfterAgent">): Promise<HookResult>;
   afterTool?(invocation: HookInvocation<"AfterTool">): Promise<HookResult>;
@@ -135,14 +141,15 @@ Claude hook templates translate native Claude hooks to NAMS lifecycle events:
 `src/platforms/claude/index.ts` becomes the orchestration entrypoint. It should mirror the Gemini adapter structure where useful:
 
 - resolve payload info
-- create or load local session state
-- append raw `hook.event` logs
-- load NAMS config only when a hook needs NAMS
-- create `NamsMemoryService` with an `onRequest` callback for `nams.request` logs
+- create or load local session state through `createInitialSessionState()`, `loadSessionState(platform, sessionKey)`, and `saveSessionState(platform, sessionKey, state)`
+- append raw `hook.event` logs through the shared best-effort logging helpers
+- load NAMS config only when a hook needs NAMS through `loadNamsConfig(projectDirectory)`
+- log structured config diagnostics with `appendNamsConfigDiagnostic(invocation, state, result)`
+- create `NamsMemoryService` through `createNamsMemoryService(config, invocation, state)` so generated-client `nams.request` logs stay consistent
 - save state before returning
 - catch config, NAMS, and log errors so Claude continues
 
-The Claude adapter implements `startConversation`, `beforeAgent`, `afterTool`, and `afterAgent`. It does not add Claude-native adapter methods.
+The Claude adapter implements `startSession`, `beforeAgent`, `afterTool`, and `afterAgent`. It does not add Claude-native adapter methods.
 
 ### Shared Runtime Changes
 
@@ -176,7 +183,7 @@ Claude `SessionStart` fires for `startup`, `resume`, `clear`, and `compact`.
 Flow:
 
 1. Parse `session_id`, `cwd`, `transcript_path`, and `source`.
-2. Resolve or create local session state under `.nams/state/sessions/claude/`.
+2. Resolve or create local session state under `~/.nams/state/claude/<sha256(sessionKey)>.json`.
 3. Append a raw `hook.event` log using session-scoped log naming.
 4. Save state without creating a NAMS conversation.
 5. Return `{ "continue": true, "suppressOutput": true }`.
@@ -193,8 +200,8 @@ Flow:
 2. Resolve or create local session state.
 3. Append raw hook payload to the session log.
 4. If `prompt` is blank, save state and allow.
-5. Load `.nams/.env` with process environment fallback.
-6. If config is missing, log fixed diagnostic `"NAMS_API_KEY missing"` and allow.
+5. Load config from `~/.nams/config.json`, `<project>/.nams/config.json`, then environment overrides.
+6. Log the sanitized config diagnostic result. If `apiKey` is missing or config JSON is invalid, allow.
 7. Create NAMS conversation if state has no `conversationId`.
 8. On first recall for this session, call `getConversationContext` and `searchEntities(prompt)`.
 9. Combine successful recall sources with `combineMemoryContexts()`.
@@ -224,7 +231,7 @@ Flow:
 1. Resolve state and append raw hook payload.
 2. If there is no `conversationId`, save state and allow. Do not create a conversation solely for a tool call.
 3. If `tool_name` is missing or blank, save state and allow.
-4. Load config. Missing config logs a fixed diagnostic and allows.
+4. Load config. Missing or invalid config logs a sanitized config diagnostic and allows.
 5. Deduplicate by `tool_use_id` when present. Otherwise use session key plus normalized tool name and input hash.
 6. Create a safe operational reasoning step:
 
@@ -262,7 +269,7 @@ Flow:
 1. Resolve state and append raw hook payload.
 2. If there is no `conversationId`, save state and allow.
 3. If `last_assistant_message` is missing or blank, save state and allow.
-4. Load config. Missing config logs a fixed diagnostic and allows.
+4. Load config. Missing or invalid config logs a sanitized config diagnostic and allows.
 5. Store the assistant message unless the local assistant hash has already been seen.
 6. Save state and return `{ "continue": true, "suppressOutput": true }`.
 
@@ -300,7 +307,7 @@ Claude does not populate `seenTranscriptEntryIds` in v1. It remains present beca
 Claude should move from the current event-scoped walking-skeleton logs to session-scoped logs when session state exists. That gives the same debugging ergonomics as Gemini, Codex, and OpenCode:
 
 ```text
-.nams/logs/session-2026-05-12T09-00-1f3870be.jsonl
+~/.nams/logs/claude/session-2026-05-12T09-00-1f3870be.jsonl
 ```
 
 All Claude records include:
@@ -312,9 +319,11 @@ All Claude records include:
 - raw `payload` for `hook.event`
 - sanitized generated-client request events for `nams.request`
 
-Diagnostics use fixed messages only:
+Diagnostics use fixed messages and sanitized source metadata only:
 
-- `"NAMS_API_KEY missing"`
+- `"NAMS config loaded"`
+- `"NAMS config invalid"`
+- `"NAMS apiKey missing"`
 - `"NAMS request failed"`
 
 The adapter must not log raw thrown error text because errors can contain secrets or prompt content.
@@ -327,6 +336,7 @@ The adapter must not log raw thrown error text because errors can contain secret
 - Claude `UserPromptSubmit` is translated to NAMS `BeforeAgent`.
 - Claude `PostToolUse` is translated to NAMS `AfterTool`.
 - Claude `Stop` is translated to NAMS `AfterAgent`.
+- The template remains the only place that knows the Claude-native hook names; `src/cli.ts` continues to receive only typed NAMS events.
 
 Template command mapping:
 
@@ -343,7 +353,7 @@ Each command uses `nams-hooks run claude --event <NAMS event>`.
 
 Claude hooks remain non-blocking:
 
-- Missing `NAMS_API_KEY`: log diagnostic, allow.
+- Missing `apiKey` or invalid JSON config: log sanitized config diagnostic, allow.
 - NAMS create, recall, message, reasoning, or tool-call failure: log fixed diagnostic, allow.
 - Recall failure from one source: try the other source and still attempt user-message persistence.
 - User-message failure after recall succeeds: return the recall context and allow.
@@ -369,15 +379,16 @@ Fixture-driven tests cover:
 - `SessionStart` initializes local state and does not call NAMS.
 - NAMS `BeforeAgent` for Claude `UserPromptSubmit` creates conversation lazily, recalls memory, injects Claude `additionalContext`, and stores the user prompt.
 - NAMS `BeforeAgent` deduplicates repeated prompts.
-- Missing config and NAMS failures allow Claude to continue and log sanitized diagnostics.
+- Global config, project config, environment override, missing config, invalid JSON, and NAMS failure paths allow Claude to continue and log sanitized diagnostics.
 - NAMS `AfterAgent` for Claude `Stop` stores `last_assistant_message`.
 - NAMS `AfterAgent` deduplicates assistant messages.
 - NAMS `AfterTool` for Claude `PostToolUse` records reasoning step and tool call with sanitized input, serialized full output, status, and duration.
 - NAMS `AfterTool` deduplicates repeated `tool_use_id`.
 - Claude session logs keep all hook events and NAMS request records together.
 - Architecture tests still prevent platform cross-imports and runtime upstream imports.
+- TypeScript-authored tests pass under `node --import=tsx --test`, and `npm run test:typecheck` type-checks `src/**/*.ts` plus `test/**/*.ts`.
 
-Run `npm run check` before claiming completion.
+Run `npm run check` before claiming completion. The expected verification path is OpenAPI generation, runtime build, TypeScript test type-checking, and the full Node test suite.
 
 ## Deferred Work
 
