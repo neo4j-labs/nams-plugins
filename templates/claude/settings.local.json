@@ -10,6 +10,37 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "nams-hooks run claude --event BeforeAgent"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "nams-hooks run claude --event AfterTool"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "nams-hooks run claude --event AfterAgent"
+          }
+        ]
+      }
     ]
   }
 }

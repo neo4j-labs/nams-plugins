@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { NamsClient, type NamsClientOptions } from "../src/generated/nams-client.js";
-import { formatMemoryContext, NamsMemoryService } from "../src/runtime/memory-service.js";
+import { formatMemoryContext, NamsMemoryService, serializeToolOutput } from "../src/runtime/memory-service.js";
 
 interface CapturedRequest {
   url: string | URL | Request;
@@ -109,7 +109,7 @@ test("recordToolCall serializes sanitized capped input and sends explicit tool o
   );
 });
 
-test("recordToolCall serializes capped explicit tool output", async () => {
+test("recordToolCall serializes full explicit tool output", async () => {
   const requests: CapturedRequest[] = [];
   const service = await createService({
     fetch: async (url, init) => {
@@ -125,6 +125,13 @@ test("recordToolCall serializes capped explicit tool output", async () => {
   });
 
   const body = JSON.parse(requests[0].init.body);
-  assert.equal(body.output.length, 4000);
-  assert.match(body.output, /\.\.\.\[truncated\]$/);
+  assert.equal(body.output, "x".repeat(5000));
+});
+
+test("serializeToolOutput returns full serialized output", () => {
+  const longOutput = "x".repeat(5000);
+
+  assert.equal(serializeToolOutput({ stdout: "ok" }), '{"stdout":"ok"}');
+  assert.equal(serializeToolOutput("plain output"), "plain output");
+  assert.equal(serializeToolOutput(longOutput), longOutput);
 });

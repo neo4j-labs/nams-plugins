@@ -14,23 +14,23 @@ This preserves the existing test style and avoids a Jest migration. Production r
 
 - Approved hook architecture: `docs/superpowers/specs/2026-05-10-nams-hooks-design.md`
 - OpenAPI client build design: `docs/superpowers/specs/2026-05-10-nams-openapi-client-build-design.md`
-- Pre-migration project config: `package.json`, `tsconfig.json`, and `test/**/*.test.js`
+- Current project config: `package.json`, `tsconfig.json`, and `test/**/*.test.js`
 - User preference: keep Node `>=20`, author tests in TypeScript, use `tsx` with `node:test`
 - TypeScript unit testing article shared by the user: `https://www.testim.io/blog/typescript-unit-testing-101/`
 - Node TypeScript execution guidance: `https://nodejs.org/learn/typescript/run`
 - `tsx` documentation: `https://tsx.hirok.io/`
 
-## Pre-Migration State
+## Current State
 
-Before this migration, the repository kept production TypeScript under `src/` and JavaScript tests under `test/`.
+The repository currently keeps production TypeScript under `src/` and JavaScript tests under `test/`.
 
-`tsconfig.json` included only `src/**/*.ts`, so the normal TypeScript build emitted production runtime files to `.build/tsc`. The test command ran JavaScript tests directly:
+`tsconfig.json` includes only `src/**/*.ts`, so the normal TypeScript build emits production runtime files to `.build/tsc`. The test command runs JavaScript tests directly:
 
 ```bash
 node --test test/*.test.js test/**/*.test.js
 ```
 
-Many tests dynamically imported compiled files from `.build/tsc`, for example `.build/tsc/runtime/memory-service.js`. This meant test execution depended on a successful build and mostly validated emitted JavaScript. That had useful distribution parity, but it also meant tests were not type-checked as tests, test imports were noisier than source imports, and test fixtures/helpers could not share TypeScript types directly.
+Many tests dynamically import compiled files from `.build/tsc`, for example `.build/tsc/runtime/memory-service.js`. This means test execution depends on a successful build and mostly validates emitted JavaScript. That has useful distribution parity, but it also means tests are not type-checked as tests, test imports are noisier than source imports, and test fixtures/helpers cannot share TypeScript types directly.
 
 ## Goals
 

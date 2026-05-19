@@ -124,7 +124,7 @@ async function readJsonConfig(path: string, source: JsonConfigSource): Promise<J
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
       return { ok: true, config: {} };
     }
-    throw error;
+    return { ok: false, source };
   }
 
   let parsed: unknown;

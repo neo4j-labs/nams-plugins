@@ -88,7 +88,7 @@ function testHome(cwd: string): string {
   return path.join(cwd, "home");
 }
 
-for (const harness of ["gemini", "claude", "codex", "opencode"]) {
+for (const harness of ["gemini", "claude", "codex", "opencode"] as const) {
   test(`logs ${harness} session-start JSON payload`, async () => {
     const projectDir = await mkdtemp(path.join(tmpdir(), "nams-hooks-"));
     try {
@@ -108,10 +108,7 @@ for (const harness of ["gemini", "claude", "codex", "opencode"]) {
       });
 
       const homeDir = testHome(projectDir);
-      const logPath =
-        harness === "gemini" || harness === "codex" || harness === "opencode"
-          ? await singleSessionLogPath(homeDir, harness)
-          : path.join(namsHome(homeDir), "logs", harness, `${harness}-session-start.jsonl`);
+      const logPath = await singleSessionLogPath(homeDir, harness);
       const lines = (await readFile(logPath, "utf8")).trim().split("\n");
       assert.equal(lines.length, 1);
       const entry = JSON.parse(lines[0]);
@@ -222,6 +219,42 @@ for (const event of ["BeforeAgent", "AfterAgent", "AfterTool"]) {
   });
 }
 
+const claudeHookMappings = [
+  ["UserPromptSubmit", "BeforeAgent"],
+  ["Stop", "AfterAgent"],
+  ["PostToolUse", "AfterTool"],
+];
+
+for (const [claudeHook, namsEvent] of claudeHookMappings) {
+  test(`routes claude ${claudeHook} through NAMS ${namsEvent}`, async () => {
+    const projectDir = await mkdtemp(path.join(tmpdir(), "nams-hooks-"));
+    try {
+      const payload = {
+        session_id: `claude-${namsEvent}`,
+        hook_event_name: claudeHook,
+        cwd: projectDir,
+      };
+
+      const result = await runCliWithEvent("claude", namsEvent, payload, projectDir);
+
+      assert.equal(result.code, 0, result.stderr);
+      assert.deepEqual(JSON.parse(result.stdout), {
+        continue: true,
+        suppressOutput: true,
+      });
+
+      const logPath = await singleSessionLogPath(testHome(projectDir), "claude");
+      const entry = (await readJsonl(logPath)).find((record) => record.kind === "hook.event");
+      assert.ok(entry);
+      assert.equal(entry.harness, "claude");
+      assert.equal(entry.event, namsEvent);
+      assert.deepEqual(entry.payload, payload);
+    } finally {
+      await rm(projectDir, { recursive: true, force: true });
+    }
+  });
+}
+
 const codexNativeHookMappings = [
   {
     nativeHook: "UserPromptSubmit",
@@ -294,4 +327,12 @@ for (const nativeHook of ["UserPromptSubmit", "Stop", "PostToolUse"]) {
       await rm(projectDir, { recursive: true, force: true });
     }
   });
+}
+
+async function readJsonl(logPath: string): Promise<Array<Record<string, any>>> {
+  return (await readFile(logPath, "utf8"))
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as Record<string, any>);
 }

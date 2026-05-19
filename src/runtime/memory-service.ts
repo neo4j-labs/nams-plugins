@@ -139,8 +139,7 @@ export function serializeToolInput(input: unknown): string {
 }
 
 export function serializeToolOutput(output: unknown): string {
-  const serialized = typeof output === "string" ? output : JSON.stringify(output ?? "");
-  return capSerializedToolText(serialized);
+  return typeof output === "string" ? output : JSON.stringify(output ?? "");
 }
 
 function capSerializedToolText(serialized: string): string {
