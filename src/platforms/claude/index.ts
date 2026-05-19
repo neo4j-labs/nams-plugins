@@ -218,7 +218,6 @@ export class ClaudeAdapter implements PlatformAdapter {
           ...(payloadInfo.toolResponse !== undefined ? { output: payloadInfo.toolResponse } : {}),
           status: "success",
           ...(payloadInfo.durationMs !== undefined ? { durationMs: payloadInfo.durationMs } : {}),
-          truncateOutput: false,
         });
         markSeen(state.seenToolCallIds, toolCallKeys.markKeys);
       }

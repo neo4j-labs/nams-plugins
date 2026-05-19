@@ -55,7 +55,7 @@ Claude currently has a complete allow-only walking skeleton in `src/platforms/cl
 - Persist every Claude user prompt observed through `UserPromptSubmit`.
 - Persist Claude assistant responses from `Stop.last_assistant_message`.
 - Record successful Claude `PostToolUse` events as a safe operational reasoning step plus NAMS tool-call metadata.
-- Store exposed tool output from `tool_response` in full, because Claude provides it explicitly in the hook payload. This requires an opt-in untruncated output path because the current shared `NamsMemoryService.recordToolCall()` caps explicit tool output by default for existing platforms.
+- Store exposed tool output from `tool_response` in full, because Claude provides it explicitly in the hook payload. Shared tool-call output serialization must not truncate explicit output saved to memory.
 - Keep hooks non-blocking on missing config, NAMS failures, and local log failures.
 
 ## Non-Goals
@@ -153,7 +153,7 @@ The Claude adapter implements `startSession`, `beforeAgent`, `afterTool`, and `a
 
 ### Shared Runtime Changes
 
-`NamsMemoryService.recordToolCall()` currently sanitizes and caps tool input, and now also serializes and caps explicit tool output by default for Gemini, Codex, and OpenCode. Claude should preserve that default for existing platforms while adding an opt-in untruncated output path for explicit Claude `tool_response` data:
+`NamsMemoryService.recordToolCall()` sanitizes and caps tool input, but explicit tool output should be serialized in full. This keeps output from Claude `tool_response`, Gemini tool responses, Codex post-tool output, and OpenCode tool output intact when the harness exposes it cleanly:
 
 ```ts
 export interface ToolCallInput {
@@ -163,16 +163,14 @@ export interface ToolCallInput {
   output?: unknown;
   status?: string;
   durationMs?: number;
-  truncateOutput?: boolean;
 }
 
-export function serializeToolOutput(output: unknown, options: { truncate?: boolean } = {}): string {
-  const serialized = typeof output === "string" ? output : JSON.stringify(output ?? "");
-  return options.truncate === false ? serialized : capSerializedToolText(serialized);
+export function serializeToolOutput(output: unknown): string {
+  return typeof output === "string" ? output : JSON.stringify(output ?? "");
 }
 ```
 
-The exact helper name can stay in `src/runtime/memory-service.ts` with `serializeToolInput` to avoid a new module. Claude `AfterTool` should pass `truncateOutput: false`; existing platform calls should omit it and keep the current capped behavior.
+The exact helper name can stay in `src/runtime/memory-service.ts` with `serializeToolInput` to avoid a new module. Only sanitized tool input remains capped.
 
 ## Hook Data Flow
 
@@ -251,7 +249,6 @@ Flow:
   "toolName": "<toolName>",
   "input": "<sanitized serialized input>",
   "output": "<serialized full tool_response>",
-  "truncateOutput": false,
   "status": "success",
   "durationMs": 12
 }
@@ -363,7 +360,7 @@ Claude hooks remain non-blocking:
 ## Privacy Rules
 
 - Persist user prompts and assistant responses as the canonical memory stream.
-- Persist Claude `tool_response` only because it is explicit hook output; serialize it without truncation through the Claude-specific opt-in output path.
+- Persist Claude `tool_response` only because it is explicit hook output; serialize explicit tool output without truncation.
 - Sanitize tool input with the existing `serializeToolInput()` behavior before sending it to NAMS.
 - Do not parse Claude transcript internals for hidden reasoning in v1.
 - Do not create entities directly.
@@ -400,4 +397,4 @@ Run `npm run check` before claiming completion. The expected verification path i
 
 ## Approval Notes
 
-This design intentionally follows the current Gemini, Codex, and OpenCode implementation shape while translating Claude's native hook names into NAMS lifecycle events. The main implementation risk is output privacy for `tool_response`; v1 mitigates that by accepting only explicit hook output, serializing it without truncation for Claude NAMS memory, and continuing to sanitize inputs separately.
+This design intentionally follows the current Gemini, Codex, and OpenCode implementation shape while translating Claude's native hook names into NAMS lifecycle events. The main implementation risk is output privacy for `tool_response`; v1 mitigates that by accepting only explicit hook output, serializing explicit tool output without truncation for NAMS memory, and continuing to sanitize inputs separately.

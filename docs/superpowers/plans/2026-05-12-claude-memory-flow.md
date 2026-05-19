@@ -49,9 +49,9 @@ Create:
 Modify:
 
 - `src/platforms/claude/index.ts`: replace the allow-only walking skeleton with full Claude memory flow.
-- `src/runtime/memory-service.ts`: add an opt-in untruncated explicit tool-output path while preserving the current capped default for Gemini, Codex, and OpenCode.
+- `src/runtime/memory-service.ts`: serialize explicit tool output in full while keeping sanitized tool input capped.
 - `test/cli-session-start.test.ts`: update Claude log expectations when Claude moves to session-scoped logs.
-- `test/memory-service.test.ts`: cover default capped output plus Claude's opt-in untruncated output path.
+- `test/memory-service.test.ts`: cover capped sanitized input plus untruncated explicit output serialization.
 
 Do not modify:
 
@@ -89,12 +89,11 @@ export interface ToolCallInput {
   output?: unknown;
   status?: string;
   durationMs?: number;
-  truncateOutput?: boolean;
 }
 ```
 
 ```ts
-export function serializeToolOutput(output: unknown, options?: { truncate?: boolean }): string;
+export function serializeToolOutput(output: unknown): string;
 ```
 
 ---
@@ -1055,18 +1054,16 @@ git commit -m "feat: persist claude assistant responses" -m "Co-authored-by: Cod
 
 - [x] **Step 1: Add memory-service output serialization tests**
 
-Add `serializeToolOutput` to the `test/memory-service.test.ts` runtime import, then add or update tests so the current capped behavior remains the default and Claude can opt into full explicit output:
+Add `serializeToolOutput` to the `test/memory-service.test.ts` runtime import, then add or update tests so sanitized input remains capped and explicit tool output is serialized in full:
 
 ```ts
-test("serializeToolOutput caps explicit output by default and supports untruncated output when requested", () => {
+test("serializeToolOutput returns full serialized output", () => {
   assert.equal(serializeToolOutput({ stdout: "ok" }), '{"stdout":"ok"}');
   assert.equal(serializeToolOutput("plain output"), "plain output");
-  assert.equal(serializeToolOutput("x".repeat(5000)).length, 4000);
-  assert.match(serializeToolOutput("x".repeat(5000)), /\.\.\.\[truncated\]$/);
-  assert.equal(serializeToolOutput("x".repeat(5000), { truncate: false }).length, 5000);
+  assert.equal(serializeToolOutput("x".repeat(5000)).length, 5000);
 });
 
-test("recordToolCall can send untruncated explicit tool output when requested", async () => {
+test("recordToolCall serializes full explicit tool output", async () => {
   const requests: CapturedRequest[] = [];
   const service = createService({
     fetch: async (url, init) => {
@@ -1079,7 +1076,6 @@ test("recordToolCall can send untruncated explicit tool output when requested", 
     toolName: "claude-tool",
     input: {},
     output: "x".repeat(5000),
-    truncateOutput: false,
   });
 
   const body = JSON.parse(requests[0].init.body);
@@ -1236,22 +1232,20 @@ export interface ToolCallInput {
   output?: unknown;
   status?: string;
   durationMs?: number;
-  truncateOutput?: boolean;
 }
 ```
 
 Update `recordToolCall()`:
 
 ```ts
-      output: serializeToolOutput(input.output ?? "", { truncate: input.truncateOutput ?? true }),
+      output: serializeToolOutput(input.output ?? ""),
 ```
 
-Update the exported helper while preserving the existing capped default:
+Update the exported helper so explicit output is not truncated:
 
 ```ts
-export function serializeToolOutput(output: unknown, options: { truncate?: boolean } = {}): string {
-  const serialized = typeof output === "string" ? output : JSON.stringify(output ?? "");
-  return options.truncate === false ? serialized : capSerializedToolText(serialized);
+export function serializeToolOutput(output: unknown): string {
+  return typeof output === "string" ? output : JSON.stringify(output ?? "");
 }
 ```
 
@@ -1320,7 +1314,6 @@ Add to `ClaudeAdapter`:
           ...(payloadInfo.toolResponse !== undefined ? { output: payloadInfo.toolResponse } : {}),
           status: "success",
           ...(payloadInfo.durationMs !== undefined ? { durationMs: payloadInfo.durationMs } : {}),
-          truncateOutput: false,
         });
         markSeen(state.seenToolCallIds, toolCallKeys.markKeys);
       }
@@ -1385,7 +1378,7 @@ npm run test:typecheck && node --import=tsx --test test/memory-service.test.ts t
 
 Expected:
 
-- Tool output serialization tests preserve the default capped behavior and pass the untruncated opt-in path for Claude output.
+- Tool output serialization tests preserve capped sanitized input and pass the untruncated explicit output path.
 - Claude tool trace tests pass through NAMS `AfterTool`.
 
 - [x] **Step 7: Commit AfterTool flow**
@@ -1460,7 +1453,7 @@ git commit -m "docs: plan claude memory flow" -m "Co-authored-by: Codex <codex@o
 - [x] Hooks never fail Claude work because NAMS is unavailable.
 - [x] Diagnostics do not include API keys, arbitrary error text, prompts, or tool output.
 - [x] Tool input is sanitized by `serializeToolInput()`.
-- [x] Existing platforms keep the default capped `serializeToolOutput()` behavior.
-- [x] Claude explicit `tool_response` is serialized without truncation by passing `truncateOutput: false`.
+- [x] Existing platforms serialize explicit tool output without truncation through `serializeToolOutput()`.
+- [x] Claude explicit `tool_response` is serialized without truncation.
 - [x] No runtime npm dependency was added.
 - [x] `npm run check` passes before completion is claimed.
