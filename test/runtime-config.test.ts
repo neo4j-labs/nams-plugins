@@ -201,6 +201,48 @@ test("invalid project JSON preserves global source metadata", async () => {
   });
 });
 
+test("unreadable global config path returns structured non-ok result", async () => {
+  await withFixture(async ({ homeDir, projectDir }) => {
+    await mkdir(path.join(homeDir, ".nams", "config.json"), { recursive: true });
+    useRuntimeEnv(homeDir, {
+      NAMS_API_KEY: "env-secret-key",
+    });
+    const result = await loadNamsConfig(projectDir);
+
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "invalid-json");
+    assert.equal(result.errorSource, "global:~/.nams/config.json");
+    assert.deepEqual(result.sources, {
+      apiKey: "missing",
+      baseUrl: "default",
+    });
+    assert.doesNotMatch(JSON.stringify(result), /env-secret-key|EISDIR|illegal operation|is a directory/i);
+  });
+});
+
+test("unreadable project config path returns structured non-ok result with global source metadata", async () => {
+  await withFixture(async ({ homeDir, projectDir }) => {
+    await writeGlobalConfig(homeDir, {
+      apiKey: "global-key",
+      baseUrl: "https://global.example.test",
+    });
+    await mkdir(path.join(projectDir, ".nams", "config.json"), { recursive: true });
+    useRuntimeEnv(homeDir, {
+      NAMS_API_KEY: "env-secret-key",
+    });
+    const result = await loadNamsConfig(projectDir);
+
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "invalid-json");
+    assert.equal(result.errorSource, "project:.nams/config.json");
+    assert.deepEqual(result.sources, {
+      apiKey: "global:~/.nams/config.json",
+      baseUrl: "global:~/.nams/config.json",
+    });
+    assert.doesNotMatch(JSON.stringify(result), /env-secret-key|global-key|global\.example|EISDIR|illegal operation|is a directory/i);
+  });
+});
+
 test("configDiagnosticPayload includes sources but not secret values", async () => {
   await withFixture(async ({ homeDir, projectDir }) => {
     await writeGlobalConfig(homeDir, {

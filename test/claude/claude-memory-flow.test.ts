@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -286,6 +286,54 @@ test("continues when Claude NAMS apiKey is missing and logs sanitized config dia
       baseUrl: "default",
     });
     assert.doesNotMatch(log, /Authorization|Bearer|secret|NAMS_API_KEY/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("continues when Claude project config cannot be read and logs sanitized config diagnostic", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-claude-flow-"));
+  try {
+    const prompt = "secret prompt should stay out of config diagnostics";
+    await mkdir(path.join(projectDir, ".nams", "config.json"), { recursive: true });
+    const nams = createNamsFetchMock().all({ error: "unexpected NAMS call" }, 500);
+    const env = testEnv(projectDir, {
+      NAMS_API_KEY: "secret-api-key",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+    const adapter = new ClaudeAdapter();
+
+    const result = await adapter.beforeAgent({
+      platform: "claude",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt,
+      },
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    assert.equal(nams.calls().length, 0);
+    const { lines } = await readSingleSessionLog(env.HOME, "claude");
+    const diagnostics = lines.filter(
+      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS config invalid",
+    );
+    assert.equal(diagnostics.length, 1);
+    assert.deepEqual(diagnostics[0].payload, {
+      message: "NAMS config invalid",
+      configSources: {
+        apiKey: "missing",
+        baseUrl: "default",
+      },
+      errorSource: "project:.nams/config.json",
+    });
+    assert.doesNotMatch(
+      JSON.stringify(diagnostics),
+      /secret prompt|secret-api-key|memory\.example|NAMS_API_KEY|EISDIR|illegal operation|is a directory/i,
+    );
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
