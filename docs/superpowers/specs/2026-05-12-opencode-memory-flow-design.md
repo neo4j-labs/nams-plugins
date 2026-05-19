@@ -250,6 +250,7 @@ Hook payload logs should preserve raw OpenCode plugin input and output for local
 - Sanitize tool inputs through the existing `NamsMemoryService` serializer.
 - Preserve raw OpenCode hook payload logs for local debugging, but never log NAMS secrets.
 - Do not print NAMS API keys to stdout, stderr, test output, or logs.
+- Keep global and project NAMS files owner-readable and owner-writable only (`0600`); runtime-created directories use `0700`.
 
 ## Error Handling
 

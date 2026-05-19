@@ -128,6 +128,8 @@ User runtime layout:
     opencode/
 ```
 
+Files created or touched by the runtime under `~/.nams/` use owner-only file permissions (`0600`). Runtime directories under `~/.nams/` use owner-only directory permissions (`0700`) so the owner can still traverse them. Project-local NAMS files, including `.nams/config.json`, follow the same `0600` file rule.
+
 Logs are session-scoped only. There is no top-level aggregate `nams-hooks.jsonl`.
 
 Gemini v1 distribution is an extension install rather than a project `.gemini/settings.json` template. Gemini writes hook runtime state and logs into the user-level `~/.nams/` directory while still allowing a project-local `.nams/config.json` override when it runs from a project.
@@ -244,6 +246,8 @@ Optional:
 Environment overrides are limited to `NAMS_API_KEY` and `NAMS_BASE_URL` unless a future design explicitly adds more. The runtime records a sanitized config-source diagnostic in the session log, for example `apiKey: "env:NAMS_API_KEY"`, `baseUrl: "project:.nams/config.json"`, or `baseUrl: "default"`. It never logs secret values or full config objects.
 
 `.env` files are not part of the target configuration model. Secrets remain outside committed harness configs. The installer ensures project `.nams/config.json` stays local and gitignored when it creates or modifies a project override.
+
+When global or project JSON config files exist and are readable, the runtime tightens their mode to `0600` before using their values. If a future installer creates or updates either config file, it must create the containing `.nams` directory with owner-only directory permissions and write the config file with `0600`.
 
 ## Session State
 
@@ -429,6 +433,7 @@ Installer errors are stricter. The installer should refuse unsafe overwrites and
 
 - `~/.nams/config.json`, `~/.nams/state/`, and `~/.nams/logs/` are user-local runtime files.
 - Project `.nams/config.json` is an optional local override and must be gitignored.
+- Files created or touched under global `~/.nams/` or project `.nams/` must be owner-readable and owner-writable only (`0600`); runtime-created directories use `0700`.
 - `.env` files are not supported by the target configuration model.
 - API keys are never printed to stdout or logs.
 - Tool outputs are not stored in v1.
@@ -444,6 +449,7 @@ The installer:
 
 - creates `~/.nams/config.json` when the user chooses global configuration
 - creates project `.nams/config.json` only when the user chooses a project override
+- creates or updates global and project `.nams` files with `0600` file permissions
 - ensures project `.nams/config.json` is gitignored
 - writes or merges harness hook configs
 - backs up existing config files before changing them

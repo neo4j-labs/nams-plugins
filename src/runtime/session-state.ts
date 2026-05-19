@@ -1,7 +1,7 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
+import { readFile } from "node:fs/promises";
 import type { Platform } from "../interfaces.js";
 import { sha256 } from "./hashing.js";
+import { writePrivateFile } from "./permissions.js";
 import { RuntimeEnvironment } from "./paths.js";
 
 export interface SessionState {
@@ -69,8 +69,7 @@ export async function saveSessionState(
   state: SessionState,
 ): Promise<void> {
   const statePath = RuntimeEnvironment.fromProcess().sessionStatePath(platform, sessionKey);
-  await mkdir(path.dirname(statePath), { recursive: true });
-  await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  await writePrivateFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
 }
 
 export function createInitialSessionState(input: ResolveSessionKeyInput, now = new Date()): SessionState {

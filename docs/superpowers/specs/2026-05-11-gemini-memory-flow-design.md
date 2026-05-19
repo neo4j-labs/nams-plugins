@@ -112,6 +112,8 @@ Phase 1 config supports only:
 
 Configuration loads `~/.nams/config.json` first, overlays `<project>/.nams/config.json` when present, then overlays `NAMS_API_KEY` and `NAMS_BASE_URL` when those environment variables are set. Missing `apiKey` is non-blocking for Gemini; the runtime logs a sanitized diagnostic and returns allow output. The diagnostic records which source supplied each config key, but it never records secret values.
 
+When Gemini reads existing global or project NAMS config files, the shared runtime tightens readable files to `0600`. Gemini-created runtime state and log files under `~/.nams/` are also written as `0600`, with runtime directories created as `0700`.
+
 ### Session State Store
 
 Session state lives under:
@@ -327,6 +329,7 @@ If transcript reading fails:
 - Do not persist transcript `toolCalls[].result`, `resultDisplay`, `functionResponse`, or nested tool response output.
 - Keep persistent runtime state and logs under user-local `~/.nams/`.
 - Keep project `.nams/config.json` as the only project-local NAMS file, and ensure it is gitignored.
+- Keep global and project NAMS files owner-readable and owner-writable only (`0600`); runtime-created directories use `0700`.
 - Do not use `.env` files for the target configuration model.
 - Write only harness-specific JSON to stdout.
 

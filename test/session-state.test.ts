@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -62,6 +62,7 @@ test("persists session state under user-local .nams/state using safe session fil
 
     const savedPath = path.join(homeDir, ".nams", "state", "gemini", `${sha256("session/1")}.json`);
     assert.deepEqual(JSON.parse(await readFile(savedPath, "utf8")), state);
+    assert.equal(await fileMode(savedPath), 0o600);
     assert.deepEqual(await loadSessionState("gemini", "session/1"), state);
   } finally {
     await rm(homeDir, { recursive: true, force: true });
@@ -106,6 +107,10 @@ test("loads legacy lastMemorySearchAt as lastRecallAt", async () => {
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+async function fileMode(filePath: string): Promise<number> {
+  return (await stat(filePath)).mode & 0o777;
 }
 
 test("persists colliding-looking session keys in separate state files", async () => {

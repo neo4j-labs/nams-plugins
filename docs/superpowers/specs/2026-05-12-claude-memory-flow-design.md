@@ -37,7 +37,7 @@ The branch already has complete Gemini, Codex, and OpenCode memory flows:
 - `templates/gemini/hooks/hooks.json` wires Gemini `SessionStart`, `BeforeAgent`, `AfterAgent`, and `AfterTool`.
 - `templates/codex/hooks.json` and `templates/opencode/plugins/nams-hooks.js` translate native platform surfaces into the shared NAMS events.
 
-Configuration now loads from `~/.nams/config.json`, then `<project>/.nams/config.json`, then `NAMS_API_KEY` and `NAMS_BASE_URL` environment overrides. Loading returns a structured result, so adapters log sanitized configuration diagnostics with source metadata instead of throwing or inspecting `.env` files. Runtime state and logs are stored under `~/.nams/state/<platform>/` and `~/.nams/logs/<platform>/`.
+Configuration now loads from `~/.nams/config.json`, then `<project>/.nams/config.json`, then `NAMS_API_KEY` and `NAMS_BASE_URL` environment overrides. Loading returns a structured result, so adapters log sanitized configuration diagnostics with source metadata instead of throwing or inspecting `.env` files. Runtime state and logs are stored under `~/.nams/state/<platform>/` and `~/.nams/logs/<platform>/`. Readable global and project NAMS config files are tightened to `0600` when loaded; Claude-created runtime state and log files are written as `0600`, with runtime directories created as `0700`.
 
 Tests are authored in TypeScript and run with Node's built-in `node:test` through `tsx`. `npm run check` now runs OpenAPI generation, TypeScript build, test type-checking through `tsconfig.test.json`, and the full TypeScript test suite.
 

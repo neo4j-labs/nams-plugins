@@ -69,6 +69,7 @@ The Codex integration should mirror those boundaries rather than copying Gemini 
 - Use Codex `session_id` as the primary session key, with cwd fallback.
 - Persist user-local state under `~/.nams/state/codex/<session-hash>.json`.
 - Use session-scoped `~/.nams/logs/codex/session-<created-at>-<session-part>.jsonl` logs for Codex, matching the shared observability model.
+- Keep Codex-created NAMS state and log files owner-readable and owner-writable only (`0600`), with runtime directories created as `0700`.
 - Create a NAMS conversation lazily on the first NAMS `BeforeAgent` event mapped from Codex `UserPromptSubmit`.
 - Recall memory before the first response and inject it through Codex `UserPromptSubmit` additional context.
 - Persist each user prompt from Codex `UserPromptSubmit` while handling it as NAMS `BeforeAgent`.
@@ -335,6 +336,7 @@ The hook runner should never print API keys or raw secret values to stdout, stde
 - Sanitize tool input with the existing recursive output-field removal before storage.
 - Keep persistent runtime state and logs under user-local `~/.nams/`.
 - Keep project `.nams/config.json` as the only project-local NAMS file, and ensure it is gitignored.
+- Keep global and project NAMS files owner-readable and owner-writable only (`0600`); runtime-created directories use `0700`.
 - Do not use `.env` files for the target configuration model.
 - Write only Codex hook-compatible JSON to stdout.
 
