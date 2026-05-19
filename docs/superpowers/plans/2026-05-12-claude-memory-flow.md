@@ -236,7 +236,7 @@ git commit -m "feat: map claude hooks to nams events" -m "Co-authored-by: Codex 
 - Create: `src/platforms/claude/payload.ts`
 - Create: `test/claude/claude-payload.test.ts`
 
-- [ ] **Step 1: Write parser tests**
+- [x] **Step 1: Write parser tests**
 
 Create `test/claude/claude-payload.test.ts`:
 
@@ -327,7 +327,7 @@ test("ignores blank string aliases", () => {
 });
 ```
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run:
 
@@ -339,7 +339,7 @@ Expected:
 
 - Build fails because `src/platforms/claude/payload.ts` does not exist.
 
-- [ ] **Step 3: Implement parser**
+- [x] **Step 3: Implement parser**
 
 Create `src/platforms/claude/payload.ts`:
 
@@ -411,7 +411,7 @@ function firstNumber(...values: unknown[]): number | undefined {
 }
 ```
 
-- [ ] **Step 4: Verify parser tests**
+- [x] **Step 4: Verify parser tests**
 
 Run:
 
@@ -423,7 +423,7 @@ Expected:
 
 - All Claude parser tests pass.
 
-- [ ] **Step 5: Commit parser**
+- [x] **Step 5: Commit parser**
 
 ```bash
 git add src/platforms/claude/payload.ts test/claude/claude-payload.test.ts
@@ -440,7 +440,7 @@ git commit -m "feat: parse claude hook payloads" -m "Co-authored-by: Codex <code
 - Modify: `src/platforms/claude/index.ts`
 - Modify: `test/cli-session-start.test.ts`
 
-- [ ] **Step 1: Write SessionStart state test**
+- [x] **Step 1: Write SessionStart state test**
 
 Create the first test in `test/claude/claude-memory-flow.test.ts`:
 
@@ -504,7 +504,7 @@ test("initializes Claude session state on SessionStart without creating a conver
 });
 ```
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run:
 
@@ -516,7 +516,7 @@ Expected:
 
 - Test fails because Claude still writes the event-scoped walking-skeleton log and does not create session state.
 
-- [ ] **Step 3: Refactor Claude adapter SessionStart**
+- [x] **Step 3: Refactor Claude adapter SessionStart**
 
 Replace `src/platforms/claude/index.ts` with the adapter shell, using the current shared runtime helpers:
 
@@ -574,7 +574,7 @@ async function loadOrCreateClaudeState(
 
 Remove imports that are not used by this step so TypeScript passes.
 
-- [ ] **Step 4: Update walking-skeleton log expectation**
+- [x] **Step 4: Update walking-skeleton log expectation**
 
 In `test/cli-session-start.test.ts`, update the log path selection so Claude uses the same global runtime session log helper as the implemented platforms:
 
@@ -582,7 +582,7 @@ In `test/cli-session-start.test.ts`, update the log path selection so Claude use
 const logPath = await singleSessionLogPath(homeDir, harness);
 ```
 
-- [ ] **Step 5: Verify session tests**
+- [x] **Step 5: Verify session tests**
 
 Run:
 
@@ -595,7 +595,7 @@ Expected:
 - Claude `SessionStart` initializes state.
 - Existing CLI session-start tests pass with the new Claude session log.
 
-- [ ] **Step 6: Commit SessionStart flow**
+- [x] **Step 6: Commit SessionStart flow**
 
 ```bash
 git add src/platforms/claude/index.ts test/claude/claude-memory-flow.test.ts test/cli-session-start.test.ts
@@ -611,7 +611,7 @@ git commit -m "feat: initialize claude session state" -m "Co-authored-by: Codex 
 - Modify: `src/platforms/claude/index.ts`
 - Modify: `test/claude/claude-memory-flow.test.ts`
 
-- [ ] **Step 1: Add BeforeAgent tests**
+- [x] **Step 1: Add BeforeAgent tests**
 
 Append to `test/claude/claude-memory-flow.test.ts`. Also import `createNamsFetchMock` from `../support/nams-fetch-mock.js` if it is not already imported:
 
@@ -730,7 +730,7 @@ test("Claude UserPromptSubmit through BeforeAgent continues when apiKey is missi
 });
 ```
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run:
 
@@ -742,7 +742,7 @@ Expected:
 
 - Tests fail because `ClaudeAdapter.beforeAgent` is not implemented for Claude.
 
-- [ ] **Step 3: Add imports and BeforeAgent method**
+- [x] **Step 3: Add imports and BeforeAgent method**
 
 Add imports in `src/platforms/claude/index.ts`:
 
@@ -823,7 +823,7 @@ Add the method to `ClaudeAdapter`:
 
 Use the shared diagnostics helpers instead of adding Claude-local diagnostic logging functions; they already write fixed messages and sanitized config source metadata through the platform logger.
 
-- [ ] **Step 4: Verify BeforeAgent tests**
+- [x] **Step 4: Verify BeforeAgent tests**
 
 Run:
 
@@ -835,7 +835,7 @@ Expected:
 
 - Claude `SessionStart` and NAMS `BeforeAgent` tests pass.
 
-- [ ] **Step 5: Commit BeforeAgent flow**
+- [x] **Step 5: Commit BeforeAgent flow**
 
 ```bash
 git add src/platforms/claude/index.ts test/claude/claude-memory-flow.test.ts
@@ -851,7 +851,7 @@ git commit -m "feat: persist claude user prompts" -m "Co-authored-by: Codex <cod
 - Modify: `src/platforms/claude/index.ts`
 - Modify: `test/claude/claude-memory-flow.test.ts`
 
-- [ ] **Step 1: Add AfterAgent tests**
+- [x] **Step 1: Add AfterAgent tests**
 
 Append to `test/claude/claude-memory-flow.test.ts`:
 
@@ -946,7 +946,7 @@ test("does not duplicate Claude Stop assistant messages through AfterAgent", asy
 });
 ```
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run:
 
@@ -958,7 +958,7 @@ Expected:
 
 - AfterAgent tests fail because `ClaudeAdapter.afterAgent` is not implemented for Claude.
 
-- [ ] **Step 3: Implement AfterAgent method**
+- [x] **Step 3: Implement AfterAgent method**
 
 Add to `ClaudeAdapter`:
 
@@ -1023,7 +1023,7 @@ function markAssistantMessageSeen(state: AssistantMessageState, messageHash: str
 }
 ```
 
-- [ ] **Step 4: Verify AfterAgent tests**
+- [x] **Step 4: Verify AfterAgent tests**
 
 Run:
 
@@ -1035,7 +1035,7 @@ Expected:
 
 - Claude assistant persistence and dedupe tests pass through NAMS `AfterAgent`.
 
-- [ ] **Step 5: Commit AfterAgent flow**
+- [x] **Step 5: Commit AfterAgent flow**
 
 ```bash
 git add src/platforms/claude/index.ts test/claude/claude-memory-flow.test.ts
@@ -1053,7 +1053,7 @@ git commit -m "feat: persist claude assistant responses" -m "Co-authored-by: Cod
 - Modify: `test/claude/claude-memory-flow.test.ts`
 - Modify: `test/memory-service.test.ts`
 
-- [ ] **Step 1: Add memory-service output serialization tests**
+- [x] **Step 1: Add memory-service output serialization tests**
 
 Add `serializeToolOutput` to the `test/memory-service.test.ts` runtime import, then add or update tests so the current capped behavior remains the default and Claude can opt into full explicit output:
 
@@ -1087,7 +1087,7 @@ test("recordToolCall can send untruncated explicit tool output when requested", 
 });
 ```
 
-- [ ] **Step 2: Add AfterTool adapter tests**
+- [x] **Step 2: Add AfterTool adapter tests**
 
 Append to `test/claude/claude-memory-flow.test.ts`:
 
@@ -1212,7 +1212,7 @@ test("does not duplicate Claude PostToolUse metadata for the same tool_use_id th
 });
 ```
 
-- [ ] **Step 3: Verify red**
+- [x] **Step 3: Verify red**
 
 Run:
 
@@ -1224,7 +1224,7 @@ Expected:
 
 - Tests fail because `serializeToolOutput` does not yet accept the untruncated option and `ClaudeAdapter.afterTool` is not implemented for Claude.
 
-- [ ] **Step 4: Add output serialization**
+- [x] **Step 4: Add output serialization**
 
 In `src/runtime/memory-service.ts`, extend `ToolCallInput`:
 
@@ -1255,7 +1255,7 @@ export function serializeToolOutput(output: unknown, options: { truncate?: boole
 }
 ```
 
-- [ ] **Step 5: Implement AfterTool method**
+- [x] **Step 5: Implement AfterTool method**
 
 Add imports in `src/platforms/claude/index.ts`:
 
@@ -1375,7 +1375,7 @@ function markSeen(seen: string[], keys: string[]): void {
 }
 ```
 
-- [ ] **Step 6: Verify AfterTool tests**
+- [x] **Step 6: Verify AfterTool tests**
 
 Run:
 
@@ -1388,7 +1388,7 @@ Expected:
 - Tool output serialization tests preserve the default capped behavior and pass the untruncated opt-in path for Claude output.
 - Claude tool trace tests pass through NAMS `AfterTool`.
 
-- [ ] **Step 7: Commit AfterTool flow**
+- [x] **Step 7: Commit AfterTool flow**
 
 ```bash
 git add src/runtime/memory-service.ts src/platforms/claude/index.ts test/memory-service.test.ts test/claude/claude-memory-flow.test.ts
@@ -1403,7 +1403,7 @@ git commit -m "feat: record claude tool traces" -m "Co-authored-by: Codex <codex
 
 - Modify only files changed by previous tasks.
 
-- [ ] **Step 1: Run focused Claude tests**
+- [x] **Step 1: Run focused Claude tests**
 
 Run:
 
@@ -1415,7 +1415,7 @@ Expected:
 
 - All Claude-specific tests pass.
 
-- [ ] **Step 2: Run full verification**
+- [x] **Step 2: Run full verification**
 
 Run:
 
@@ -1430,7 +1430,7 @@ Expected:
 - TypeScript test type-checking passes.
 - Full Node test suite passes through `tsx`.
 
-- [ ] **Step 3: Inspect changed files**
+- [x] **Step 3: Inspect changed files**
 
 Run:
 
@@ -1442,7 +1442,7 @@ Expected:
 
 - Changes are limited to Claude platform code, shared runtime helpers, Claude tests, CLI routing log expectations, and the plan/spec docs.
 
-- [ ] **Step 4: Commit documentation if it was not committed earlier**
+- [x] **Step 4: Commit documentation if it was not committed earlier**
 
 ```bash
 git add docs/superpowers/specs/2026-05-12-claude-memory-flow-design.md docs/superpowers/plans/2026-05-12-claude-memory-flow.md
@@ -1453,14 +1453,14 @@ git commit -m "docs: plan claude memory flow" -m "Co-authored-by: Codex <codex@o
 
 ## Self-Review Checklist
 
-- [ ] The CLI still dispatches only from typed `--event`.
-- [ ] `src/cli.ts` does not parse Claude payload fields.
-- [ ] Claude-specific parsing stays under `src/platforms/claude/`.
-- [ ] Runtime imports still flow downstream under `test/architecture.test.ts`.
-- [ ] Hooks never fail Claude work because NAMS is unavailable.
-- [ ] Diagnostics do not include API keys, arbitrary error text, prompts, or tool output.
-- [ ] Tool input is sanitized by `serializeToolInput()`.
-- [ ] Existing platforms keep the default capped `serializeToolOutput()` behavior.
-- [ ] Claude explicit `tool_response` is serialized without truncation by passing `truncateOutput: false`.
-- [ ] No runtime npm dependency was added.
-- [ ] `npm run check` passes before completion is claimed.
+- [x] The CLI still dispatches only from typed `--event`.
+- [x] `src/cli.ts` does not parse Claude payload fields.
+- [x] Claude-specific parsing stays under `src/platforms/claude/`.
+- [x] Runtime imports still flow downstream under `test/architecture.test.ts`.
+- [x] Hooks never fail Claude work because NAMS is unavailable.
+- [x] Diagnostics do not include API keys, arbitrary error text, prompts, or tool output.
+- [x] Tool input is sanitized by `serializeToolInput()`.
+- [x] Existing platforms keep the default capped `serializeToolOutput()` behavior.
+- [x] Claude explicit `tool_response` is serialized without truncation by passing `truncateOutput: false`.
+- [x] No runtime npm dependency was added.
+- [x] `npm run check` passes before completion is claimed.
