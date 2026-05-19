@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -88,6 +88,10 @@ function testHome(cwd: string): string {
   return path.join(cwd, "home");
 }
 
+async function fileMode(filePath: string): Promise<number> {
+  return (await stat(filePath)).mode & 0o777;
+}
+
 for (const harness of ["gemini", "claude", "codex", "opencode"] as const) {
   test(`logs ${harness} session-start JSON payload`, async () => {
     const projectDir = await mkdtemp(path.join(tmpdir(), "nams-hooks-"));
@@ -111,6 +115,7 @@ for (const harness of ["gemini", "claude", "codex", "opencode"] as const) {
       const logPath = await singleSessionLogPath(homeDir, harness);
       const lines = (await readFile(logPath, "utf8")).trim().split("\n");
       assert.equal(lines.length, 1);
+      assert.equal(await fileMode(logPath), 0o600);
       const entry = JSON.parse(lines[0]);
       assert.equal(entry.harness, harness);
       assert.equal(entry.event, "SessionStart");

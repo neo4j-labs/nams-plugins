@@ -1,9 +1,9 @@
-import { mkdir, appendFile } from "node:fs/promises";
 import path from "node:path";
 import type { NamsRequestEvent } from "../generated/nams-client.js";
 import type { HookEvent, HookInvocation, Platform } from "../interfaces.js";
 import { configDiagnosticPayload, type NamsConfigLoadResult } from "./config.js";
 import { sha256 } from "./hashing.js";
+import { appendPrivateFile } from "./permissions.js";
 import { RuntimeEnvironment } from "./paths.js";
 import type { SessionState } from "./session-state.js";
 
@@ -27,8 +27,7 @@ export async function appendPlatformLog(entry: PlatformLogEntry): Promise<void> 
     payload: entry.payload,
   };
 
-  await mkdir(logDir, { recursive: true });
-  await appendFile(logPath, `${JSON.stringify(logEntry)}\n`, "utf8");
+  await appendPrivateFile(logPath, `${JSON.stringify(logEntry)}\n`);
 }
 
 export async function appendNamsConfigDiagnostic(

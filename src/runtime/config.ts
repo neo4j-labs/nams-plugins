@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { ensurePrivateFileMode } from "./permissions.js";
 import { RuntimeEnvironment } from "./paths.js";
 
 export interface NamsRuntimeConfig {
@@ -124,6 +125,11 @@ async function readJsonConfig(path: string, source: JsonConfigSource): Promise<J
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
       return { ok: true, config: {} };
     }
+    return { ok: false, source };
+  }
+  try {
+    await ensurePrivateFileMode(path);
+  } catch {
     return { ok: false, source };
   }
 

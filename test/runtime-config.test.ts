@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -34,14 +34,22 @@ function useRuntimeEnv(homeDir: string, overrides: RuntimeEnvOverrides = {}): vo
   Object.assign(process.env, { HOME: homeDir, USERPROFILE: homeDir, ...overrides });
 }
 
-async function writeGlobalConfig(homeDir: string, config: JsonObject): Promise<void> {
+async function writeGlobalConfig(homeDir: string, config: JsonObject): Promise<string> {
   await mkdir(path.join(homeDir, ".nams"), { recursive: true });
-  await writeFile(path.join(homeDir, ".nams", "config.json"), JSON.stringify(config), "utf8");
+  const configPath = path.join(homeDir, ".nams", "config.json");
+  await writeFile(configPath, JSON.stringify(config), "utf8");
+  return configPath;
 }
 
-async function writeProjectConfig(projectDir: string, config: JsonObject): Promise<void> {
+async function writeProjectConfig(projectDir: string, config: JsonObject): Promise<string> {
   await mkdir(path.join(projectDir, ".nams"), { recursive: true });
-  await writeFile(path.join(projectDir, ".nams", "config.json"), JSON.stringify(config), "utf8");
+  const configPath = path.join(projectDir, ".nams", "config.json");
+  await writeFile(configPath, JSON.stringify(config), "utf8");
+  return configPath;
+}
+
+async function fileMode(filePath: string): Promise<number> {
+  return (await stat(filePath)).mode & 0o777;
 }
 
 test("loads global JSON config by default", async () => {
@@ -120,6 +128,25 @@ test("environment variables overlay project and global JSON config", async () =>
         baseUrl: "env:NAMS_BASE_URL",
       },
     });
+  });
+});
+
+test("tightens global and project config files to owner-only permissions when loaded", async () => {
+  await withFixture(async ({ homeDir, projectDir }) => {
+    const globalPath = await writeGlobalConfig(homeDir, {
+      apiKey: "global-key",
+      baseUrl: "https://global.example.test",
+    });
+    const projectPath = await writeProjectConfig(projectDir, {
+      apiKey: "project-key",
+    });
+    useRuntimeEnv(homeDir);
+
+    const result = await loadNamsConfig(projectDir);
+
+    assert.equal(result.ok, true);
+    assert.equal(await fileMode(globalPath), 0o600);
+    assert.equal(await fileMode(projectPath), 0o600);
   });
 });
 
