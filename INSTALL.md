@@ -6,8 +6,9 @@
 
 - Node.js 20 or newer
 - A NAMS API key
-- Claude Code, for project-level Claude hooks
 - Gemini CLI, for the Gemini local extension path
+- Codex, for project-level Codex hooks
+- Claude Code, for project-level Claude hooks
 - OpenCode, for the OpenCode project plugin path
 
 ## Configuration
@@ -58,6 +59,41 @@ This builds the generated Gemini extension tree under `dist/` and links it into 
 
 Repository-hosted Gemini installation is not published yet. For now, use the local build path above when testing Gemini CLI.
 
+## Codex
+
+Codex loads project hook settings from `.codex/hooks.json`. Hook execution is controlled by the `hooks` feature flag in Codex config.
+
+Install the package so `nams-hooks` is on `PATH`, then copy the Codex hook template into the target project:
+
+```bash
+npm install -g @neo4j-labs/nams-hooks
+mkdir -p .codex
+cp "$(npm root -g)/@neo4j-labs/nams-hooks/templates/codex/hooks.json" .codex/hooks.json
+```
+
+If `.codex/hooks.json` already exists, merge the `hooks` entries from `templates/codex/hooks.json` instead of replacing the file.
+
+For local development from this repository:
+
+```bash
+npm install
+npm run dist
+npm install -g ./dist
+mkdir -p /path/to/project/.codex
+cp templates/codex/hooks.json /path/to/project/.codex/hooks.json
+```
+
+Add the hooks feature flag to `~/.codex/config.toml` or project-local `.codex/config.toml`:
+
+```toml
+[features]
+hooks = true
+```
+
+If `.codex/config.toml` already exists, merge `hooks = true` into its existing `[features]` table instead of replacing the file.
+
+Start Codex from the target project and use `/hooks` to review and trust the new command hooks. Codex loads project-local `.codex/` configuration only after the project is trusted.
+
 ## OpenCode
 
 OpenCode loads project plugins from `.opencode/plugins/`.
@@ -93,89 +129,26 @@ The plugin listens for OpenCode events and routes them through the CLI gateway, 
 
 ## Claude Code
 
-Claude Code uses project-level hook settings. The template in this repository maps Claude-native hooks to the NAMS lifecycle events understood by the shared CLI:
+Claude Code uses project-level hook settings from `.claude/settings.local.json`.
 
-| Claude hook | NAMS event | Purpose |
-|---|---|---|
-| `SessionStart` | `SessionStart` | Log startup or resume payloads and initialize local hook state. |
-| `UserPromptSubmit` | `BeforeAgent` | Prepare the before-agent memory step for prompt recall and user-message persistence. |
-| `PostToolUse` | `AfterTool` | Prepare tool-call metadata capture after successful tool use. |
-| `Stop` | `AfterAgent` | Prepare assistant-message persistence after Claude finishes responding. |
+Install the package so `nams-hooks` is on `PATH`, then copy the Claude hook template into the target project:
 
-### From A Local Build
+```bash
+npm install -g @neo4j-labs/nams-hooks
+mkdir -p .claude
+cp "$(npm root -g)/@neo4j-labs/nams-hooks/templates/claude/settings.local.json" .claude/settings.local.json
+```
 
-Use this path when developing or testing Claude hooks from a checkout.
+If `.claude/settings.local.json` already exists, merge the `hooks` entries from `templates/claude/settings.local.json` instead of replacing the file.
+
+For local development from this repository:
 
 ```bash
 npm install
 npm run dist
 npm install -g ./dist
-mkdir -p .claude .nams
-cp templates/claude/settings.local.json .claude/settings.local.json
+mkdir -p /path/to/project/.claude
+cp templates/claude/settings.local.json /path/to/project/.claude/settings.local.json
 ```
 
-Then create `.nams/.env` as described above. Run Claude Code from the same project directory so `nams-hooks` writes local state and logs under that project's `.nams/` directory.
-
-If `.claude/settings.local.json` already exists, merge the `hooks` entries from `templates/claude/settings.local.json` instead of replacing the file.
-
-### From A Package Install
-
-When using an installed package, make sure `nams-hooks` is available on `PATH`, then create or merge the Claude hook settings in the target project:
-
-```bash
-npm install -g @neo4j-labs/nams-hooks
-mkdir -p .claude .nams
-```
-
-Use this `.claude/settings.local.json` content for a new Claude project:
-
-```json
-{
-  "hooks": {
-    "SessionStart": [
-      {
-        "matcher": "startup|resume|clear|compact",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "nams-hooks run claude --event SessionStart"
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "nams-hooks run claude --event BeforeAgent"
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "nams-hooks run claude --event AfterTool"
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "nams-hooks run claude --event AfterAgent"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-The package install supplies the `nams-hooks` command. The project-local `.claude/settings.local.json` supplies the Claude hook wiring, and `.nams/.env` supplies NAMS credentials.
+Use the Configuration section above for NAMS credentials.
