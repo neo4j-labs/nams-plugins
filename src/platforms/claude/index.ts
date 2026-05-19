@@ -1,9 +1,22 @@
 import type { HookInvocation, HookResult, PlatformAdapter } from "../../interfaces.js";
-import { appendPlatformLog } from "../../runtime/logging.js";
+import { appendPlatformLog, appendRawPlatformLog } from "../../runtime/logging.js";
+import { createInitialSessionState, loadSessionState, saveSessionState } from "../../runtime/session-state.js";
+import { parseClaudePayload } from "./payload.js";
 
 export class ClaudeAdapter implements PlatformAdapter {
   async startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
-    await logClaudeInvocation(invocation);
+    const payloadInfo = parseClaudePayload(invocation.rawPayload, invocation.processCwd);
+    const initialState = createInitialSessionState({
+      platform: invocation.platform,
+      sessionId: payloadInfo.sessionId,
+      projectDirectory: payloadInfo.projectDirectory,
+    });
+    const state =
+      (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
+      initialState;
+    await appendRawPlatformLog(invocation, state);
+    await saveSessionState(invocation.platform, state.sessionKey, state);
+
     return allowOutput();
   }
 
@@ -33,9 +46,4 @@ async function logClaudeInvocation(invocation: HookInvocation): Promise<void> {
 
 function allowOutput(): HookResult {
   return { stdout: { continue: true, suppressOutput: true } };
-}
-
-function resolveClaudeProjectDirectory(invocation: HookInvocation): string {
-  const value = invocation.rawPayload.cwd;
-  return typeof value === "string" && value.trim() !== "" ? value : invocation.processCwd;
 }

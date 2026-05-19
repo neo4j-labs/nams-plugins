@@ -88,7 +88,7 @@ function testHome(cwd: string): string {
   return path.join(cwd, "home");
 }
 
-for (const harness of ["gemini", "claude", "codex", "opencode"]) {
+for (const harness of ["gemini", "claude", "codex", "opencode"] as const) {
   test(`logs ${harness} session-start JSON payload`, async () => {
     const projectDir = await mkdtemp(path.join(tmpdir(), "nams-hooks-"));
     try {
@@ -108,10 +108,7 @@ for (const harness of ["gemini", "claude", "codex", "opencode"]) {
       });
 
       const homeDir = testHome(projectDir);
-      const logPath =
-        harness === "gemini" || harness === "codex" || harness === "opencode"
-          ? await singleSessionLogPath(homeDir, harness)
-          : path.join(namsHome(homeDir), "logs", harness, `${harness}-session-start.jsonl`);
+      const logPath = await singleSessionLogPath(homeDir, harness);
       const lines = (await readFile(logPath, "utf8")).trim().split("\n");
       assert.equal(lines.length, 1);
       const entry = JSON.parse(lines[0]);
