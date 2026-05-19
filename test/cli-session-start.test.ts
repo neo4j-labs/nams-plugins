@@ -243,13 +243,9 @@ for (const [claudeHook, namsEvent] of claudeHookMappings) {
         suppressOutput: true,
       });
 
-      const logPath = path.join(
-        namsHome(testHome(projectDir)),
-        "logs",
-        "claude",
-        `claude-${toKebabCase(namsEvent)}.jsonl`,
-      );
-      const entry = JSON.parse((await readFile(logPath, "utf8")).trim());
+      const logPath = await singleSessionLogPath(testHome(projectDir), "claude");
+      const entry = (await readJsonl(logPath)).find((record) => record.kind === "hook.event");
+      assert.ok(entry);
       assert.equal(entry.harness, "claude");
       assert.equal(entry.event, namsEvent);
       assert.deepEqual(entry.payload, payload);
@@ -333,10 +329,10 @@ for (const nativeHook of ["UserPromptSubmit", "Stop", "PostToolUse"]) {
   });
 }
 
-function toKebabCase(value: string): string {
-  return value
-    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
-    .replace(/[^a-zA-Z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .toLowerCase();
+async function readJsonl(logPath: string): Promise<Array<Record<string, any>>> {
+  return (await readFile(logPath, "utf8"))
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as Record<string, any>);
 }

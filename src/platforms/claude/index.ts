@@ -1,6 +1,6 @@
 import type { HookInvocation, HookResult, PlatformAdapter } from "../../interfaces.js";
 import { loadNamsConfig } from "../../runtime/config.js";
-import { sha256 } from "../../runtime/hashing.js";
+import { sha256, stableJsonHash } from "../../runtime/hashing.js";
 import {
   appendNamsConfigDiagnostic,
   appendNamsFailureDiagnostic,
@@ -158,7 +158,77 @@ export class ClaudeAdapter implements PlatformAdapter {
   }
 
   async afterTool(invocation: HookInvocation<"AfterTool">): Promise<HookResult> {
-    await appendRawPlatformLog(invocation);
+    const payloadInfo = parseClaudePayload(invocation.rawPayload, invocation.processCwd);
+    const initialState = createInitialSessionState({
+      platform: invocation.platform,
+      sessionId: payloadInfo.sessionId,
+      projectDirectory: payloadInfo.projectDirectory,
+    });
+    const state =
+      (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
+      initialState;
+    await appendRawPlatformLog(invocation, state);
+    state.seenToolCallIds ??= [];
+    state.seenReasoningStepHashes ??= [];
+    state.reasoningStepIdsByHash ??= {};
+
+    if (state.conversationId === undefined || payloadInfo.toolName === undefined) {
+      await saveSessionState(invocation.platform, state.sessionKey, state);
+      return allowOutput();
+    }
+
+    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
+    await appendNamsConfigDiagnostic(invocation, state, configResult);
+    if (!configResult.ok) {
+      await saveSessionState(invocation.platform, state.sessionKey, state);
+      return allowOutput();
+    }
+
+    try {
+      const toolCallKeys = claudeToolCallDedupeKeys(
+        state.sessionKey,
+        payloadInfo.toolUseId,
+        payloadInfo.toolName,
+        payloadInfo.toolInput,
+      );
+      if (!hasSeenAny(state.seenToolCallIds, toolCallKeys.lookupKeys)) {
+        const memory = createNamsMemoryService(configResult.config, invocation, state);
+        const reasoningStep = {
+          conversationId: state.conversationId,
+          reasoning: `Claude Code ran ${payloadInfo.toolName} with the provided tool input.`,
+          actionTaken: `Ran ${payloadInfo.toolName}`,
+        };
+        const reasoningStepHash = stableJsonHash({
+          sessionKey: state.sessionKey,
+          ...reasoningStep,
+        });
+        let stepId: string | undefined = state.reasoningStepIdsByHash[reasoningStepHash];
+        if (!state.seenReasoningStepHashes.includes(reasoningStepHash)) {
+          stepId = await memory.recordReasoningStep(reasoningStep);
+          state.seenReasoningStepHashes.push(reasoningStepHash);
+          if (stepId !== undefined) {
+            state.reasoningStepIdsByHash[reasoningStepHash] = stepId;
+          }
+        }
+
+        await memory.recordToolCall({
+          ...(stepId !== undefined ? { stepId } : {}),
+          toolName: payloadInfo.toolName,
+          input: payloadInfo.toolInput,
+          ...(payloadInfo.toolResponse !== undefined ? { output: payloadInfo.toolResponse } : {}),
+          status: "success",
+          ...(payloadInfo.durationMs !== undefined ? { durationMs: payloadInfo.durationMs } : {}),
+          truncateOutput: false,
+        });
+        markSeen(state.seenToolCallIds, toolCallKeys.markKeys);
+      }
+    } catch {
+      await appendNamsFailureDiagnostic(invocation, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
+      return allowOutput();
+    }
+
+    await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
   }
 }
@@ -178,4 +248,39 @@ function allowOutput(additionalContext?: string): HookResult {
         : {}),
     },
   };
+}
+
+function claudeToolCallDedupeKeys(
+  sessionKey: string,
+  toolUseId: string | undefined,
+  toolName: string,
+  toolInput: unknown,
+): { lookupKeys: string[]; markKeys: string[] } {
+  const fallbackHash = stableJsonHash({ sessionKey, toolName, input: toolInput });
+  const fallbackKey = `claude-fallback:${fallbackHash}`;
+
+  if (toolUseId !== undefined && toolUseId.trim() !== "") {
+    const idKey = `claude-tool-use-id:${stableJsonHash({ sessionKey, toolUseId })}`;
+    return {
+      lookupKeys: [idKey],
+      markKeys: [idKey],
+    };
+  }
+
+  return {
+    lookupKeys: [fallbackKey, fallbackHash],
+    markKeys: [fallbackKey, fallbackHash],
+  };
+}
+
+function hasSeenAny(seen: string[], keys: string[]): boolean {
+  return keys.some((key) => seen.includes(key));
+}
+
+function markSeen(seen: string[], keys: string[]): void {
+  for (const key of keys) {
+    if (!seen.includes(key)) {
+      seen.push(key);
+    }
+  }
 }

@@ -333,3 +333,197 @@ test("Claude BeforeAgent uses entity search context when conversation recall fai
     await rm(projectDir, { recursive: true, force: true });
   }
 });
+
+test("records Claude PostToolUse as reasoning step and tool call", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-claude-flow-"));
+  try {
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message()
+      .reasoningStep({ id: "step-post-tool-1" })
+      .toolCall();
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+    const adapter = new ClaudeAdapter();
+
+    await adapter.beforeAgent({
+      platform: "claude",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "Run a shell command.",
+      },
+    });
+
+    const result = await adapter.afterTool({
+      platform: "claude",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "PostToolUse",
+        session_id: "session-1",
+        cwd: projectDir,
+        tool_use_id: "tool-use-1",
+        tool_name: "Bash",
+        tool_input: {
+          command: "printf hello",
+          output: "raw output from input",
+          nested: {
+            responseBody: "raw response body",
+            keep: "metadata",
+          },
+        },
+        tool_response: "hello",
+        duration_ms: 37,
+      },
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    assert.deepEqual(nams.requestBody("addReasoningStep"), {
+      conversationId: "conversation-1",
+      reasoning: "Claude Code ran Bash with the provided tool input.",
+      actionTaken: "Ran Bash",
+    });
+
+    const toolBody = nams.requestBody("addToolCall");
+    assert.equal(toolBody.toolName, "Bash");
+    assert.equal(toolBody.stepId, "step-post-tool-1");
+    assert.equal(toolBody.status, "success");
+    assert.equal(toolBody.durationMs, 37);
+    assert.equal(toolBody.output, "hello");
+    assert.match(toolBody.input, /"command":"printf hello"/);
+    assert.match(toolBody.input, /"keep":"metadata"/);
+    assert.doesNotMatch(toolBody.input, /raw output from input|raw response body/);
+    assert.doesNotMatch(toolBody.input, /"output"|"responseBody"/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("does not duplicate Claude PostToolUse records for the same tool_use_id", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-claude-flow-"));
+  try {
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message()
+      .reasoningStep({ id: "step-post-tool-1" })
+      .toolCall();
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+    const adapter = new ClaudeAdapter();
+
+    await adapter.beforeAgent({
+      platform: "claude",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "Run one tool once.",
+      },
+    });
+
+    const invocation = {
+      platform: "claude",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "PostToolUse",
+        session_id: "session-1",
+        cwd: projectDir,
+        tool_use_id: "tool-use-1",
+        tool_name: "Bash",
+        tool_input: { command: "pwd" },
+        tool_response: "project directory",
+        duration_ms: 12,
+      },
+    } as const;
+
+    await adapter.afterTool(invocation);
+    await adapter.afterTool(invocation);
+
+    assert.equal(nams.calls("addToolCall").length, 1);
+    assert.equal(nams.calls("addReasoningStep").length, 1);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("records Claude PostToolUse with tool_use_id after matching no-id fallback call", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-claude-flow-"));
+  try {
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message()
+      .reasoningStep({ id: "step-post-tool-1" })
+      .toolCall();
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+    const adapter = new ClaudeAdapter();
+
+    await adapter.beforeAgent({
+      platform: "claude",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "Run the same tool twice.",
+      },
+    });
+
+    const toolInput = { command: "pwd" };
+
+    await adapter.afterTool({
+      platform: "claude",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "PostToolUse",
+        session_id: "session-1",
+        cwd: projectDir,
+        tool_name: "Bash",
+        tool_input: toolInput,
+        tool_response: "project directory",
+        duration_ms: 12,
+      },
+    });
+
+    await adapter.afterTool({
+      platform: "claude",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "PostToolUse",
+        session_id: "session-1",
+        cwd: projectDir,
+        tool_use_id: "tool-use-1",
+        tool_name: "Bash",
+        tool_input: toolInput,
+        tool_response: "project directory",
+        duration_ms: 12,
+      },
+    });
+
+    assert.equal(nams.calls("addToolCall").length, 2);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
