@@ -167,6 +167,95 @@ test("does not store duplicate Claude UserPromptSubmit prompt twice through Befo
   }
 });
 
+test("stores Claude Stop last_assistant_message as an assistant message through AfterAgent", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-claude-flow-"));
+  try {
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+    const adapter = new ClaudeAdapter();
+
+    await adapter.beforeAgent({
+      platform: "claude",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "Please remember the assistant reply.",
+      },
+    });
+
+    const result = await adapter.afterAgent({
+      platform: "claude",
+      event: "AfterAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "Stop",
+        session_id: "session-1",
+        cwd: projectDir,
+        last_assistant_message: "Hello!",
+      },
+    });
+
+    assert.deepEqual(nams.requestBodies("addMessage").at(-1), {
+      role: "assistant",
+      content: "Hello!",
+    });
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("does not duplicate Claude Stop assistant messages through AfterAgent", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-claude-flow-"));
+  try {
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+    const adapter = new ClaudeAdapter();
+
+    await adapter.beforeAgent({
+      platform: "claude",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "Please remember the assistant reply once.",
+      },
+    });
+    const invocation = {
+      platform: "claude",
+      event: "AfterAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "Stop",
+        session_id: "session-1",
+        cwd: projectDir,
+        last_assistant_message: "Hello!",
+      },
+    } as const;
+
+    await adapter.afterAgent(invocation);
+    await adapter.afterAgent(invocation);
+
+    const assistantMessages = nams
+      .requestBodies("addMessage")
+      .filter((body) => body.role === "assistant");
+    assert.equal(assistantMessages.length, 1);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("continues when Claude NAMS apiKey is missing and logs sanitized config diagnostic", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-claude-flow-"));
   try {

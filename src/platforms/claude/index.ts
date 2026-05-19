@@ -102,7 +102,58 @@ export class ClaudeAdapter implements PlatformAdapter {
   }
 
   async afterAgent(invocation: HookInvocation<"AfterAgent">): Promise<HookResult> {
-    await appendRawPlatformLog(invocation);
+    const payloadInfo = parseClaudePayload(invocation.rawPayload, invocation.processCwd);
+    const initialState = createInitialSessionState({
+      platform: invocation.platform,
+      sessionId: payloadInfo.sessionId,
+      projectDirectory: payloadInfo.projectDirectory,
+    });
+    const state =
+      (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
+      initialState;
+    state.seenAssistantMessageHashes ??= [];
+    await appendRawPlatformLog(invocation, state);
+
+    if (state.conversationId === undefined) {
+      await saveSessionState(invocation.platform, state.sessionKey, state);
+      return allowOutput();
+    }
+
+    const response = payloadInfo.lastAssistantMessage?.trim();
+    if (response === undefined || response === "") {
+      await saveSessionState(invocation.platform, state.sessionKey, state);
+      return allowOutput();
+    }
+
+    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
+    await appendNamsConfigDiagnostic(invocation, state, configResult);
+    if (!configResult.ok) {
+      await saveSessionState(invocation.platform, state.sessionKey, state);
+      return allowOutput();
+    }
+
+    const assistantMessageHash = sha256([invocation.platform, state.sessionKey, "assistant", response].join("\n"));
+    const alreadySeen =
+      state.lastAssistantMessageHash === assistantMessageHash ||
+      state.seenAssistantMessageHashes.includes(assistantMessageHash);
+
+    try {
+      if (!alreadySeen) {
+        const memory = createNamsMemoryService(configResult.config, invocation, state);
+        await memory.storeAssistantMessage(state.conversationId, response);
+      }
+    } catch {
+      await appendNamsFailureDiagnostic(invocation, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
+      return allowOutput();
+    }
+
+    state.lastAssistantMessageHash = assistantMessageHash;
+    if (!state.seenAssistantMessageHashes.includes(assistantMessageHash)) {
+      state.seenAssistantMessageHashes.push(assistantMessageHash);
+    }
+
+    await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
   }
 
