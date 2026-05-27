@@ -85,7 +85,7 @@ test("creates Gemini conversation, recalls memory, and stores first BeforeAgent 
     assert.equal(result.stdout.suppressOutput, true);
     assert.equal(Object.hasOwn(result.stdout, "additionalContext"), false);
     assert.match(hookSpecificOutput(result).additionalContext, /User prefers fixture-driven tests\./);
-    assert.equal(hookSpecificOutput(result).hookEventName, "BeforeAgent");
+    assert.equal(Object.hasOwn(hookSpecificOutput(result), "hookEventName"), false);
     assert.deepEqual(nams.requestBody("createConversation"), {
       metadata: {
         harness: "gemini",
@@ -196,7 +196,7 @@ test("Gemini BeforeAgent uses entity search context when conversation context fa
     assert.equal(result.stdout.suppressOutput, true);
     assert.equal(Object.hasOwn(result.stdout, "additionalContext"), false);
     assert.match(hookSpecificOutput(result).additionalContext, /Autonomo: User is exploring autonomo setup in Spain\./);
-    assert.equal(hookSpecificOutput(result).hookEventName, "BeforeAgent");
+    assert.equal(Object.hasOwn(hookSpecificOutput(result), "hookEventName"), false);
     assert.deepEqual(nams.requestBody("searchEntities"), {
       query: prompt,
       limit: 5,
@@ -296,7 +296,7 @@ test("Gemini BeforeAgent returns recalled context when user message persistence 
     assert.equal(result.stdout.suppressOutput, true);
     assert.equal(Object.hasOwn(result.stdout, "additionalContext"), false);
     assert.match(hookSpecificOutput(result).additionalContext, /User wants concise updates\./);
-    assert.equal(hookSpecificOutput(result).hookEventName, "BeforeAgent");
+    assert.equal(Object.hasOwn(hookSpecificOutput(result), "hookEventName"), false);
     assert.equal(nams.calls("addMessage").length, 1);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
@@ -464,8 +464,7 @@ test("Gemini session log keeps hook events together and includes user prompt fie
         session_id: "session-1",
         cwd: projectDir,
         prompt: "raw prompt text",
-        user_prompt: "raw snake prompt text",
-        userPrompt: "raw camel prompt text",
+        hook_event_name: "BeforeAgent",
       },
     });
 
@@ -487,8 +486,7 @@ test("Gemini session log keeps hook events together and includes user prompt fie
       baseUrl: "default",
     });
     assert.match(log, /"prompt":"raw prompt text"/);
-    assert.match(log, /"user_prompt":"raw snake prompt text"/);
-    assert.match(log, /"userPrompt":"raw camel prompt text"/);
+    assert.match(log, /"hook_event_name":"BeforeAgent"/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -508,9 +506,7 @@ test("Gemini AfterAgent platform log keeps raw assistant response fields", async
         session_id: "session-1",
         cwd: projectDir,
         prompt_response: "raw assistant response text",
-        promptResponse: "raw camel response text",
-        response: "raw response text",
-        content: "raw content text",
+        stop_hook_active: false,
       },
     });
 
@@ -518,9 +514,7 @@ test("Gemini AfterAgent platform log keeps raw assistant response fields", async
     assert.match(log, /session-1/);
     assert.match(log, new RegExp(escapeRegExp(projectDir)));
     assert.match(log, /"prompt_response":"raw assistant response text"/);
-    assert.match(log, /"promptResponse":"raw camel response text"/);
-    assert.match(log, /"response":"raw response text"/);
-    assert.match(log, /"content":"raw content text"/);
+    assert.match(log, /"stop_hook_active":false/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -684,11 +678,8 @@ test("records Gemini AfterTool payload as a reasoning step with tool output", as
       rawPayload: {
         session_id: "session-1",
         cwd: projectDir,
-        tool_call_id: "tool-1",
         tool_name: "read_file",
         tool_input: { path: "notes.md", keep: "metadata" },
-        status: "success",
-        duration_ms: 42,
         tool_response: {
           llmContent: "raw tool output text",
           returnDisplay: "Tool returned a display summary.",
@@ -711,8 +702,8 @@ test("records Gemini AfterTool payload as a reasoning step with tool output", as
     assert.equal(toolBodies.length, 1);
     assert.equal(toolBodies[0].toolName, "read_file");
     assert.equal(toolBodies[0].stepId, "step-after-tool-1");
-    assert.equal(toolBodies[0].status, "success");
-    assert.equal(toolBodies[0].durationMs, 42);
+    assert.equal(Object.hasOwn(toolBodies[0], "status"), false);
+    assert.equal(Object.hasOwn(toolBodies[0], "durationMs"), false);
     assert.equal(toolBodies[0].output, "raw tool output text");
     assert.match(toolBodies[0].input, /"path":"notes.md"/);
     assert.match(toolBodies[0].input, /"keep":"metadata"/);
@@ -723,7 +714,111 @@ test("records Gemini AfterTool payload as a reasoning step with tool output", as
   }
 });
 
-test("does not duplicate Gemini AfterTool metadata for the same tool call id", async () => {
+test("ignores undocumented Gemini AfterTool output fallback fields", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
+  try {
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message()
+      .reasoningStep({ id: "step-after-tool-1" })
+      .toolCall();
+    testEnv(projectDir, {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      });
+    const adapter = new GeminiAdapter();
+
+    await adapter.beforeAgent({
+      platform: "gemini",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "Read a file.",
+      },
+    });
+
+    await adapter.afterTool({
+      platform: "gemini",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        tool_name: "read_file",
+        tool_input: { path: "notes.md" },
+        output: "undocumented payload output",
+        result: "undocumented payload result",
+        toolResponse: { llmContent: "undocumented camel response output" },
+        tool_response: {
+          returnDisplay: "Documented display summary only.",
+        },
+      },
+    });
+
+    const reasoningBodies = nams.requestBodies("addReasoningStep");
+    assert.equal(reasoningBodies[0].result, "Documented display summary only.");
+
+    const toolBodies = nams.requestBodies("addToolCall");
+    assert.equal(toolBodies.length, 1);
+    assert.equal(toolBodies[0].output, "");
+    assert.doesNotMatch(JSON.stringify(toolBodies[0]), /undocumented payload|undocumented camel/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("ignores undocumented Gemini AfterTool tool name aliases", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
+  try {
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message()
+      .reasoningStep({ id: "step-after-tool-1" })
+      .toolCall();
+    testEnv(projectDir, {
+        NAMS_API_KEY: "key",
+        NAMS_BASE_URL: "https://memory.example.test",
+      });
+    const adapter = new GeminiAdapter();
+
+    await adapter.beforeAgent({
+      platform: "gemini",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "Search once.",
+      },
+    });
+
+    await adapter.afterTool({
+      platform: "gemini",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        toolName: "google_web_search",
+        tool_input: { query: "nams" },
+        tool_response: { llmContent: "search result text" },
+      },
+    });
+
+    assert.equal(nams.calls("addReasoningStep").length, 0);
+    assert.equal(nams.calls("addToolCall").length, 0);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("does not duplicate Gemini AfterTool metadata for the same documented tool input", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
     const nams = createNamsFetchMock()
@@ -757,10 +852,8 @@ test("does not duplicate Gemini AfterTool metadata for the same tool call id", a
       rawPayload: {
         session_id: "session-1",
         cwd: projectDir,
-        tool_call_id: "tool-1",
         tool_name: "google_web_search",
         tool_input: { query: "nams" },
-        status: "success",
       },
     } as const;
 
@@ -773,7 +866,7 @@ test("does not duplicate Gemini AfterTool metadata for the same tool call id", a
   }
 });
 
-test("records distinct Gemini AfterTool calls with matching inputs when ids differ", async () => {
+test("records distinct Gemini AfterTool calls with different documented tool inputs", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
     const nams = createNamsFetchMock()
@@ -800,7 +893,7 @@ test("records distinct Gemini AfterTool calls with matching inputs when ids diff
       },
     });
 
-    for (const toolCallId of ["tool-1", "tool-2"]) {
+    for (const query of ["nams", "nams hooks"]) {
       await adapter.afterTool({
         platform: "gemini",
         event: "AfterTool",
@@ -808,10 +901,8 @@ test("records distinct Gemini AfterTool calls with matching inputs when ids diff
         rawPayload: {
           session_id: "session-1",
           cwd: projectDir,
-          tool_call_id: toolCallId,
           tool_name: "google_web_search",
-          tool_input: { query: "nams" },
-          status: "success",
+          tool_input: { query },
         },
       });
     }
@@ -819,7 +910,7 @@ test("records distinct Gemini AfterTool calls with matching inputs when ids diff
     const toolBodies = nams.requestBodies("addToolCall");
     assert.equal(toolBodies.length, 2);
     assert.match(toolBodies[0].input, /"query":"nams"/);
-    assert.match(toolBodies[1].input, /"query":"nams"/);
+    assert.match(toolBodies[1].input, /"query":"nams hooks"/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }

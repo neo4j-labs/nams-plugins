@@ -73,8 +73,7 @@ Phase 2 also records tool traces from both Gemini `AfterTool` hook payloads and 
 - sanitized and capped input
 - optional step id
 - exposed tool output when Gemini provides it cleanly
-- status
-- duration when available
+- status when exposed by the transcript
 
 Tool output is not persisted. Transcript `toolCalls[]` fields such as `result`, `resultDisplay`, and `functionResponse` are treated as output and are ignored. This preserves the v1 privacy boundary from the approved hook design.
 
@@ -97,9 +96,11 @@ Gemini-specific code stays under `src/platforms/gemini/`. The adapter entrypoint
 - `session_id`
 - `cwd`
 - `transcript_path`
-- current prompt
+- `prompt`
 - `prompt_response`
-- tool fields in Phase 2
+- `tool_name`, `tool_input`, and `tool_response.llmContent` / `tool_response.returnDisplay` in Phase 2
+
+Gemini hook payload parsing follows the official hook field names. It does not accept camelCase aliases or undocumented alternate names. Transcript parsing is separate and may read Gemini transcript JSONL fields such as `sessionId` and `toolCalls`.
 
 The CLI remains a gateway. It parses the typed event and dispatches through the static platform registry. It does not interpret Gemini payload fields.
 

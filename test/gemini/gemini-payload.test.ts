@@ -29,7 +29,7 @@ test("falls back to process cwd when Gemini cwd is absent", async () => {
   assert.equal(info.projectDirectory, "/fallback");
 });
 
-test("accepts camelCase aliases and ignores blank values", async () => {
+test("ignores unsupported Gemini aliases and blank values", async () => {
   const info = parseGeminiPayload(
     {
       session_id: " ",
@@ -37,6 +37,7 @@ test("accepts camelCase aliases and ignores blank values", async () => {
       cwd: "",
       GEMINI_PROJECT_DIR: "/project-alias",
       transcriptPath: "/tmp/alias.jsonl",
+      user_prompt: "Alias prompt",
       userPrompt: "Alias prompt",
       promptResponse: "Alias response",
     },
@@ -44,10 +45,6 @@ test("accepts camelCase aliases and ignores blank values", async () => {
   );
 
   assert.deepEqual(info, {
-    sessionId: "session-2",
-    projectDirectory: "/project-alias",
-    transcriptPath: "/tmp/alias.jsonl",
-    prompt: "Alias prompt",
-    promptResponse: "Alias response",
+    projectDirectory: "/fallback",
   });
 });
