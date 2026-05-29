@@ -17,55 +17,41 @@ export interface CodexPayloadInfo {
 }
 
 export function parseCodexPayload(payload: Record<string, unknown>, processCwd: string): CodexPayloadInfo {
-  const sessionId = firstString(payload.session_id, payload.sessionId);
-  const turnId = firstString(payload.turn_id, payload.turnId);
-  const projectDirectory = firstString(payload.cwd) ?? processCwd;
-  const transcriptPath = firstString(payload.transcript_path, payload.transcriptPath);
-  const hookEventName = firstString(payload.hook_event_name, payload.hookEventName);
-  const source = firstString(payload.source);
-  const model = firstString(payload.model);
-  const permissionMode = firstString(payload.permission_mode, payload.permissionMode);
-  const prompt = firstString(payload.prompt);
-  const lastAssistantMessage = firstString(payload.last_assistant_message, payload.lastAssistantMessage);
+  const sessionId = payload.session_id as string | undefined;
+  const turnId = payload.turn_id as string | undefined;
+  const projectDirectory = payload.cwd as string | undefined;
+  const transcriptPath = payload.transcript_path as string | undefined;
+  const hookEventName = payload.hook_event_name as string | undefined;
+  const source = payload.source as string | undefined;
+  const model = payload.model as string | undefined;
+  const permissionMode = payload.permission_mode as string | undefined;
+  const prompt = payload.prompt as string | undefined;
+  const lastAssistantMessage = payload.last_assistant_message as string | undefined;
   const stopHookActive = typeof payload.stop_hook_active === "boolean" ? payload.stop_hook_active : undefined;
-  const toolName = firstString(payload.tool_name, payload.toolName);
-  const toolUseId = firstString(payload.tool_use_id, payload.toolUseId);
-  const toolInput = firstDefined(payload.tool_input, payload.toolInput);
-  const toolResponse = firstDefined(payload.tool_response, payload.toolResponse);
+  const toolName = payload.tool_name as string | undefined;
+  const toolUseId = payload.tool_use_id as string | undefined;
+  const toolInput = payload.tool_input;
+  const toolResponse = payload.tool_response;
 
   return {
-    ...(sessionId !== undefined ? { sessionId } : {}),
-    ...(turnId !== undefined ? { turnId } : {}),
-    projectDirectory,
-    ...(transcriptPath !== undefined ? { transcriptPath } : {}),
-    ...(hookEventName !== undefined ? { hookEventName } : {}),
-    ...(source !== undefined ? { source } : {}),
-    ...(model !== undefined ? { model } : {}),
-    ...(permissionMode !== undefined ? { permissionMode } : {}),
-    ...(prompt !== undefined ? { prompt } : {}),
-    ...(lastAssistantMessage !== undefined ? { lastAssistantMessage } : {}),
+    ...(!isBlankOrEmpty(sessionId) ? { sessionId } : {}),
+    ...(!isBlankOrEmpty(turnId) ? { turnId } : {}),
+    projectDirectory: !isBlankOrEmpty(projectDirectory) ? projectDirectory : processCwd,
+    ...(!isBlankOrEmpty(transcriptPath) ? { transcriptPath } : {}),
+    ...(!isBlankOrEmpty(hookEventName) ? { hookEventName } : {}),
+    ...(!isBlankOrEmpty(source) ? { source } : {}),
+    ...(!isBlankOrEmpty(model) ? { model } : {}),
+    ...(!isBlankOrEmpty(permissionMode) ? { permissionMode } : {}),
+    ...(!isBlankOrEmpty(prompt) ? { prompt } : {}),
+    ...(!isBlankOrEmpty(lastAssistantMessage) ? { lastAssistantMessage } : {}),
     ...(stopHookActive !== undefined ? { stopHookActive } : {}),
-    ...(toolName !== undefined ? { toolName } : {}),
-    ...(toolUseId !== undefined ? { toolUseId } : {}),
+    ...(!isBlankOrEmpty(toolName) ? { toolName } : {}),
+    ...(!isBlankOrEmpty(toolUseId) ? { toolUseId } : {}),
     ...(toolInput !== undefined ? { toolInput } : {}),
     ...(toolResponse !== undefined ? { toolResponse } : {}),
   };
 }
 
-function firstString(...values: unknown[]): string | undefined {
-  for (const value of values) {
-    if (typeof value === "string" && value.trim() !== "") {
-      return value;
-    }
-  }
-  return undefined;
-}
-
-function firstDefined(...values: unknown[]): unknown {
-  for (const value of values) {
-    if (value !== undefined) {
-      return value;
-    }
-  }
-  return undefined;
+function isBlankOrEmpty(value: string | undefined): value is undefined {
+  return value === undefined || value.trim() === "";
 }

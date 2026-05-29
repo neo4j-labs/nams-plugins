@@ -57,7 +57,7 @@ test("extracts Codex stop and post-tool fields from hook payload", async () => {
   });
 });
 
-test("falls back to process cwd, ignores blank strings, and accepts camelCase aliases", async () => {
+test("falls back to process cwd, ignores blank strings, and ignores camelCase aliases", async () => {
   const info = parseCodexPayload(
     {
       session_id: " ",
@@ -81,16 +81,6 @@ test("falls back to process cwd, ignores blank strings, and accepts camelCase al
   );
 
   assert.deepEqual(info, {
-    sessionId: "session-2",
-    turnId: "turn-2",
     projectDirectory: "/fallback",
-    transcriptPath: "/tmp/alias.jsonl",
-    hookEventName: "Stop",
-    permissionMode: "full-access",
-    lastAssistantMessage: "Done.",
-    toolName: "read",
-    toolUseId: "tool-2",
-    toolInput: ["file.txt"],
-    toolResponse: { ok: true },
   });
 });
