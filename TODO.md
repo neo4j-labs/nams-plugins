@@ -9,3 +9,4 @@
 - [x] Prepare `.nams/.env` configuration flow - to make environment variables configuration first class configuration over manual configuration.
 - [ ] Integration test with isolated real platforms (to verify completness and corecctness of hooks)
 - [ ] Use @neo4j-labs/agent-memory library as project dependency
+- [x] Use metadata conversation request attribute to store additional agent information

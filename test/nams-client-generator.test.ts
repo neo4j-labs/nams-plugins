@@ -238,6 +238,44 @@ test("generated NAMS client sends bearer JSON requests", async () => {
   assert.equal(requests[0].init.body, JSON.stringify({ userId: "user-1" }));
 });
 
+test("generated NAMS client sends configured default headers on POST and GET requests", async () => {
+  const { NamsClient } = await importGeneratedClient();
+  const requests: CapturedRequest[] = [];
+  const client = new NamsClient({
+    apiKey: "test-key",
+    baseUrl: "https://memory.example.test",
+    defaultHeaders: {
+      "X-NAMS-Hooks-Harness": "gemini",
+      "X-NAMS-Hooks-Version": "0.1.0",
+      "X-NAMS-Hooks-Platform": "darwin",
+      "X-NAMS-Hooks-Node-Version": "v26.0.0",
+      "X-NAMS-Hooks-Event": "BeforeAgent",
+      Authorization: "Bearer wrong-key",
+      Accept: "text/plain",
+    },
+    fetch: async (url, init) => {
+      requests.push({ url, init: init as CapturedRequest["init"] });
+      return new Response(JSON.stringify({ id: "conversation-1" }), {
+        headers: { "Content-Type": "application/json" },
+        status: 201,
+      });
+    },
+  });
+
+  await client.createConversation({ userId: "user-1" });
+  await client.getConversationContext("conversation-1");
+
+  for (const request of requests) {
+    assert.equal(request.init.headers["X-NAMS-Hooks-Harness"], "gemini");
+    assert.equal(request.init.headers["X-NAMS-Hooks-Version"], "0.1.0");
+    assert.equal(request.init.headers["X-NAMS-Hooks-Platform"], "darwin");
+    assert.equal(request.init.headers["X-NAMS-Hooks-Node-Version"], "v26.0.0");
+    assert.equal(request.init.headers["X-NAMS-Hooks-Event"], "BeforeAgent");
+    assert.equal(request.init.headers.Authorization, "Bearer test-key");
+    assert.equal(request.init.headers.Accept, "application/json");
+  }
+});
+
 test("generated NAMS client reports request and response details", async () => {
   const { NamsClient } = await importGeneratedClient();
   const events: NamsRequestEvent[] = [];
