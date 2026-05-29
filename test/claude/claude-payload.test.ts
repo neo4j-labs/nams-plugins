@@ -64,25 +64,18 @@ test("extracts Claude Stop assistant message and falls back to process cwd", asy
   });
 });
 
-test("ignores blank string aliases", async () => {
+test("ignores blank documented string fields", async () => {
   const info = parseClaudePayload(
     {
       session_id: " ",
-      sessionId: "",
       cwd: "",
-      CLAUDE_PROJECT_DIR: "   ",
       transcript_path: " ",
-      transcriptPath: "",
       source: " ",
       prompt: "",
       tool_use_id: " ",
-      toolUseId: "",
       tool_name: "",
-      toolName: " ",
       duration_ms: " ",
-      durationMs: Number.POSITIVE_INFINITY,
       last_assistant_message: "",
-      lastAssistantMessage: " ",
     },
     "/fallback",
   );
@@ -92,7 +85,7 @@ test("ignores blank string aliases", async () => {
   });
 });
 
-test("accepts Claude camelCase aliases", async () => {
+test("ignores unsupported Claude camelCase aliases and CLAUDE_PROJECT_DIR payload field", async () => {
   const toolInput = ["file.txt"];
   const toolResponse = null;
 
@@ -112,19 +105,11 @@ test("accepts Claude camelCase aliases", async () => {
   );
 
   assert.deepEqual(info, {
-    sessionId: "session-2",
-    projectDirectory: "/project-alias",
-    transcriptPath: "/tmp/alias.jsonl",
-    toolUseId: "tool-2",
-    toolName: "Read",
-    toolInput,
-    toolResponse,
-    durationMs: 18,
-    lastAssistantMessage: "Done.",
+    projectDirectory: "/fallback",
   });
 });
 
-test("prefers snake_case tool values when both aliases are present", async () => {
+test("uses documented snake_case tool values when unsupported aliases are present", async () => {
   const snakeToolInput = { command: "npm test" };
   const camelToolInput = { command: "npm run build" };
   const snakeToolResponse = { stdout: "snake" };

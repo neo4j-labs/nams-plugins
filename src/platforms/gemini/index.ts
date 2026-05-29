@@ -205,7 +205,6 @@ export class GeminiAdapter implements PlatformAdapter {
     try {
       const toolCallKeys = geminiToolCallDedupeKeys(
         state.sessionKey,
-        toolPayload.id,
         toolPayload.toolName,
         toolPayload.input,
       );
@@ -234,14 +233,12 @@ export class GeminiAdapter implements PlatformAdapter {
           toolName: toolPayload.toolName,
           input: toolPayload.input,
           ...(toolPayload.output !== undefined ? { output: toolPayload.output } : {}),
-          ...(toolPayload.status !== undefined ? { status: toolPayload.status } : {}),
-          ...(toolPayload.durationMs !== undefined ? { durationMs: toolPayload.durationMs } : {}),
         });
         markSeen(state.seenToolCallIds, toolCallKeys.markKeys);
       }
     } catch {
       await appendNamsFailureDiagnostic(invocation, state);
-        await saveSessionState(invocation.platform, state.sessionKey, state);
+      await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
 
@@ -259,7 +256,6 @@ function allowOutput(additionalContext?: string): HookResult {
       ...(additionalContext !== undefined
         ? {
             hookSpecificOutput: {
-              hookEventName: "BeforeAgent",
               additionalContext,
             },
           }
@@ -269,39 +265,33 @@ function allowOutput(additionalContext?: string): HookResult {
 }
 
 interface GeminiAfterToolPayload {
-  id?: string;
   toolName?: string;
   input: unknown;
   output?: string;
   outputSummary?: string;
-  status?: string;
-  durationMs?: number;
 }
 
 function parseGeminiAfterToolPayload(payload: Record<string, unknown>): GeminiAfterToolPayload {
-  const toolResponse = firstRecord(payload.tool_response, payload.toolResponse);
+  const toolResponse = firstRecord(payload.tool_response);
   return {
-    ...optionalString("id", firstString(payload.tool_call_id, payload.toolCallId, payload.id)),
-    ...optionalString("toolName", firstString(payload.tool_name, payload.toolName, payload.name, payload.displayName)),
-    input: firstDefined(payload.tool_input, payload.toolInput, payload.input, payload.args, payload.arguments) ?? payload,
+    ...optionalString("toolName", firstString(payload.tool_name)),
+    input: firstDefined(payload.tool_input) ?? {},
     ...optionalString(
       "output",
-      firstString(toolResponse?.llmContent, toolResponse?.output, payload.llmContent, payload.output, payload.result),
+      firstString(toolResponse?.llmContent),
     ),
     ...optionalString(
       "outputSummary",
-      firstString(toolResponse?.returnDisplay, payload.returnDisplay, toolResponse?.display, toolResponse?.summary),
+      firstString(toolResponse?.returnDisplay),
     ),
-    ...optionalString("status", firstString(payload.status)),
-    ...optionalNumber("durationMs", firstNumber(payload.duration_ms, payload.durationMs)),
   };
 }
 
 function geminiToolCallDedupeKeys(
   sessionKey: string,
-  geminiToolCallId: string | undefined,
   toolName: string,
   input: unknown,
+  geminiToolCallId?: string,
 ): { lookupKeys: string[]; markKeys: string[] } {
   const fallbackHash = stableJsonHash({
     sessionKey,
@@ -334,21 +324,6 @@ function firstString(...values: unknown[]): string | undefined {
   return undefined;
 }
 
-function firstNumber(...values: unknown[]): number | undefined {
-  for (const value of values) {
-    if (typeof value === "number" && Number.isFinite(value)) {
-      return value;
-    }
-    if (typeof value === "string" && value.trim() !== "") {
-      const parsed = Number(value);
-      if (Number.isFinite(parsed)) {
-        return parsed;
-      }
-    }
-  }
-  return undefined;
-}
-
 function firstDefined(...values: unknown[]): unknown {
   return values.find((value) => value !== undefined);
 }
@@ -364,10 +339,6 @@ function firstRecord(...values: unknown[]): Record<string, unknown> | undefined 
 
 function optionalString<K extends string>(key: K, value: string | undefined): { [P in K]?: string } {
   return value !== undefined ? ({ [key]: value } as { [P in K]: string }) : {};
-}
-
-function optionalNumber<K extends string>(key: K, value: number | undefined): { [P in K]?: number } {
-  return value !== undefined ? ({ [key]: value } as { [P in K]: number }) : {};
 }
 
 type AssistantMessageState = {
@@ -460,7 +431,7 @@ async function recordTraceFromTranscript(
         currentParentStepIds = [];
       }
 
-      const toolCallKeys = geminiToolCallDedupeKeys(state.sessionKey, entry.id, entry.name, entry.args);
+      const toolCallKeys = geminiToolCallDedupeKeys(state.sessionKey, entry.name, entry.args, entry.id);
       if (hasSeenAny(state.seenToolCallIds, toolCallKeys.lookupKeys)) {
         continue;
       }

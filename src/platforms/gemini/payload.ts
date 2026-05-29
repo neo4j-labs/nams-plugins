@@ -7,26 +7,21 @@ export interface GeminiPayloadInfo {
 }
 
 export function parseGeminiPayload(payload: Record<string, unknown>, processCwd: string): GeminiPayloadInfo {
-  const sessionId = firstString(payload.session_id, payload.sessionId);
-  const projectDirectory = firstString(payload.cwd, payload.GEMINI_PROJECT_DIR) ?? processCwd;
-  const transcriptPath = firstString(payload.transcript_path, payload.transcriptPath);
-  const prompt = firstString(payload.prompt, payload.user_prompt, payload.userPrompt);
-  const promptResponse = firstString(payload.prompt_response, payload.promptResponse);
+  const sessionId = payload.session_id as string | undefined;
+  const projectDirectory = payload.cwd as string | undefined;
+  const transcriptPath = payload.transcript_path as string | undefined;
+  const prompt = payload.prompt as string | undefined;
+  const promptResponse = payload.prompt_response as string | undefined;
 
   return {
-    ...(sessionId !== undefined ? { sessionId } : {}),
-    projectDirectory,
-    ...(transcriptPath !== undefined ? { transcriptPath } : {}),
-    ...(prompt !== undefined ? { prompt } : {}),
-    ...(promptResponse !== undefined ? { promptResponse } : {}),
+    ...(!isBlankOrEmpty(sessionId) ? { sessionId } : {}),
+    projectDirectory: !isBlankOrEmpty(projectDirectory) ? projectDirectory : processCwd,
+    ...(!isBlankOrEmpty(transcriptPath) ? { transcriptPath } : {}),
+    ...(!isBlankOrEmpty(prompt) ? { prompt } : {}),
+    ...(!isBlankOrEmpty(promptResponse) ? { promptResponse } : {}),
   };
 }
 
-function firstString(...values: unknown[]): string | undefined {
-  for (const value of values) {
-    if (typeof value === "string" && value.trim() !== "") {
-      return value;
-    }
-  }
-  return undefined;
+function isBlankOrEmpty(value: string | undefined): value is undefined {
+  return value === undefined || value.trim() === "";
 }
