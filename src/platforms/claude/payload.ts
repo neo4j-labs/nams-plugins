@@ -13,62 +13,46 @@ export interface ClaudePayloadInfo {
 }
 
 export function parseClaudePayload(payload: Record<string, unknown>, processCwd: string): ClaudePayloadInfo {
-  const sessionId = firstString(payload.session_id, payload.sessionId);
-  const projectDirectory = firstString(payload.cwd, payload.CLAUDE_PROJECT_DIR) ?? processCwd;
-  const transcriptPath = firstString(payload.transcript_path, payload.transcriptPath);
-  const source = firstString(payload.source);
-  const prompt = firstString(payload.prompt);
-  const toolUseId = firstString(payload.tool_use_id, payload.toolUseId);
-  const toolName = firstString(payload.tool_name, payload.toolName);
-  const toolInput = firstDefined(payload.tool_input, payload.toolInput);
-  const toolResponse = firstDefined(payload.tool_response, payload.toolResponse);
-  const durationMs = firstFiniteNumber(payload.duration_ms, payload.durationMs);
-  const lastAssistantMessage = firstString(payload.last_assistant_message, payload.lastAssistantMessage);
+  const sessionId = payload.session_id as string | undefined;
+  const projectDirectory = payload.cwd as string | undefined ?? processCwd;
+  const transcriptPath = payload.transcript_path as string | undefined;
+  const source = payload.source as string | undefined;
+  const prompt = payload.prompt as string | undefined;
+  const toolUseId = payload.tool_use_id as string | undefined;
+  const toolName = payload.tool_name as string | undefined;
+  const toolInput = payload.tool_input;
+  const toolResponse = payload.tool_response;
+  const durationMs = toNumber(payload.duration_ms);
+  const lastAssistantMessage = payload.last_assistant_message as string | undefined;
 
   return {
-    ...(sessionId !== undefined ? { sessionId } : {}),
-    projectDirectory,
-    ...(transcriptPath !== undefined ? { transcriptPath } : {}),
-    ...(source !== undefined ? { source } : {}),
-    ...(prompt !== undefined ? { prompt } : {}),
-    ...(toolUseId !== undefined ? { toolUseId } : {}),
-    ...(toolName !== undefined ? { toolName } : {}),
+    ...(!isBlankOrEmpty(sessionId) ? { sessionId } : {}),
+    projectDirectory: !isBlankOrEmpty(projectDirectory) ? projectDirectory : processCwd,
+    ...(!isBlankOrEmpty(transcriptPath) ? { transcriptPath } : {}),
+    ...(!isBlankOrEmpty(source) ? { source } : {}),
+    ...(!isBlankOrEmpty(prompt) ? { prompt } : {}),
+    ...(!isBlankOrEmpty(toolUseId) ? { toolUseId } : {}),
+    ...(!isBlankOrEmpty(toolName) ? { toolName } : {}),
     ...(toolInput !== undefined ? { toolInput } : {}),
     ...(toolResponse !== undefined ? { toolResponse } : {}),
     ...(durationMs !== undefined ? { durationMs } : {}),
-    ...(lastAssistantMessage !== undefined ? { lastAssistantMessage } : {}),
+    ...(!isBlankOrEmpty(lastAssistantMessage) ? { lastAssistantMessage } : {}),
   };
 }
 
-function firstString(...values: unknown[]): string | undefined {
-  for (const value of values) {
-    if (typeof value === "string" && value.trim() !== "") {
-      return value;
-    }
-  }
-  return undefined;
+function isBlankOrEmpty(value: string | undefined): value is undefined {
+  return value === undefined || value.trim() === "";
 }
 
-function firstDefined(...values: unknown[]): unknown {
-  for (const value of values) {
-    if (value !== undefined) {
-      return value;
-    }
+function toNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
   }
-  return undefined;
-}
 
-function firstFiniteNumber(...values: unknown[]): number | undefined {
-  for (const value of values) {
-    if (typeof value === "number" && Number.isFinite(value)) {
-      return value;
-    }
-
-    if (typeof value === "string" && value.trim() !== "") {
-      const parsed = Number(value);
-      if (Number.isFinite(parsed)) {
-        return parsed;
-      }
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
     }
   }
 
