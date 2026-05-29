@@ -92,6 +92,12 @@ test("creates Gemini conversation, recalls memory, and stores first BeforeAgent 
         projectDirectory: projectDir,
       },
     });
+    const createConversationHeaders = nams.calls("createConversation")[0].options.headers as Record<string, string>;
+    assert.equal(createConversationHeaders["x-nams-hooks-harness"], "gemini");
+    assert.equal(createConversationHeaders["x-nams-hooks-version"], "0.1.0");
+    assert.equal(createConversationHeaders["x-nams-hooks-platform"], process.platform);
+    assert.equal(createConversationHeaders["x-nams-hooks-node-version"], process.version);
+    assert.equal(createConversationHeaders["x-nams-hooks-event"], "BeforeAgent");
     assert.deepEqual(nams.requestBody("searchEntities"), {
       query: prompt,
       limit: 5,

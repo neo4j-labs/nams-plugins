@@ -2,6 +2,7 @@ import { NamsClient, type ContextResponse } from "../generated/nams-client.js";
 import type { HookInvocation } from "../interfaces.js";
 import type { NamsRuntimeConfig } from "./config.js";
 import { appendNamsRequestLog } from "./logging.js";
+import { namsProvenanceHeaders } from "./provenance.js";
 import type { SessionState } from "./session-state.js";
 
 export interface CreateConversationInput {
@@ -92,6 +93,7 @@ export function createNamsMemoryService(
   const client = new NamsClient({
     apiKey: config.apiKey,
     ...(config.baseUrl !== undefined ? { baseUrl: config.baseUrl } : {}),
+    defaultHeaders: namsProvenanceHeaders(invocation),
     onRequest: (event) => appendNamsRequestLog(invocation, state, event),
   });
   return new NamsMemoryService(client);
