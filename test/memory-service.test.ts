@@ -12,6 +12,7 @@ function createService(options: Partial<NamsClientOptions> = {}): NamsMemoryServ
   return new NamsMemoryService(
     new NamsClient({
       apiKey: "key",
+      workspaceId: "workspace-1",
       baseUrl: "https://memory.example.test",
       ...options,
     }),

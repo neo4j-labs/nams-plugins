@@ -17,7 +17,7 @@ interface TestEnv extends TestEnvOverrides {
 
 function testEnv(projectDir: string, overrides: TestEnvOverrides = {}): TestEnv {
   const env = { HOME: path.join(projectDir, "home"), USERPROFILE: path.join(projectDir, "home"), ...overrides };
-  for (const key of ["HOME", "USERPROFILE", "NAMS_API_KEY", "NAMS_BASE_URL"]) {
+  for (const key of ["HOME", "USERPROFILE", "NAMS_API_KEY", "NAMS_WORKSPACE_ID", "NAMS_BASE_URL"]) {
     delete process.env[key];
   }
   Object.assign(process.env, env);
@@ -77,7 +77,7 @@ test("OpenCode chat.message creates conversation, recalls memory, and stores use
       .context({ observations: [{ content: "User prefers fixture-driven tests." }] })
       .searchEntities({ entities: [{ name: "Fixtures", description: "User prefers fixture-driven tests." }] })
       .message();
-    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
+    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_WORKSPACE_ID: "workspace-1", NAMS_BASE_URL: "https://memory.example.test" });
     const adapter = new OpenCodeAdapter();
 
     const result = await adapter.beforeAgent({
@@ -112,6 +112,7 @@ test("OpenCode chat.message creates conversation, recalls memory, and stores use
     assert.equal(configDiagnostics.length, 1);
     assert.deepEqual(configDiagnostics[0].payload.configSources, {
       apiKey: "env:NAMS_API_KEY",
+      workspaceId: "env:NAMS_WORKSPACE_ID",
       baseUrl: "env:NAMS_BASE_URL",
     });
   } finally {
@@ -127,7 +128,7 @@ test("OpenCode system transform returns and consumes pending memory context", as
       .context({ observations: [{ content: "User wants concise answers." }] })
       .searchEntities()
       .message();
-    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
+    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_WORKSPACE_ID: "workspace-1", NAMS_BASE_URL: "https://memory.example.test" });
     const adapter = new OpenCodeAdapter();
 
     await adapter.beforeAgent({
@@ -192,6 +193,7 @@ test("OpenCode BeforeAgent continues when NAMS_API_KEY is missing", async () => 
     assert.equal(diagnostics.length, 1);
     assert.deepEqual(diagnostics[0].payload.configSources, {
       apiKey: "missing",
+      workspaceId: "missing",
       baseUrl: "default",
     });
     assert.doesNotMatch(log, /Bearer|key/);
@@ -223,6 +225,7 @@ test("OpenCode BeforeAgent logs invalid config diagnostics without raw JSON cont
         message: "NAMS config invalid",
         configSources: {
           apiKey: "missing",
+          workspaceId: "missing",
           baseUrl: "default",
         },
         errorSource: "project:.nams/config.json",
@@ -240,6 +243,7 @@ test("OpenCode BeforeAgent continues when NAMS request fails", async () => {
     createNamsFetchMock().all({ error: "service unavailable" }, 503);
     testEnv(projectDir, {
         NAMS_API_KEY: "key",
+        NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
     const adapter = new OpenCodeAdapter();
@@ -268,6 +272,7 @@ test("OpenCode NAMS failure diagnostics do not include arbitrary error text", as
         ;
     testEnv(projectDir, {
         NAMS_API_KEY: "key",
+        NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
     const adapter = new OpenCodeAdapter();
@@ -292,7 +297,7 @@ test("Duplicate OpenCode chat.message does not store user prompt twice", async (
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
   try {
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
-    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
+    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_WORKSPACE_ID: "workspace-1", NAMS_BASE_URL: "https://memory.example.test" });
     const adapter = new OpenCodeAdapter();
     const invocation = {
       platform: "opencode",
@@ -315,7 +320,7 @@ test("OpenCode chat.message stores same content for distinct message ids", async
   try {
     const prompt = "Same content can be a new user turn.";
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
-    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
+    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_WORKSPACE_ID: "workspace-1", NAMS_BASE_URL: "https://memory.example.test" });
     const adapter = new OpenCodeAdapter();
 
     await adapter.beforeAgent({
@@ -346,7 +351,7 @@ test("OpenCode chat.message stores repeated template-shaped input for distinct m
   try {
     const prompt = "Same template-shaped user prompt.";
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
-    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
+    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_WORKSPACE_ID: "workspace-1", NAMS_BASE_URL: "https://memory.example.test" });
     const adapter = new OpenCodeAdapter();
 
     await adapter.beforeAgent({
@@ -376,7 +381,7 @@ test("OpenCode experimental.text.complete stores assistant text", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
   try {
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
-    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
+    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_WORKSPACE_ID: "workspace-1", NAMS_BASE_URL: "https://memory.example.test" });
     const adapter = new OpenCodeAdapter();
 
     await adapter.beforeAgent({
@@ -412,7 +417,7 @@ test("OpenCode AfterAgent ignores non text-complete output text", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
   try {
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
-    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
+    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_WORKSPACE_ID: "workspace-1", NAMS_BASE_URL: "https://memory.example.test" });
     const adapter = new OpenCodeAdapter();
 
     await adapter.beforeAgent({
@@ -445,7 +450,7 @@ test("Duplicate OpenCode experimental.text.complete does not store assistant tex
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
   try {
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
-    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
+    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_WORKSPACE_ID: "workspace-1", NAMS_BASE_URL: "https://memory.example.test" });
     const adapter = new OpenCodeAdapter();
 
     await adapter.beforeAgent({
@@ -488,7 +493,7 @@ test("OpenCode tool.execute.after records sanitized tool metadata", async () => 
       .message()
       .reasoningStep({ id: "step-1" })
       .toolCall();
-    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
+    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_WORKSPACE_ID: "workspace-1", NAMS_BASE_URL: "https://memory.example.test" });
     const adapter = new OpenCodeAdapter();
 
     await adapter.beforeAgent({
@@ -547,7 +552,7 @@ test("Duplicate OpenCode tool.execute.after does not store tool metadata twice",
       .message()
       .reasoningStep({ id: "step-1" })
       .toolCall();
-    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
+    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_WORKSPACE_ID: "workspace-1", NAMS_BASE_URL: "https://memory.example.test" });
     const adapter = new OpenCodeAdapter();
 
     await adapter.beforeAgent({
@@ -588,7 +593,7 @@ test("OpenCode tool.execute.after fallback dedupe uses sanitized input", async (
       .message()
       .reasoningStep({ id: "step-1" })
       .toolCall();
-    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
+    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_WORKSPACE_ID: "workspace-1", NAMS_BASE_URL: "https://memory.example.test" });
     const adapter = new OpenCodeAdapter();
 
     await adapter.beforeAgent({
@@ -639,7 +644,7 @@ test("OpenCode assistant part dedupe does not collide on raw delimiters", async 
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
   try {
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
-    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
+    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_WORKSPACE_ID: "workspace-1", NAMS_BASE_URL: "https://memory.example.test" });
     const adapter = new OpenCodeAdapter();
 
     await adapter.beforeAgent({

@@ -256,7 +256,7 @@ Hook payload logs should preserve raw OpenCode plugin input and output for local
 
 All OpenCode plugin hooks should be best-effort and non-blocking.
 
-If `apiKey` is missing after JSON config and environment overlays, the adapter logs a fixed sanitized diagnostic, saves conservative state, and returns allow output.
+If `apiKey` or `workspaceId` is missing after JSON config and environment overlays, the adapter logs a fixed sanitized diagnostic, saves conservative state, and returns allow output. The required `workspaceId`, `NAMS_WORKSPACE_ID` override, and generated `X-Workspace-Id` header contract are defined by `docs/superpowers/specs/2026-06-03-nams-workspace-id-design.md`.
 
 If NAMS recall fails, the adapter should still attempt user-message persistence when possible. If persistence fails after recall succeeded, it may still return recalled context for injection, matching Gemini behavior.
 
@@ -291,7 +291,7 @@ Core tests:
 - `SessionStart` initializes state without creating a NAMS conversation.
 - `chat.message` creates a conversation, recalls memory, stores the user prompt, and stores pending context.
 - `experimental.chat.system.transform` returns and consumes pending context.
-- Missing `apiKey` and NAMS failures allow OpenCode to continue.
+- Missing `apiKey`, missing `workspaceId`, and NAMS failures allow OpenCode to continue.
 - `experimental.text.complete` stores assistant text and deduplicates replayed parts.
 - `tool.execute.after` stores a reasoning step plus sanitized tool metadata and deduplicates replayed calls.
 - OpenCode session logs keep hook, NAMS request, and diagnostic records together.

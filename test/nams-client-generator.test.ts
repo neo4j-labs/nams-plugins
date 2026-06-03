@@ -218,6 +218,7 @@ test("generated NAMS client sends bearer JSON requests", async () => {
   const requests: CapturedRequest[] = [];
   const client = new NamsClient({
     apiKey: "test-key",
+    workspaceId: "workspace-1",
     baseUrl: "https://memory.example.test/",
     fetch: async (url, init) => {
       requests.push({ url, init: init as CapturedRequest["init"] });
@@ -234,6 +235,7 @@ test("generated NAMS client sends bearer JSON requests", async () => {
   assert.equal(requests[0].url, "https://memory.example.test/v1/conversations");
   assert.equal(requests[0].init.method, "POST");
   assert.equal(requests[0].init.headers.Authorization, "Bearer test-key");
+  assert.equal(requests[0].init.headers["X-Workspace-Id"], "workspace-1");
   assert.equal(requests[0].init.headers["Content-Type"], "application/json");
   assert.equal(requests[0].init.body, JSON.stringify({ userId: "user-1" }));
 });
@@ -243,6 +245,7 @@ test("generated NAMS client sends configured default headers on POST and GET req
   const requests: CapturedRequest[] = [];
   const client = new NamsClient({
     apiKey: "test-key",
+    workspaceId: "workspace-1",
     baseUrl: "https://memory.example.test",
     defaultHeaders: {
       "X-NAMS-Hooks-Harness": "gemini",
@@ -250,8 +253,10 @@ test("generated NAMS client sends configured default headers on POST and GET req
       "X-NAMS-Hooks-Platform": "darwin",
       "X-NAMS-Hooks-Node-Version": "v26.0.0",
       "X-NAMS-Hooks-Event": "BeforeAgent",
+      "X-Workspace-Id": "wrong-workspace",
       Authorization: "Bearer wrong-key",
       Accept: "text/plain",
+      "Content-Type": "text/plain",
     },
     fetch: async (url, init) => {
       requests.push({ url, init: init as CapturedRequest["init"] });
@@ -272,8 +277,11 @@ test("generated NAMS client sends configured default headers on POST and GET req
     assert.equal(request.init.headers["X-NAMS-Hooks-Node-Version"], "v26.0.0");
     assert.equal(request.init.headers["X-NAMS-Hooks-Event"], "BeforeAgent");
     assert.equal(request.init.headers.Authorization, "Bearer test-key");
+    assert.equal(request.init.headers["X-Workspace-Id"], "workspace-1");
     assert.equal(request.init.headers.Accept, "application/json");
   }
+  assert.equal(requests[0].init.headers["Content-Type"], "application/json");
+  assert.equal(requests[1].init.headers["Content-Type"], undefined);
 });
 
 test("generated NAMS client reports request and response details", async () => {
@@ -281,6 +289,7 @@ test("generated NAMS client reports request and response details", async () => {
   const events: NamsRequestEvent[] = [];
   const client = new NamsClient({
     apiKey: "test-key",
+    workspaceId: "workspace-1",
     baseUrl: "https://memory.example.test",
     onRequest: (event) => {
       events.push(event);
@@ -306,6 +315,7 @@ test("generated NAMS client reports request and response details", async () => {
     url: "https://memory.example.test/v1/conversations/conversation-1/messages",
     path: "/v1/conversations/{id}/messages",
     headers: {
+      "X-Workspace-Id": "workspace-1",
       Accept: "application/json",
       "Content-Type": "application/json",
     },
@@ -328,6 +338,7 @@ test("generated NAMS client reports failed request and response before throwing"
   const events: NamsRequestEvent[] = [];
   const client = new NamsClient({
     apiKey: "test-key",
+    workspaceId: "workspace-1",
     baseUrl: "https://memory.example.test",
     onRequest: (event) => {
       events.push(event);
@@ -353,6 +364,7 @@ test("generated NAMS client reports failed request and response before throwing"
     url: "https://memory.example.test/v1/conversations",
     path: "/v1/conversations",
     headers: {
+      "X-Workspace-Id": "workspace-1",
       Accept: "application/json",
     },
   });
@@ -372,6 +384,7 @@ test("generated NAMS client reports network failure metadata before throwing", a
   const events: NamsRequestEvent[] = [];
   const client = new NamsClient({
     apiKey: "test-key",
+    workspaceId: "workspace-1",
     baseUrl: "https://memory.example.test",
     onRequest: (event) => {
       events.push(event);
@@ -394,6 +407,7 @@ test("generated NAMS client reports network failure metadata before throwing", a
     url: "https://memory.example.test/v1/conversations/conversation-1/context",
     path: "/v1/conversations/{id}/context",
     headers: {
+      "X-Workspace-Id": "workspace-1",
       Accept: "application/json",
     },
   });
@@ -406,6 +420,7 @@ test("generated NAMS client encodes path parameters", async () => {
   const requests: CapturedRequest[] = [];
   const client = new NamsClient({
     apiKey: "test-key",
+    workspaceId: "workspace-1",
     baseUrl: "https://memory.example.test",
     fetch: async (url, init) => {
       requests.push({ url, init: init as CapturedRequest["init"] });
@@ -428,6 +443,7 @@ test("generated NAMS client sends GET requests without JSON body headers", async
   const requests: CapturedRequest[] = [];
   const client = new NamsClient({
     apiKey: "test-key",
+    workspaceId: "workspace-1",
     baseUrl: "https://memory.example.test",
     fetch: async (url, init) => {
       requests.push({ url, init: init as CapturedRequest["init"] });
@@ -450,6 +466,7 @@ test("generated NAMS client throws stable NAMS errors", async () => {
   const { NamsClient, NamsClientError } = await importGeneratedClient();
   const client = new NamsClient({
     apiKey: "test-key",
+    workspaceId: "workspace-1",
     baseUrl: "https://memory.example.test",
     fetch: async () =>
       new Response(JSON.stringify({ error: "workspace_id required" }), {

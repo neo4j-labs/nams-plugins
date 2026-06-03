@@ -9,13 +9,16 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const distDir = path.join(root, "dist");
 const generatedClientPath = path.join(root, "dist", "bin", "generated", "nams-client.js");
+const geminiExtensionPath = path.join(root, "dist", "gemini-extension.json");
 const opencodeTemplatePath = path.join(root, "templates", "opencode", "plugins", "nams-hooks.js");
 const rootPackagePath = path.join(root, "package.json");
 const execFileAsync = promisify(execFile);
 
 await access(generatedClientPath);
+await access(geminiExtensionPath);
 await access(opencodeTemplatePath);
 await verifyRootPackageFiles(rootPackagePath);
+await verifyGeminiExtensionSettings(geminiExtensionPath);
 
 const source = await readFile(generatedClientPath, "utf8");
 if (/nams-openapi|readFile/.test(source)) {
@@ -76,6 +79,14 @@ async function verifyRootPackageFiles(packagePath) {
   const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
   if (!Array.isArray(packageJson.files) || !packageJson.files.includes("templates/")) {
     throw new Error("package.json files must include templates/ for the OpenCode plugin shim.");
+  }
+}
+
+async function verifyGeminiExtensionSettings(extensionPath) {
+  const extension = JSON.parse(await readFile(extensionPath, "utf8"));
+  const envVars = extension.settings?.map((setting) => setting.envVar);
+  if (!Array.isArray(envVars) || !envVars.includes("NAMS_API_KEY") || !envVars.includes("NAMS_WORKSPACE_ID") || !envVars.includes("NAMS_BASE_URL")) {
+    throw new Error("dist/gemini-extension.json settings must include NAMS_API_KEY, NAMS_WORKSPACE_ID, and NAMS_BASE_URL.");
   }
 }
 

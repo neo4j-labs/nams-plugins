@@ -4,10 +4,16 @@ import { RuntimeEnvironment } from "./paths.js";
 
 export interface NamsRuntimeConfig {
   apiKey: string;
+  workspaceId: string;
   baseUrl?: string;
 }
 
 export type ConfigSource = "missing" | "global:~/.nams/config.json" | "project:.nams/config.json" | "env:NAMS_API_KEY";
+export type WorkspaceIdSource =
+  | "missing"
+  | "global:~/.nams/config.json"
+  | "project:.nams/config.json"
+  | "env:NAMS_WORKSPACE_ID";
 export type BaseUrlSource =
   | "default"
   | "global:~/.nams/config.json"
@@ -16,6 +22,7 @@ export type BaseUrlSource =
 
 export interface NamsConfigSources {
   apiKey: ConfigSource;
+  workspaceId: WorkspaceIdSource;
   baseUrl: BaseUrlSource;
 }
 
@@ -28,6 +35,11 @@ export type NamsConfigLoadResult =
   | {
       ok: false;
       reason: "missing-api-key";
+      sources: NamsConfigSources;
+    }
+  | {
+      ok: false;
+      reason: "missing-workspace-id";
       sources: NamsConfigSources;
     }
   | {
@@ -51,6 +63,12 @@ export function configDiagnosticPayload(result: NamsConfigLoadResult): Record<st
       errorSource: result.errorSource,
     };
   }
+  if (result.reason === "missing-workspace-id") {
+    return {
+      message: "NAMS workspaceId missing",
+      configSources: result.sources,
+    };
+  }
   return {
     message: "NAMS apiKey missing",
     configSources: result.sources,
@@ -62,6 +80,7 @@ export async function loadNamsConfig(projectDirectory: string): Promise<NamsConf
   const accumulated: Partial<NamsRuntimeConfig> = {};
   const sources: NamsConfigSources = {
     apiKey: "missing",
+    workspaceId: "missing",
     baseUrl: "default",
   };
 
@@ -89,11 +108,19 @@ export async function loadNamsConfig(projectDirectory: string): Promise<NamsConf
       sources,
     };
   }
+  if (accumulated.workspaceId === undefined) {
+    return {
+      ok: false,
+      reason: "missing-workspace-id",
+      sources,
+    };
+  }
 
   return {
     ok: true,
     config: {
       apiKey: accumulated.apiKey,
+      workspaceId: accumulated.workspaceId,
       ...(accumulated.baseUrl !== undefined ? { baseUrl: accumulated.baseUrl } : {}),
     },
     sources,
@@ -114,6 +141,7 @@ type JsonConfigReadResult =
 
 interface JsonConfig {
   apiKey?: string;
+  workspaceId?: string;
   baseUrl?: string;
 }
 
@@ -148,6 +176,7 @@ async function readJsonConfig(path: string, source: JsonConfigSource): Promise<J
     ok: true,
     config: {
       ...(nonBlankString(parsed.apiKey) !== undefined ? { apiKey: nonBlankString(parsed.apiKey) } : {}),
+      ...(nonBlankString(parsed.workspaceId) !== undefined ? { workspaceId: nonBlankString(parsed.workspaceId) } : {}),
       ...(nonBlankString(parsed.baseUrl) !== undefined ? { baseUrl: nonBlankString(parsed.baseUrl) } : {}),
     },
   };
@@ -173,6 +202,7 @@ function invalidJsonResult(errorSource: JsonConfigSource, sources: NamsConfigSou
 function defaultSources(): NamsConfigSources {
   return {
     apiKey: "missing",
+    workspaceId: "missing",
     baseUrl: "default",
   };
 }
@@ -186,6 +216,10 @@ function applyJsonConfig(
   if (config.apiKey !== undefined) {
     accumulated.apiKey = config.apiKey;
     sources.apiKey = source;
+  }
+  if (config.workspaceId !== undefined) {
+    accumulated.workspaceId = config.workspaceId;
+    sources.workspaceId = source;
   }
   if (config.baseUrl !== undefined) {
     accumulated.baseUrl = config.baseUrl;
@@ -202,6 +236,12 @@ function applyEnvironmentOverrides(
   if (apiKey !== undefined) {
     accumulated.apiKey = apiKey;
     sources.apiKey = "env:NAMS_API_KEY";
+  }
+
+  const workspaceId = runtimeEnvironment.value("NAMS_WORKSPACE_ID");
+  if (workspaceId !== undefined) {
+    accumulated.workspaceId = workspaceId;
+    sources.workspaceId = "env:NAMS_WORKSPACE_ID";
   }
 
   const baseUrl = runtimeEnvironment.value("NAMS_BASE_URL");
