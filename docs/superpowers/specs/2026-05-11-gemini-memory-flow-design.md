@@ -40,7 +40,7 @@ Gemini hook payloads are the primary source for current-turn data. The Gemini tr
 - Direct entity creation from hooks.
 - Persisting private or unexposed hidden reasoning, token counts, or tool output that Gemini did not expose cleanly through hook payloads.
 - Live NAMS or live Gemini CLI testing as a Phase 1 completion gate.
-- Configuration beyond `apiKey` and `baseUrl`.
+- Configuration beyond `apiKey`, `workspaceId`, and `baseUrl`.
 
 ## Phased Delivery
 
@@ -106,12 +106,13 @@ The CLI remains a gateway. It parses the typed event and dispatches through the 
 
 ### Config Loader
 
-Phase 1 config supports only:
+Phase 1 config supports only the shared runtime keys, as amended by `docs/superpowers/specs/2026-06-03-nams-workspace-id-design.md`:
 
 - `apiKey`, required for NAMS requests, from JSON config or `NAMS_API_KEY`
+- `workspaceId`, required for NAMS requests, from JSON config or `NAMS_WORKSPACE_ID`
 - `baseUrl`, optional, from JSON config or `NAMS_BASE_URL`, defaulting to the generated client's default
 
-Configuration loads `~/.nams/config.json` first, overlays `<project>/.nams/config.json` when present, then overlays `NAMS_API_KEY` and `NAMS_BASE_URL` when those environment variables are set. Missing `apiKey` is non-blocking for Gemini; the runtime logs a sanitized diagnostic and returns allow output. The diagnostic records which source supplied each config key, but it never records secret values.
+Configuration loads `~/.nams/config.json` first, overlays `<project>/.nams/config.json` when present, then overlays `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` when those environment variables are set. Missing `apiKey` or `workspaceId` is non-blocking for Gemini; the runtime logs a sanitized diagnostic and returns allow output. The diagnostic records which source supplied each config key, including `workspaceId`, but it never records secret values or raw config contents.
 
 When Gemini reads existing global or project NAMS config files, the shared runtime tightens readable files to `0600`. Gemini-created runtime state and log files under `~/.nams/` are also written as `0600`, with runtime directories created as `0700`.
 
@@ -167,7 +168,7 @@ Every JSONL record includes a `kind`. Raw hook payload observations use `kind: "
 - `status`: HTTP status when a response was received
 - `ok`: boolean request outcome
 - `durationMs`: elapsed request time in milliseconds
-- `request`: method, concrete URL, endpoint path template, headers without `Authorization`, and request body when present
+- `request`: method, concrete URL, endpoint path template, headers including `X-Workspace-Id` when present but without `Authorization`, and request body when present
 - `response`: status, outcome, headers, and body when a response was received
 
 Hook payload logs preserve the raw platform payload to support local debugging. NAMS request logs preserve request and response bodies to support local debugging, but must not include API keys or raw exception text.
@@ -293,7 +294,7 @@ Local duplicate suppression should prevent repeated writes caused by hook replay
 
 Hooks are non-blocking by default.
 
-If `apiKey` is missing after JSON config and environment overlays:
+If `apiKey` or `workspaceId` is missing after JSON config and environment overlays:
 
 - log a fixed diagnostic under `~/.nams/logs/gemini/`
 - return normal allow output
@@ -372,7 +373,7 @@ Unit and fixture tests:
 - Phase 2 stores transcript `toolCalls[]` metadata while ignoring result/output fields.
 - Session key selection uses `session_id` first and cwd fallback second.
 - Duplicate suppression prevents repeat user and assistant writes.
-- Missing `apiKey` and failed NAMS calls are logged without blocking Gemini.
+- Missing `apiKey`, missing `workspaceId`, and failed NAMS calls are logged without blocking Gemini.
 - ArchUnitTS rules enforce downstream-only module dependencies.
 
 Mocking strategy:

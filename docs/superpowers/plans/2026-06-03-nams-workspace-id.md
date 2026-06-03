@@ -8,6 +8,8 @@
 
 **Tech Stack:** TypeScript, Node.js built-ins for runtime, Node's `node:test`, current `fetch-mock` test helper, custom OpenAPI generator, and the existing `npm run check` pipeline.
 
+**Completion Note:** Implemented in this feature branch on 2026-06-03. The runtime config, generated client header, platform flow tests, README/INSTALL updates, and full verification task were executed; this plan remains as the historical implementation checklist.
+
 ---
 
 ## File Structure
