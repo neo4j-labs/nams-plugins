@@ -36,7 +36,7 @@ For installation steps, see [INSTALL.md](INSTALL.md).
 ### Prerequisites
 
 - Node.js (v20+)
-- A NAMS API Key
+- A NAMS API key and workspace ID
 
 ### Build and Test
 

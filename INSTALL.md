@@ -5,7 +5,7 @@
 ## Prerequisites
 
 - Node.js 20 or newer
-- A NAMS API key
+- A NAMS API key and workspace ID
 - Gemini CLI, for the Gemini local extension path
 - Codex, for project-level Codex hooks
 - Claude Code, for project-level Claude hooks
@@ -33,7 +33,7 @@ Projects may override any key with `<project>/.nams/config.json`. A common setup
 }
 ```
 
-Keep project `.nams/config.json` local and gitignored if it contains an API key. Prefer `~/.nams/config.json` or `NAMS_API_KEY` for secrets that apply across projects.
+Keep project `.nams/config.json` local and gitignored, especially if it contains an API key. Prefer `~/.nams/config.json` or `NAMS_API_KEY` for secrets that apply across projects.
 
 Environment variables are final overrides:
 
