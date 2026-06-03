@@ -256,6 +256,7 @@ test("generated NAMS client sends configured default headers on POST and GET req
       "X-Workspace-Id": "wrong-workspace",
       Authorization: "Bearer wrong-key",
       Accept: "text/plain",
+      "Content-Type": "text/plain",
     },
     fetch: async (url, init) => {
       requests.push({ url, init: init as CapturedRequest["init"] });
@@ -279,6 +280,8 @@ test("generated NAMS client sends configured default headers on POST and GET req
     assert.equal(request.init.headers["X-Workspace-Id"], "workspace-1");
     assert.equal(request.init.headers.Accept, "application/json");
   }
+  assert.equal(requests[0].init.headers["Content-Type"], "application/json");
+  assert.equal(requests[1].init.headers["Content-Type"], undefined);
 });
 
 test("generated NAMS client reports request and response details", async () => {

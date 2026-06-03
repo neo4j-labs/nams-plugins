@@ -256,6 +256,8 @@ export class NamsClient {
     if (body !== undefined) {
       setHeader(headers, "Content-Type", "application/json");
       init.body = JSON.stringify(body);
+    } else {
+      deleteHeader(headers, "Content-Type");
     }
     const requestLog: NamsHttpLogRequest = {
       method: httpMethod,
@@ -330,12 +332,16 @@ function headersForLog(headers: Record<string, string>): Record<string, string> 
   return loggedHeaders;
 }
 
-function setHeader(headers: Record<string, string>, key: string, value: string): void {
+function deleteHeader(headers: Record<string, string>, key: string): void {
   for (const existingKey of Object.keys(headers)) {
     if (existingKey.toLowerCase() === key.toLowerCase()) {
       delete headers[existingKey];
     }
   }
+}
+
+function setHeader(headers: Record<string, string>, key: string, value: string): void {
+  deleteHeader(headers, key);
   headers[key] = value;
 }
 
