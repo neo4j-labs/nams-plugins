@@ -92,6 +92,7 @@ export function createNamsMemoryService(
 ): NamsMemoryService {
   const client = new NamsClient({
     apiKey: config.apiKey,
+    workspaceId: config.workspaceId,
     ...(config.baseUrl !== undefined ? { baseUrl: config.baseUrl } : {}),
     defaultHeaders: namsProvenanceHeaders(invocation),
     onRequest: (event) => appendNamsRequestLog(invocation, state, event),

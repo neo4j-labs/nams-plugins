@@ -6,6 +6,7 @@ export type HttpMethod = "GET" | "POST";
 export interface NamsClientOptions {
   baseUrl?: string;
   apiKey: string;
+  workspaceId: string;
   defaultHeaders?: Record<string, string>;
   fetch?: typeof fetch;
   onRequest?: (event: NamsRequestEvent) => void | Promise<void>;
@@ -189,6 +190,7 @@ export const NAMS_CLIENT_ENDPOINTS = [
 export class NamsClient {
   private readonly baseUrl: string;
   private readonly apiKey: string;
+  private readonly workspaceId: string;
   private readonly defaultHeaders: Record<string, string>;
   private readonly fetchImpl: typeof fetch;
   private readonly onRequest?: (event: NamsRequestEvent) => void | Promise<void>;
@@ -196,6 +198,7 @@ export class NamsClient {
   constructor(options: NamsClientOptions) {
     this.baseUrl = (options.baseUrl ?? "https://memory.neo4jlabs.com").replace(/\/+$/, "");
     this.apiKey = options.apiKey;
+    this.workspaceId = options.workspaceId;
     this.defaultHeaders = options.defaultHeaders ?? {};
     this.fetchImpl = options.fetch ?? globalThis.fetch;
     this.onRequest = options.onRequest;
@@ -247,6 +250,7 @@ export class NamsClient {
     const headers: Record<string, string> = { ...this.defaultHeaders };
     setHeader(headers, "Accept", "application/json");
     setHeader(headers, "Authorization", `Bearer ${this.apiKey}`);
+    setHeader(headers, "X-Workspace-Id", this.workspaceId);
     const init: RequestInit = { method: httpMethod, headers };
     if (body !== undefined) {
       setHeader(headers, "Content-Type", "application/json");
