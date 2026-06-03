@@ -56,6 +56,7 @@ export interface CreateConversationRequest {
 
 export interface CreateConversationResponse {
   id?: string;
+  metadata?: Record<string, string>;
   userId?: string;
   workspaceId?: string;
 }
