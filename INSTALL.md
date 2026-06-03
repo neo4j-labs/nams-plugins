@@ -18,17 +18,18 @@ Create a user-local config file at `~/.nams/config.json`:
 ```json
 {
   "apiKey": "nams-api-key",
+  "workspaceId": "5e5c0535-8d85-491c-b92c-33be13659998",
   "baseUrl": "https://memory.neo4jlabs.com"
 }
 ```
 
-`apiKey` is required for NAMS requests. `baseUrl` is optional and defaults to the runtime client's built-in NAMS URL.
+`apiKey` and `workspaceId` are required for NAMS requests. `baseUrl` is optional and defaults to the runtime client's built-in NAMS URL.
 
-Projects may override either key with `<project>/.nams/config.json`:
+Projects may override any key with `<project>/.nams/config.json`. A common setup is a global `apiKey` with project-specific `workspaceId` values.
 
 ```json
 {
-  "baseUrl": "https://memory.neo4jlabs.com"
+  "workspaceId": "project-workspace-id"
 }
 ```
 
@@ -37,6 +38,7 @@ Keep project `.nams/config.json` local and gitignored if it contains an API key.
 Environment variables are final overrides:
 
 - `NAMS_API_KEY` overrides `apiKey`.
+- `NAMS_WORKSPACE_ID` overrides `workspaceId`.
 - `NAMS_BASE_URL` overrides `baseUrl`.
 
 The runtime does not read `.env` files.
@@ -98,7 +100,7 @@ Start Codex from the target project and use `/hooks` to review and trust the new
 
 OpenCode loads project plugins from `.opencode/plugins/`.
 
-OpenCode uses the same NAMS configuration hierarchy as other harnesses: `~/.nams/config.json`, optional project `.nams/config.json`, then final `NAMS_API_KEY` and `NAMS_BASE_URL` environment overrides.
+OpenCode uses the same NAMS configuration hierarchy as other harnesses: `~/.nams/config.json`, optional project `.nams/config.json`, then final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides.
 
 Install the package so `nams-hooks` is on `PATH`:
 
