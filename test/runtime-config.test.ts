@@ -28,7 +28,7 @@ async function withFixture(fn: (fixture: ConfigFixture) => Promise<void>): Promi
 }
 
 function useRuntimeEnv(homeDir: string, overrides: RuntimeEnvOverrides = {}): void {
-  for (const key of ["HOME", "USERPROFILE", "NAMS_API_KEY", "NAMS_BASE_URL"]) {
+  for (const key of ["HOME", "USERPROFILE", "NAMS_API_KEY", "NAMS_BASE_URL", "CLAUDE_PLUGIN_OPTION_NAMS_API_KEY", "CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL"]) {
     delete process.env[key];
   }
   Object.assign(process.env, { HOME: homeDir, USERPROFILE: homeDir, ...overrides });
@@ -112,6 +112,52 @@ test("environment variables overlay project and global JSON config", async () =>
       baseUrl: "https://project.example.test",
     });
     useRuntimeEnv(homeDir, {
+      NAMS_API_KEY: "env-key",
+      NAMS_BASE_URL: "https://env.example.test",
+    });
+    const result = await loadNamsConfig(projectDir);
+
+    assert.deepEqual(result, {
+      ok: true,
+      config: {
+        apiKey: "env-key",
+        baseUrl: "https://env.example.test",
+      },
+      sources: {
+        apiKey: "env:NAMS_API_KEY",
+        baseUrl: "env:NAMS_BASE_URL",
+      },
+    });
+  });
+});
+
+test("Claude plugin user config environment fills NAMS config", async () => {
+  await withFixture(async ({ homeDir, projectDir }) => {
+    useRuntimeEnv(homeDir, {
+      CLAUDE_PLUGIN_OPTION_NAMS_API_KEY: "plugin-key",
+      CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL: "https://plugin.example.test",
+    });
+    const result = await loadNamsConfig(projectDir);
+
+    assert.deepEqual(result, {
+      ok: true,
+      config: {
+        apiKey: "plugin-key",
+        baseUrl: "https://plugin.example.test",
+      },
+      sources: {
+        apiKey: "env:CLAUDE_PLUGIN_OPTION_NAMS_API_KEY",
+        baseUrl: "env:CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL",
+      },
+    });
+  });
+});
+
+test("environment variables overlay Claude plugin user config", async () => {
+  await withFixture(async ({ homeDir, projectDir }) => {
+    useRuntimeEnv(homeDir, {
+      CLAUDE_PLUGIN_OPTION_NAMS_API_KEY: "plugin-key",
+      CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL: "https://plugin.example.test",
       NAMS_API_KEY: "env-key",
       NAMS_BASE_URL: "https://env.example.test",
     });

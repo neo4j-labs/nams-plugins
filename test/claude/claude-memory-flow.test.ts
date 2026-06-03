@@ -18,7 +18,7 @@ interface TestEnv extends TestEnvOverrides {
 function testEnv(projectDir: string, overrides: TestEnvOverrides = {}): TestEnv {
   const homeDir = path.join(projectDir, "home");
   const env = { HOME: homeDir, USERPROFILE: homeDir, ...overrides };
-  for (const key of ["HOME", "USERPROFILE", "NAMS_API_KEY", "NAMS_BASE_URL"]) {
+  for (const key of ["HOME", "USERPROFILE", "NAMS_API_KEY", "NAMS_BASE_URL", "CLAUDE_PLUGIN_OPTION_NAMS_API_KEY", "CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL"]) {
     delete process.env[key];
   }
   Object.assign(process.env, env);

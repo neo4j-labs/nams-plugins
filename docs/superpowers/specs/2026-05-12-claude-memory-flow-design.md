@@ -41,7 +41,7 @@ Configuration now loads from `~/.nams/config.json`, then `<project>/.nams/config
 
 Tests are authored in TypeScript and run with Node's built-in `node:test` through `tsx`. `npm run check` now runs OpenAPI generation, TypeScript build, test type-checking through `tsconfig.test.json`, and the full TypeScript test suite.
 
-Claude currently has a complete allow-only walking skeleton in `src/platforms/claude/index.ts`. It implements `startSession`, `beforeAgent`, `afterAgent`, and `afterTool`, logs raw payloads through the shared platform logger, and returns allow output. `templates/claude/settings.local.json` already translates Claude `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `Stop` to the shared NAMS events, with TypeScript coverage in `test/claude-template.test.ts` and `test/cli-session-start.test.ts`.
+Claude currently has a complete allow-only walking skeleton in `src/platforms/claude/index.ts`. It implements `startSession`, `beforeAgent`, `afterAgent`, and `afterTool`, logs raw payloads through the shared platform logger, and returns allow output. `templates/claude/.claude/settings.local.json` already translates Claude `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `Stop` to the shared NAMS events, with TypeScript coverage in `test/claude-template.test.ts` and `test/cli-session-start.test.ts`.
 
 ## Goals
 
@@ -327,7 +327,7 @@ The adapter must not log raw thrown error text because errors can contain secret
 
 ## Template Wiring
 
-`templates/claude/settings.local.json` already contains the complete native-hook to NAMS-event walking-skeleton wiring:
+`templates/claude/.claude/settings.local.json` already contains the complete native-hook to NAMS-event walking-skeleton wiring:
 
 - Keep `SessionStart` matcher `startup|resume|clear|compact`.
 - Claude `UserPromptSubmit` is translated to NAMS `BeforeAgent`.

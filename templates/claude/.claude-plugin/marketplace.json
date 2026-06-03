@@ -1,0 +1,36 @@
+{
+  "name": "neo4j-nams-hooks",
+  "owner": {
+    "name": "Neo4j Labs"
+  },
+  "metadata": {
+    "description": "Neo4j Agent Memory Service hooks for Claude Code.",
+    "version": "__PACKAGE_VERSION__"
+  },
+  "plugins": [
+    {
+      "name": "nams-hooks",
+      "source": "./plugins/nams-hooks",
+      "description": "Persistent Neo4j Agent Memory Service hooks for Claude Code.",
+      "version": "__PACKAGE_VERSION__",
+      "author": {
+        "name": "Neo4j Labs"
+      },
+      "repository": "https://github.com/neo4j-labs/nams-hooks",
+      "license": "__PACKAGE_LICENSE__",
+      "keywords": [
+        "memory",
+        "context",
+        "persistence",
+        "neo4j",
+        "nams"
+      ],
+      "category": "memory",
+      "tags": [
+        "memory",
+        "context",
+        "persistence"
+      ]
+    }
+  ]
+}

@@ -68,7 +68,7 @@ Run `npm run build` and `npm test`. Expected: pass.
 **Files:**
 - Create: `templates/gemini/gemini-extension.json`
 - Create: `templates/gemini/hooks/hooks.json`
-- Create: `templates/claude/settings.local.json`
+- Create: `templates/claude/.claude/settings.local.json`
 - Create: `templates/codex/hooks.json`
 
 - [x] **Step 1: Add Gemini extension metadata**
@@ -81,7 +81,7 @@ Create `templates/gemini/hooks/hooks.json` with a `SessionStart` command hook th
 
 - [x] **Step 3: Add Claude SessionStart template**
 
-Create `templates/claude/settings.local.json` with a `SessionStart` command hook that runs `nams-hooks run claude --event SessionStart`.
+Create `templates/claude/.claude/settings.local.json` with a `SessionStart` command hook that runs `nams-hooks run claude --event SessionStart`.
 
 - [x] **Step 4: Add Codex SessionStart template**
 

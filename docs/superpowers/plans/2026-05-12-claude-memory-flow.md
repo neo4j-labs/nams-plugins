@@ -17,7 +17,7 @@ This plan implements the approved design in `docs/superpowers/specs/2026-05-12-c
 Current branch baseline:
 
 - `src/platforms/claude/index.ts` already has a complete allow-only walking skeleton for `SessionStart`, `BeforeAgent`, `AfterAgent`, and `AfterTool`.
-- `templates/claude/settings.local.json` already translates Claude `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `Stop` to the shared NAMS events.
+- `templates/claude/.claude/settings.local.json` already translates Claude `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `Stop` to the shared NAMS events.
 - `test/claude-template.test.ts` and `test/cli-session-start.test.ts` already cover the current Claude template and typed-event routing.
 - Gemini, Codex, and OpenCode already use session-scoped logs and stateful memory flows; Claude should converge on those runtime patterns.
 - Configuration now loads from `~/.nams/config.json`, then `<project>/.nams/config.json`, then `NAMS_API_KEY` and `NAMS_BASE_URL` environment overrides. Adapters receive a structured config result and log sanitized diagnostics with source metadata.
@@ -57,7 +57,7 @@ Do not modify:
 
 - `src/interfaces.ts`: it keeps the existing NAMS event names.
 - `src/cli.ts`: it remains a platform-agnostic NAMS event gateway.
-- `templates/claude/settings.local.json`: the native-hook to NAMS-event mapping is already in place unless Claude hook configuration changes.
+- `templates/claude/.claude/settings.local.json`: the native-hook to NAMS-event mapping is already in place unless Claude hook configuration changes.
 
 ## Public APIs Introduced
 
@@ -104,7 +104,7 @@ Status: complete in the current branch. Keep this task as the audit trail for th
 
 **Files:**
 
-- Modify: `templates/claude/settings.local.json`
+- Modify: `templates/claude/.claude/settings.local.json`
 - Modify: `test/cli-session-start.test.ts`
 - Modify: `test/claude-template.test.ts`
 
@@ -155,7 +155,7 @@ Expected:
 
 - [x] **Step 3: Update Claude hook template**
 
-Replace `templates/claude/settings.local.json` with:
+Replace `templates/claude/.claude/settings.local.json` with:
 
 ```json
 {
@@ -222,7 +222,7 @@ Expected:
 - [x] **Step 5: Commit mapping changes**
 
 ```bash
-git add templates/claude/settings.local.json test/cli-session-start.test.ts test/claude-template.test.ts
+git add templates/claude/.claude/settings.local.json test/cli-session-start.test.ts test/claude-template.test.ts
 git commit -m "feat: map claude hooks to nams events" -m "Co-authored-by: Codex <codex@openai.com>"
 ```
 
