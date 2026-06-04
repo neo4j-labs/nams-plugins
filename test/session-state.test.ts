@@ -11,6 +11,7 @@ import {
   saveSessionState,
   type SessionState,
 } from "../src/runtime/session-state.js";
+import { sessionStatePath } from "../src/runtime/paths.js";
 
 function useRuntimeHome(homeDir: string): void {
   process.env.HOME = homeDir;
@@ -39,7 +40,7 @@ test("initializes reasoning step id map for new session state", async () => {
   assert.deepEqual(state.reasoningStepIdsByHash, {});
 });
 
-test("persists session state under user-local .nams/state using safe session filenames", async () => {
+test("persists session state under user-local .nams/state using timestamped session filenames", async () => {
   const homeDir = await mkdtemp(path.join(tmpdir(), "nams-home-"));
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-state-"));
   try {
@@ -60,7 +61,13 @@ test("persists session state under user-local .nams/state using safe session fil
 
     await saveSessionState("gemini", "session/1", state);
 
-    const savedPath = path.join(homeDir, ".nams", "state", "gemini", `${sha256("session/1")}.json`);
+    const savedPath = path.join(
+      homeDir,
+      ".nams",
+      "state",
+      "gemini",
+      `session-2026-05-11T120000.000Z--${sha256("session/1")}.json`,
+    );
     assert.deepEqual(JSON.parse(await readFile(savedPath, "utf8")), state);
     assert.equal(await fileMode(savedPath), 0o600);
     assert.deepEqual(await loadSessionState("gemini", "session/1"), state);
@@ -75,7 +82,7 @@ test("loads legacy lastMemorySearchAt as lastRecallAt", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-state-"));
   try {
     useRuntimeHome(homeDir);
-    const statePath = path.join(homeDir, ".nams", "state", "gemini", `${sha256("session-1")}.json`);
+    const statePath = sessionStatePath("gemini", "session-1", "2026-05-11T12:00:00.000Z");
     await mkdir(path.dirname(statePath), { recursive: true });
     await writeFile(
       statePath,
@@ -99,6 +106,73 @@ test("loads legacy lastMemorySearchAt as lastRecallAt", async () => {
     assert.ok(state);
     assert.equal(state.lastRecallAt, "2026-05-11T12:01:00.000Z");
     assert.equal(Object.hasOwn(state, "lastMemorySearchAt"), false);
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("loads the newest timestamped state file when duplicate session keys exist", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "nams-home-"));
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-state-"));
+  try {
+    useRuntimeHome(homeDir);
+    const oldState: SessionState = {
+      harness: "gemini",
+      harnessSessionId: "session-1",
+      sessionKey: "session-1",
+      projectDirectory: projectDir,
+      conversationId: "conversation-old",
+      createdAt: "2026-05-11T12:00:00.000Z",
+      seenAssistantMessageHashes: [],
+      seenTranscriptEntryIds: [],
+      seenReasoningStepHashes: [],
+      seenToolCallIds: [],
+      reasoningStepIdsByHash: {},
+    };
+    const newState: SessionState = {
+      ...oldState,
+      conversationId: "conversation-new",
+      createdAt: "2026-05-11T12:05:00.000Z",
+    };
+
+    await saveSessionState("gemini", oldState.sessionKey, oldState);
+    await saveSessionState("gemini", newState.sessionKey, newState);
+
+    const loadedState = await loadSessionState("gemini", "session-1");
+
+    assert.ok(loadedState);
+    assert.equal(loadedState.conversationId, "conversation-new");
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("does not load legacy hash-only state filenames", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "nams-home-"));
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-state-"));
+  try {
+    useRuntimeHome(homeDir);
+    const statePath = path.join(homeDir, ".nams", "state", "gemini", `${sha256("session-1")}.json`);
+    await mkdir(path.dirname(statePath), { recursive: true });
+    await writeFile(
+      statePath,
+      `${JSON.stringify({
+        harness: "gemini",
+        sessionKey: "session-1",
+        projectDirectory: projectDir,
+        createdAt: "2026-05-11T12:00:00.000Z",
+        seenAssistantMessageHashes: [],
+        seenTranscriptEntryIds: [],
+        seenReasoningStepHashes: [],
+        seenToolCallIds: [],
+        reasoningStepIdsByHash: {},
+      })}\n`,
+      "utf8",
+    );
+
+    assert.equal(await loadSessionState("gemini", "session-1"), null);
   } finally {
     await rm(homeDir, { recursive: true, force: true });
     await rm(projectDir, { recursive: true, force: true });

@@ -49,8 +49,15 @@ export class RuntimeEnvironment {
     return path.join(projectDirectory, ".nams", "config.json");
   }
 
-  sessionStatePath(platform: Platform, sessionKey: string): string {
-    return path.join(this.requireNamsHome(), "state", platform, `${sha256(sessionKey)}.json`);
+  sessionStateDirectory(platform: Platform): string {
+    return path.join(this.requireNamsHome(), "state", platform);
+  }
+
+  sessionStatePath(platform: Platform, sessionKey: string, createdAt: string): string {
+    return path.join(
+      this.sessionStateDirectory(platform),
+      `session-${formatStateTimestamp(createdAt)}--${sha256(sessionKey)}.json`,
+    );
   }
 
   platformLogDirectory(platform: Platform): string {
@@ -73,9 +80,17 @@ export function projectConfigPath(projectDirectory: string): string {
 export function sessionStatePath(
   platform: Platform,
   sessionKey: string,
+  createdAt: string,
   environment: RuntimeEnvironmentInput = process.env,
 ): string {
-  return RuntimeEnvironment.from(environment).sessionStatePath(platform, sessionKey);
+  return RuntimeEnvironment.from(environment).sessionStatePath(platform, sessionKey, createdAt);
+}
+
+export function sessionStateDirectory(
+  platform: Platform,
+  environment: RuntimeEnvironmentInput = process.env,
+): string {
+  return RuntimeEnvironment.from(environment).sessionStateDirectory(platform);
 }
 
 export function platformLogDirectory(
@@ -87,4 +102,10 @@ export function platformLogDirectory(
 
 function firstNonBlank(...values: Array<string | undefined>): string | undefined {
   return values.find((value): value is string => typeof value === "string" && value.trim() !== "");
+}
+
+function formatStateTimestamp(value: string): string {
+  const parsed = new Date(value);
+  const timestamp = Number.isNaN(parsed.getTime()) ? value : parsed.toISOString();
+  return timestamp.replaceAll(":", "").replace(/[^a-zA-Z0-9._-]/g, "-");
 }

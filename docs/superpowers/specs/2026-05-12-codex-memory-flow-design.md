@@ -67,7 +67,7 @@ The Codex integration should mirror those boundaries rather than copying Gemini 
 - Keep Codex behavior behind the Codex adapter boundary.
 - Keep `src/interfaces.ts` and `src/cli.ts` platform-agnostic by preserving the NAMS event vocabulary: `SessionStart`, `BeforeAgent`, `AfterAgent`, and `AfterTool`.
 - Use Codex `session_id` as the primary session key, with cwd fallback.
-- Persist user-local state under `~/.nams/state/codex/<session-hash>.json`.
+- Persist user-local state under `~/.nams/state/codex/session-<created-at>--<session-hash>.json`.
 - Use session-scoped `~/.nams/logs/codex/session-<created-at>-<session-part>.jsonl` logs for Codex, matching the shared observability model.
 - Keep Codex-created NAMS state and log files owner-readable and owner-writable only (`0600`), with runtime directories created as `0700`.
 - Create a NAMS conversation lazily on the first NAMS `BeforeAgent` event mapped from Codex `UserPromptSubmit`.
@@ -248,7 +248,7 @@ The existing runtime modules remain shared:
 - `src/runtime/memory-service.ts`
 - `src/runtime/session-state.ts`
 
-`SessionState.harness` already supports `"codex"`, and Codex uses the shared `~/.nams/state/<platform>/<session-hash>.json` layout.
+`SessionState.harness` already supports `"codex"`, and Codex uses the shared `~/.nams/state/<platform>/session-<created-at>--<session-hash>.json` layout.
 
 `NamsMemoryService` may need one small addition: a safe tool-output serializer/cap so Codex `tool_response` cannot produce unbounded NAMS payloads.
 
