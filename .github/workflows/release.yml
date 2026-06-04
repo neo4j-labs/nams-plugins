@@ -47,6 +47,7 @@ jobs:
       - name: Publish dist to release branch
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
           RELEASE_SOURCE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
           set -euo pipefail
@@ -62,6 +63,16 @@ jobs:
             git push --force origin refs/tags/release
           }
 
+          publish_github_release() {
+            local notes="Generated release artifacts from ${RELEASE_SOURCE_SHA}."
+            gh release delete release --yes || true
+            gh release create release \
+              --title "release" \
+              --notes "$notes" \
+              --latest \
+              --verify-tag
+          }
+
           git fetch origin release || true
           if git rev-parse --verify origin/release >/dev/null 2>&1; then
             git switch --track -c release origin/release
@@ -73,14 +84,10 @@ jobs:
           cp -R "$release_tree"/. .
           git add -A
 
-          if git diff --cached --quiet; then
-            echo "Release branch is already up to date."
-            publish_release_tag
-            exit 0
-          fi
-
           git commit \
+            --allow-empty \
             -m "chore: publish release artifacts from ${RELEASE_SOURCE_SHA}" \
             -m "Co-authored-by: Codex <codex@openai.com>"
           git push origin HEAD:release
           publish_release_tag
+          publish_github_release
