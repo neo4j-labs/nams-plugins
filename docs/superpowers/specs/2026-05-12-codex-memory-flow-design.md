@@ -153,7 +153,7 @@ Codex `UserPromptSubmit` maps to NAMS `BeforeAgent`. It resolves session state, 
 
 The `additionalContext` property is the correct JSON field for this injection path. In the current Codex source, `UserPromptSubmitHookSpecificOutputWire` uses serde `rename_all = "camelCase"` with an internal `additional_context` field, `output_parser.rs` extracts it from `hookSpecificOutput`, and `hook_runtime.rs` records it as additional developer context for the model.
 
-If recall is empty, the hook returns only the allow output. If NAMS is unavailable or `apiKey` is missing after JSON config and environment overlays, the hook logs a sanitized diagnostic and allows Codex to continue.
+If recall is empty, the hook returns only the allow output. If NAMS is unavailable or required runtime config is missing after JSON config and environment overlays, the hook logs a sanitized diagnostic and allows Codex to continue. Required NAMS request config is `apiKey` plus the `workspaceId` amendment described in `docs/superpowers/specs/2026-06-03-nams-workspace-id-design.md`.
 
 `SessionStart` and `UserPromptSubmit` may run close together on the first prompt in some Codex versions. `UserPromptSubmit` must be able to create initial state when `SessionStart` has not written it yet.
 
@@ -319,8 +319,8 @@ Duplicate suppression is local-only and must not require a NAMS query.
 
 Codex hooks must fail open for memory concerns:
 
-- Missing `apiKey` after JSON config and environment overlays: log a fixed sanitized diagnostic and allow.
-- NAMS request failure: log endpoint/request metadata without API keys and allow.
+- Missing `apiKey` or `workspaceId` after JSON config and environment overlays: log a fixed sanitized diagnostic and allow.
+- NAMS request failure: log endpoint/request metadata without API keys and allow. Sanitized request diagnostics may include `X-Workspace-Id` as a non-secret routing identifier.
 - Transcript parse failure: log a diagnostic and skip transcript fallback.
 - Observability log write failure: do not block hook output.
 

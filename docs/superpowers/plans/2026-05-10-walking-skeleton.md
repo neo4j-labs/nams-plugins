@@ -73,7 +73,7 @@ Run `npm run build` and `npm test`. Expected: pass.
 
 - [x] **Step 1: Add Gemini extension metadata**
 
-Create `templates/gemini/gemini-extension.json` with extension name, version, description, and a sensitive `NAMS_API_KEY` setting.
+Create `templates/gemini/gemini-extension.json` with extension name, version, description, and a sensitive `NAMS_API_KEY` setting. The later workspace amendment also exposes non-sensitive `NAMS_WORKSPACE_ID`.
 
 - [x] **Step 2: Add Gemini SessionStart hook**
 

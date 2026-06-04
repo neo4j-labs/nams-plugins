@@ -37,7 +37,7 @@ The branch already has complete Gemini, Codex, and OpenCode memory flows:
 - `templates/gemini/hooks/hooks.json` wires Gemini `SessionStart`, `BeforeAgent`, `AfterAgent`, and `AfterTool`.
 - `templates/codex/hooks.json` and `templates/opencode/plugins/nams-hooks.js` translate native platform surfaces into the shared NAMS events.
 
-Configuration now loads from `~/.nams/config.json`, then `<project>/.nams/config.json`, then `NAMS_API_KEY` and `NAMS_BASE_URL` environment overrides. Loading returns a structured result, so adapters log sanitized configuration diagnostics with source metadata instead of throwing or inspecting `.env` files. Runtime state and logs are stored under `~/.nams/state/<platform>/` and `~/.nams/logs/<platform>/`. Readable global and project NAMS config files are tightened to `0600` when loaded; Claude-created runtime state and log files are written as `0600`, with runtime directories created as `0700`.
+Configuration now loads from `~/.nams/config.json`, then `<project>/.nams/config.json`, then `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. Under the amendment in `docs/superpowers/specs/2026-06-03-nams-workspace-id-design.md`, `apiKey` and `workspaceId` are required for NAMS requests and the generated client sends `X-Workspace-Id` on every request. Loading returns a structured result, so adapters log sanitized configuration diagnostics with source metadata, including the `workspaceId` source, instead of throwing or inspecting `.env` files. Runtime state and logs are stored under `~/.nams/state/<platform>/` and `~/.nams/logs/<platform>/`. Readable global and project NAMS config files are tightened to `0600` when loaded; Claude-created runtime state and log files are written as `0600`, with runtime directories created as `0700`.
 
 Tests are authored in TypeScript and run with Node's built-in `node:test` through `tsx`. `npm run check` now runs OpenAPI generation, TypeScript build, test type-checking through `tsconfig.test.json`, and the full TypeScript test suite.
 
@@ -199,7 +199,7 @@ Flow:
 3. Append raw hook payload to the session log.
 4. If `prompt` is blank, save state and allow.
 5. Load config from `~/.nams/config.json`, `<project>/.nams/config.json`, then environment overrides.
-6. Log the sanitized config diagnostic result. If `apiKey` is missing or config JSON is invalid, allow.
+6. Log the sanitized config diagnostic result. If `apiKey` or `workspaceId` is missing, or config JSON is invalid, allow.
 7. Create NAMS conversation if state has no `conversationId`.
 8. On first recall for this session, call `getConversationContext` and `searchEntities(prompt)`.
 9. Combine successful recall sources with `combineMemoryContexts()`.
@@ -314,13 +314,14 @@ All Claude records include:
 - typed `event`
 - `kind`
 - raw `payload` for `hook.event`
-- sanitized generated-client request events for `nams.request`
+- sanitized generated-client request events for `nams.request`, with `Authorization` omitted and `X-Workspace-Id` retained as a routing identifier
 
 Diagnostics use fixed messages and sanitized source metadata only:
 
 - `"NAMS config loaded"`
 - `"NAMS config invalid"`
 - `"NAMS apiKey missing"`
+- `"NAMS workspaceId missing"`
 - `"NAMS request failed"`
 
 The adapter must not log raw thrown error text because errors can contain secrets or prompt content.
@@ -350,7 +351,7 @@ Each command uses `nams-hooks run claude --event <NAMS event>`.
 
 Claude hooks remain non-blocking:
 
-- Missing `apiKey` or invalid JSON config: log sanitized config diagnostic, allow.
+- Missing `apiKey`, missing `workspaceId`, or invalid JSON config: log sanitized config diagnostic, allow.
 - NAMS create, recall, message, reasoning, or tool-call failure: log fixed diagnostic, allow.
 - Recall failure from one source: try the other source and still attempt user-message persistence.
 - User-message failure after recall succeeds: return the recall context and allow.

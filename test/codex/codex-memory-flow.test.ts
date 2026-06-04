@@ -21,7 +21,7 @@ interface TestEnv extends TestEnvOverrides {
 
 function testEnv(projectDir: string, overrides: TestEnvOverrides = {}): TestEnv {
   const env = { HOME: path.join(projectDir, "home"), USERPROFILE: path.join(projectDir, "home"), ...overrides };
-  for (const key of ["HOME", "USERPROFILE", "NAMS_API_KEY", "NAMS_BASE_URL", "CLAUDE_PLUGIN_OPTION_NAMS_API_KEY", "CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL"]) {
+  for (const key of ["HOME", "USERPROFILE", "NAMS_API_KEY", "NAMS_WORKSPACE_ID", "NAMS_BASE_URL", "CLAUDE_PLUGIN_OPTION_NAMS_API_KEY", "CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL"]) {
     delete process.env[key];
   }
   Object.assign(process.env, env);
@@ -68,6 +68,7 @@ test("Codex beforeAgent with no prompt saves state, logs raw event, and does not
     const nams = createNamsFetchMock().all({ error: "unexpected NAMS call" }, 500);
     testEnv(projectDir, {
         NAMS_API_KEY: "key",
+        NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
     const adapter = new CodexAdapter();
@@ -117,6 +118,7 @@ test("creates Codex conversation, recalls memory, returns context, and stores Us
       .message();
     testEnv(projectDir, {
         NAMS_API_KEY: "key",
+        NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
     const adapter = new CodexAdapter();
@@ -161,6 +163,7 @@ test("creates Codex conversation, recalls memory, returns context, and stores Us
     assert.equal(configDiagnostics.length, 1);
     assert.deepEqual(configDiagnostics[0].payload.configSources, {
       apiKey: "env:NAMS_API_KEY",
+      workspaceId: "env:NAMS_WORKSPACE_ID",
       baseUrl: "env:NAMS_BASE_URL",
     });
     const requestEntries = lines.filter((entry) => entry.kind === "nams.request");
@@ -199,6 +202,7 @@ test("duplicate Codex beforeAgent prompt stores one user message", async () => {
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     testEnv(projectDir, {
         NAMS_API_KEY: "key",
+        NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
     const adapter = new CodexAdapter();
@@ -250,6 +254,7 @@ test("missing Codex NAMS_API_KEY returns allow output and minimal diagnostic log
     assert.equal(diagnostics.length, 1);
     assert.deepEqual(diagnostics[0].payload.configSources, {
       apiKey: "missing",
+      workspaceId: "missing",
       baseUrl: "default",
     });
     assert.doesNotMatch(log, /Bearer|key/);
@@ -286,6 +291,7 @@ test("Codex beforeAgent logs invalid config diagnostics without raw JSON content
         message: "NAMS config invalid",
         configSources: {
           apiKey: "missing",
+          workspaceId: "missing",
           baseUrl: "default",
         },
         errorSource: "project:.nams/config.json",
@@ -310,6 +316,7 @@ test("Codex recall failure still stores prompt and can return entity search cont
       .message();
     testEnv(projectDir, {
         NAMS_API_KEY: "key",
+        NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
     const adapter = new CodexAdapter();
@@ -357,6 +364,7 @@ test("Codex entity search failure still stores prompt and can return conversatio
       .message();
     testEnv(projectDir, {
         NAMS_API_KEY: "key",
+        NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
     const adapter = new CodexAdapter();
@@ -406,6 +414,7 @@ test("Codex message failure returns recalled additional context and fails open",
       .message({ error: "message write unavailable" }, 503);
     testEnv(projectDir, {
         NAMS_API_KEY: "key",
+        NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
     const adapter = new CodexAdapter();
@@ -438,6 +447,7 @@ test("stores Codex Stop last_assistant_message as an assistant message", async (
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     testEnv(projectDir, {
         NAMS_API_KEY: "key",
+        NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
     const adapter = new CodexAdapter();
@@ -500,6 +510,7 @@ test("stores Codex transcript assistant message when last_assistant_message is a
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     testEnv(projectDir, {
         NAMS_API_KEY: "key",
+        NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
     const adapter = new CodexAdapter();
@@ -544,6 +555,7 @@ test("repeated Codex Stop last_assistant_message with same turn_id stores once",
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     testEnv(projectDir, {
         NAMS_API_KEY: "key",
+        NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
     const adapter = new CodexAdapter();
@@ -589,6 +601,7 @@ test("Codex Stop last_assistant_message with same content and different turn_id 
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     testEnv(projectDir, {
         NAMS_API_KEY: "key",
+        NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
     const adapter = new CodexAdapter();
@@ -662,6 +675,7 @@ test("Codex transcript fallback does not duplicate an entry id", async () => {
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     testEnv(projectDir, {
         NAMS_API_KEY: "key",
+        NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
     const adapter = new CodexAdapter();
@@ -723,6 +737,7 @@ test("Codex transcript fallback dedupes same assistant content when id changes",
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     testEnv(projectDir, {
         NAMS_API_KEY: "key",
+        NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
     const adapter = new CodexAdapter();
@@ -777,6 +792,7 @@ test("Codex transcript fallback does not duplicate a direct assistant response",
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     testEnv(projectDir, {
         NAMS_API_KEY: "key",
+        NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
     const adapter = new CodexAdapter();
@@ -847,6 +863,7 @@ test("Codex transcript fallback without entry id still dedupes by assistant cont
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     testEnv(projectDir, {
         NAMS_API_KEY: "key",
+        NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
     const adapter = new CodexAdapter();
@@ -921,6 +938,7 @@ test("records Codex transcript web search calls during AfterAgent", async () => 
     await seedCodexConversation(projectDir);
     testEnv(projectDir, {
         NAMS_API_KEY: "key",
+        NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
     const adapter = new CodexAdapter();
@@ -968,6 +986,7 @@ test("Codex afterAgent with no conversationId returns allow output and does not 
     const nams = createNamsFetchMock().all({ error: "unexpected NAMS call" }, 500);
     testEnv(projectDir, {
         NAMS_API_KEY: "key",
+        NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
     const adapter = new CodexAdapter();
@@ -1030,6 +1049,7 @@ test("Codex afterAgent missing config and failed NAMS calls allow and log minima
     assert.equal(missingConfigDiagnostics.length, 1);
     assert.deepEqual(missingConfigDiagnostics[0].payload.configSources, {
       apiKey: "missing",
+      workspaceId: "missing",
       baseUrl: "default",
     });
     assert.doesNotMatch(missingConfigLog, /Authorization|Bearer|key/);
@@ -1046,6 +1066,7 @@ test("Codex afterAgent missing config and failed NAMS calls allow and log minima
     const nams = createNamsFetchMock().message({ error: "assistant write unavailable" }, 503);
     testEnv(namsFailureDir, {
       NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
       NAMS_BASE_URL: "https://memory.example.test",
     });
     const namsFailureResult = await new CodexAdapter().afterAgent({
@@ -1081,6 +1102,7 @@ test("records Codex PostToolUse as reasoning step and tool call", async () => {
     await seedCodexConversation(projectDir);
     testEnv(projectDir, {
         NAMS_API_KEY: "test-api-key",
+        NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
     const adapter = new CodexAdapter();
@@ -1137,6 +1159,7 @@ test("Codex afterTool sanitizes output-like fields from tool input", async () =>
     await seedCodexConversation(projectDir);
     testEnv(projectDir, {
         NAMS_API_KEY: "key",
+        NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
     const adapter = new CodexAdapter();
@@ -1181,6 +1204,7 @@ test("repeated Codex afterTool with same tool_use_id records one tool call", asy
     await seedCodexConversation(projectDir);
     testEnv(projectDir, {
         NAMS_API_KEY: "key",
+        NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
     const adapter = new CodexAdapter();
@@ -1216,6 +1240,7 @@ test("Codex afterTool without tool_use_id dedupes by fallback hash", async () =>
     await seedCodexConversation(projectDir);
     testEnv(projectDir, {
         NAMS_API_KEY: "key",
+        NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
     const adapter = new CodexAdapter();
@@ -1251,6 +1276,7 @@ test("Codex afterTool records distinct tool_use_id values with same input", asyn
     await seedCodexConversation(projectDir);
     testEnv(projectDir, {
         NAMS_API_KEY: "key",
+        NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
     const adapter = new CodexAdapter();
@@ -1321,6 +1347,7 @@ test("Codex afterTool missing config and failed NAMS calls allow and log minimal
     assert.equal(missingConfigDiagnostics.length, 1);
     assert.deepEqual(missingConfigDiagnostics[0].payload.configSources, {
       apiKey: "missing",
+      workspaceId: "missing",
       baseUrl: "default",
     });
     assert.doesNotMatch(missingConfigLog, /Authorization|Bearer|test-api-key/);
@@ -1328,6 +1355,7 @@ test("Codex afterTool missing config and failed NAMS calls allow and log minimal
     const nams = createNamsFetchMock().reasoningStep({ error: "reasoning step unavailable" }, 503);
     testEnv(namsFailureDir, {
         NAMS_API_KEY: "key",
+        NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
     const namsFailureResult = await new CodexAdapter().afterTool({
@@ -1367,17 +1395,20 @@ test("Codex afterTool without conversationId or toolName saves state and does no
     await seedCodexConversation(noToolNameDir);
     testEnv(noConversationDir, {
         NAMS_API_KEY: "key",
+        NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
     const noConversationAdapter = new CodexAdapter();
     testEnv(noToolNameDir, {
         NAMS_API_KEY: "key",
+        NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
     const noToolNameAdapter = new CodexAdapter();
 
     testEnv(noConversationDir, {
       NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
       NAMS_BASE_URL: "https://memory.example.test",
     });
     const noConversationResult = await noConversationAdapter.afterTool({
@@ -1395,6 +1426,7 @@ test("Codex afterTool without conversationId or toolName saves state and does no
     });
     testEnv(noToolNameDir, {
       NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
       NAMS_BASE_URL: "https://memory.example.test",
     });
     const noToolNameResult = await noToolNameAdapter.afterTool({

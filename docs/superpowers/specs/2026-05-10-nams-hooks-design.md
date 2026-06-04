@@ -251,6 +251,7 @@ Persistent configuration is JSON plus environment-backed operational overrides. 
 Supported JSON keys:
 
 - `apiKey`: NAMS workspace API key, sent as `Authorization: Bearer <key>`.
+- `workspaceId`: NAMS workspace identifier for memory requests.
 - `baseUrl`: optional NAMS base URL, defaulting to `https://memory.neo4jlabs.com`.
 
 Example:
@@ -258,6 +259,7 @@ Example:
 ```json
 {
   "apiKey": "nams-api-key",
+  "workspaceId": "5e5c0535-8d85-491c-b92c-33be13659998",
   "baseUrl": "https://memory.neo4jlabs.com"
 }
 ```
@@ -270,17 +272,19 @@ Supported Claude plugin user configuration exports:
 Supported final environment overrides:
 
 - `NAMS_API_KEY`: overrides `apiKey`.
+- `NAMS_WORKSPACE_ID`: overrides `workspaceId`.
 - `NAMS_BASE_URL`: overrides `baseUrl`.
 
 Required:
 
-- `apiKey`, from JSON config, Claude plugin user configuration, or `NAMS_API_KEY`.
+- `apiKey`, from either JSON config or `NAMS_API_KEY`.
+- `workspaceId`, from either JSON config or `NAMS_WORKSPACE_ID`.
 
 Optional:
 
 - `baseUrl`, from JSON config, Claude plugin user configuration, or `NAMS_BASE_URL`.
 
-Environment overrides are limited to `CLAUDE_PLUGIN_OPTION_NAMS_API_KEY`, `CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL`, `NAMS_API_KEY`, and `NAMS_BASE_URL` unless a future design explicitly adds more. The runtime records a sanitized config-source diagnostic in the session log, for example `apiKey: "env:NAMS_API_KEY"`, `apiKey: "env:CLAUDE_PLUGIN_OPTION_NAMS_API_KEY"`, `baseUrl: "project:.nams/config.json"`, or `baseUrl: "default"`. It never logs secret values or full config objects.
+Environment overrides are limited to `CLAUDE_PLUGIN_OPTION_NAMS_API_KEY`, `CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL`, `NAMS_API_KEY`, `NAMS_WORKSPACE_ID` and `NAMS_BASE_URL` unless a future design explicitly adds more. The runtime records sanitized `configSources` diagnostics in the session log, for example `apiKey: "env:NAMS_API_KEY"`, `workspaceId: "env:NAMS_WORKSPACE_ID"`, `baseUrl: "project:.nams/config.json"`, or `baseUrl: "default"`. It never logs secret values or full config objects.
 
 `.env` files are not part of the target configuration model. Secrets remain outside committed harness configs. The installer ensures project `.nams/config.json` stays local and gitignored when it creates or modifies a project override.
 
@@ -491,7 +495,7 @@ The installer:
 - ensures project `.nams/config.json` is gitignored
 - writes or merges harness hook configs
 - backs up existing config files before changing them
-- prints next steps for setting `apiKey` or `NAMS_API_KEY`
+- prints next steps for setting `apiKey`, `workspaceId`, `NAMS_API_KEY`, or `NAMS_WORKSPACE_ID`
 
 Future installer commands may include:
 
@@ -591,7 +595,7 @@ Approved decisions from brainstorming:
 - User-level runtime state and logs under `~/.nams/`.
 - Project-level installs for Codex, Claude, and OpenCode; Gemini extension distribution for v1.
 - Plain Node.js with built-in modules only.
-- JSON configuration with global defaults in `~/.nams/config.json`, optional project overrides in `.nams/config.json`, Claude plugin user configuration exports, and final environment overrides from `NAMS_API_KEY` and `NAMS_BASE_URL`.
+- JSON configuration with global defaults in `~/.nams/config.json`, optional project overrides in `.nams/config.json`, and final environment overrides from `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL`.
 - Deterministic REST writes from hook runner, not MCP-driven writes.
 - Persist user messages and assistant responses as the core memory stream.
 - Store assistant responses in v1 where harnesses expose them cleanly.

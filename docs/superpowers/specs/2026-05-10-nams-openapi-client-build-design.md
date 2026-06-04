@@ -63,6 +63,7 @@ import { NamsClient } from "../src/generated/nams-client.js";
 
 const client = new NamsClient({
   apiKey: "<NAMS_API_KEY>",
+  workspaceId: "<NAMS_WORKSPACE_ID>",
   baseUrl: "https://memory.neo4jlabs.com",
 });
 
@@ -205,6 +206,8 @@ The generated client exposes:
 export interface NamsClientOptions {
   baseUrl?: string;
   apiKey: string;
+  workspaceId: string;
+  defaultHeaders?: Record<string, string>;
   fetch?: typeof fetch;
   onRequest?: (event: NamsRequestEvent) => void | Promise<void>;
 }
@@ -255,13 +258,17 @@ export class NamsClient {
 Requests use:
 
 - `Authorization: Bearer <NAMS_API_KEY>`
+- `X-Workspace-Id: <workspaceId>`, resolved from JSON config or `NAMS_WORKSPACE_ID`
 - `Accept: application/json`
 - `Content-Type: application/json` only when a request body is present
 - `NAMS_BASE_URL` from runtime configuration, defaulting to `https://memory.neo4jlabs.com`
+- optional provenance headers from `defaultHeaders`; these must not override `Authorization`, `X-Workspace-Id`, `Accept`, or JSON `Content-Type`
 
 The generated client should prefer global `fetch`. The package engine remains responsible for selecting a Node version where `fetch` is available.
 
-Each generated request method passes its stable operation name into the shared request helper. The optional `onRequest` callback receives request and response details for observability. Request headers omit `Authorization` so API keys are not logged. Request bodies, response headers, response bodies, and concrete request URLs are included for debugging. Network failures include the request details but no raw exception text. Callback failures are ignored so observability cannot block hook execution. NAMS request observability remains always-on at the runtime layer for now; `NAMS_LOG_LEVEL` is tracked as follow-up work.
+Each generated request method passes its stable operation name into the shared request helper. The optional `onRequest` callback receives request and response details for observability. Request headers omit `Authorization` so API keys are not logged; `X-Workspace-Id` is retained in sanitized request diagnostics as a routing identifier. Request bodies, response headers, response bodies, and concrete request URLs are included for debugging. Network failures include the request details but no raw exception text. Callback failures are ignored so observability cannot block hook execution. NAMS request observability remains always-on at the runtime layer for now; `NAMS_LOG_LEVEL` is tracked as follow-up work.
+
+The workspace configuration amendment in `docs/superpowers/specs/2026-06-03-nams-workspace-id-design.md` supersedes earlier client examples that only showed `apiKey` and `baseUrl`. Runtime OpenAPI behavior is unchanged: the workspace header is emitted by generated client code and is not discovered from OpenAPI while hooks run.
 
 ## Contract Tests
 
@@ -276,7 +283,7 @@ They must verify:
 - generated client source does not import or read `docs/nams-openapi.json`
 - mocked successful responses are parsed consistently
 - mocked error responses produce stable `NamsClientError` objects
-- `Authorization` and JSON headers are shaped correctly
+- `Authorization`, `X-Workspace-Id`, and JSON headers are shaped correctly
 - `onRequest` receives request and response details on success and HTTP errors
 - `onRequest` receives request details without raw exception text on network failures
 - `onRequest` omits `Authorization` from logged request headers

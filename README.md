@@ -36,7 +36,7 @@ For installation steps, see [INSTALL.md](INSTALL.md).
 ### Prerequisites
 
 - Node.js (v20+)
-- A NAMS API Key
+- A NAMS API key and workspace ID
 
 ### Build and Test
 
@@ -59,7 +59,7 @@ npm run openapi:test
 
 ### Runtime Configuration And Storage
 
-Runtime configuration is JSON-first: `~/.nams/config.json`, optional project `.nams/config.json`, Claude plugin options when installed through Claude Code, then final `NAMS_API_KEY` and `NAMS_BASE_URL` environment overrides. Runtime state and logs are user-local under `~/.nams/state/<platform>/` and `~/.nams/logs/<platform>/`.
+Runtime configuration is JSON-first: `~/.nams/config.json`, optional project `.nams/config.json`, then final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. `apiKey` and `workspaceId` are required for NAMS requests. Runtime state and logs are user-local under `~/.nams/state/<platform>/` and `~/.nams/logs/<platform>/`.
 
 Gemini and OpenCode write session-scoped JSONL diagnostics. Events for one session are kept in a single file named like:
 

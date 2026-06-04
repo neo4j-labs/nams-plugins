@@ -18,7 +18,7 @@ interface TestEnv extends TestEnvOverrides {
 function testEnv(projectDir: string, overrides: TestEnvOverrides = {}): TestEnv {
   const homeDir = path.join(projectDir, "home");
   const env = { HOME: homeDir, USERPROFILE: homeDir, ...overrides };
-  for (const key of ["HOME", "USERPROFILE", "NAMS_API_KEY", "NAMS_BASE_URL", "CLAUDE_PLUGIN_OPTION_NAMS_API_KEY", "CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL"]) {
+  for (const key of ["HOME", "USERPROFILE", "NAMS_API_KEY", "NAMS_WORKSPACE_ID", "NAMS_BASE_URL", "CLAUDE_PLUGIN_OPTION_NAMS_API_KEY", "CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL"]) {
     delete process.env[key];
   }
   Object.assign(process.env, env);
@@ -35,6 +35,7 @@ test("initializes Claude session state on SessionStart without creating a conver
     const nams = createNamsFetchMock().all({ error: "unexpected NAMS call" }, 500);
     const env = testEnv(projectDir, {
       NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
       NAMS_BASE_URL: "https://memory.example.test",
     });
     const adapter = new ClaudeAdapter();
@@ -88,6 +89,7 @@ test("creates Claude conversation, recalls memory, injects additionalContext, an
       .message();
     const env = testEnv(projectDir, {
       NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
       NAMS_BASE_URL: "https://memory.example.test",
     });
     const adapter = new ClaudeAdapter();
@@ -129,6 +131,7 @@ test("creates Claude conversation, recalls memory, injects additionalContext, an
     assert.equal(configDiagnostics.length, 1);
     assert.deepEqual(configDiagnostics[0].payload.configSources, {
       apiKey: "env:NAMS_API_KEY",
+      workspaceId: "env:NAMS_WORKSPACE_ID",
       baseUrl: "env:NAMS_BASE_URL",
     });
   } finally {
@@ -143,6 +146,7 @@ test("does not store duplicate Claude UserPromptSubmit prompt twice through Befo
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     testEnv(projectDir, {
       NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
       NAMS_BASE_URL: "https://memory.example.test",
     });
     const adapter = new ClaudeAdapter();
@@ -173,6 +177,7 @@ test("stores Claude Stop last_assistant_message as an assistant message through 
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     testEnv(projectDir, {
       NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
       NAMS_BASE_URL: "https://memory.example.test",
     });
     const adapter = new ClaudeAdapter();
@@ -217,6 +222,7 @@ test("does not duplicate Claude Stop assistant messages through AfterAgent", asy
     const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
     testEnv(projectDir, {
       NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
       NAMS_BASE_URL: "https://memory.example.test",
     });
     const adapter = new ClaudeAdapter();
@@ -283,6 +289,7 @@ test("continues when Claude NAMS apiKey is missing and logs sanitized config dia
     assert.equal(diagnostics.length, 1);
     assert.deepEqual(diagnostics[0].payload.configSources, {
       apiKey: "missing",
+      workspaceId: "missing",
       baseUrl: "default",
     });
     assert.doesNotMatch(log, /Authorization|Bearer|secret|NAMS_API_KEY/);
@@ -326,6 +333,7 @@ test("continues when Claude project config cannot be read and logs sanitized con
       message: "NAMS config invalid",
       configSources: {
         apiKey: "missing",
+        workspaceId: "missing",
         baseUrl: "default",
       },
       errorSource: "project:.nams/config.json",
@@ -352,6 +360,7 @@ test("Claude BeforeAgent uses entity search context when conversation recall fai
       .message();
     testEnv(projectDir, {
       NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
       NAMS_BASE_URL: "https://memory.example.test",
     });
     const adapter = new ClaudeAdapter();
@@ -394,6 +403,7 @@ test("records Claude PostToolUse as reasoning step and tool call", async () => {
       .toolCall();
     testEnv(projectDir, {
       NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
       NAMS_BASE_URL: "https://memory.example.test",
     });
     const adapter = new ClaudeAdapter();
@@ -467,6 +477,7 @@ test("does not duplicate Claude PostToolUse records for the same tool_use_id", a
       .toolCall();
     testEnv(projectDir, {
       NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
       NAMS_BASE_URL: "https://memory.example.test",
     });
     const adapter = new ClaudeAdapter();
@@ -521,6 +532,7 @@ test("records Claude PostToolUse with tool_use_id after matching no-id fallback 
       .toolCall();
     testEnv(projectDir, {
       NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
       NAMS_BASE_URL: "https://memory.example.test",
     });
     const adapter = new ClaudeAdapter();
