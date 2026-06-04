@@ -1,7 +1,11 @@
 name: Release
 
 on:
-  push:
+  workflow_run:
+    workflows:
+      - Build
+    types:
+      - completed
     branches:
       - devel
   workflow_dispatch:
@@ -17,13 +21,16 @@ jobs:
   publish:
     name: Publish generated release branch
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/devel'
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/devel') ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'devel')
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -39,6 +46,8 @@ jobs:
 
       - name: Publish dist to release branch
         shell: bash
+        env:
+          RELEASE_SOURCE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
           set -euo pipefail
 
@@ -71,7 +80,7 @@ jobs:
           fi
 
           git commit \
-            -m "chore: publish release artifacts from ${GITHUB_SHA}" \
+            -m "chore: publish release artifacts from ${RELEASE_SOURCE_SHA}" \
             -m "Co-authored-by: Codex <codex@openai.com>"
           git push origin HEAD:release
           publish_release_tag
