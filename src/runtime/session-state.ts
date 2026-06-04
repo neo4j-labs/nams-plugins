@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
+import path from "node:path";
 import type { Platform } from "../interfaces.js";
 import { sha256 } from "./hashing.js";
 import { writePrivateFile } from "./permissions.js";
@@ -45,7 +46,10 @@ export async function loadSessionState(
   platform: Platform,
   sessionKey: string,
 ): Promise<SessionState | null> {
-  const statePath = RuntimeEnvironment.fromProcess().sessionStatePath(platform, sessionKey);
+  const statePath = await findSessionStatePath(RuntimeEnvironment.fromProcess(), platform, sessionKey);
+  if (statePath === undefined) {
+    return null;
+  }
   try {
     const state = JSON.parse(await readFile(statePath, "utf8")) as SessionState & {
       lastMemorySearchAt?: string;
@@ -68,7 +72,7 @@ export async function saveSessionState(
   sessionKey: string,
   state: SessionState,
 ): Promise<void> {
-  const statePath = RuntimeEnvironment.fromProcess().sessionStatePath(platform, sessionKey);
+  const statePath = RuntimeEnvironment.fromProcess().sessionStatePath(platform, sessionKey, state.createdAt);
   await writePrivateFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
 }
 
@@ -86,4 +90,28 @@ export function createInitialSessionState(input: ResolveSessionKeyInput, now = n
     seenToolCallIds: [],
     reasoningStepIdsByHash: {},
   };
+}
+
+async function findSessionStatePath(
+  environment: RuntimeEnvironment,
+  platform: Platform,
+  sessionKey: string,
+): Promise<string | undefined> {
+  const stateDirectory = environment.sessionStateDirectory(platform);
+  const suffix = `--${sha256(sessionKey)}.json`;
+  let filenames: string[];
+  try {
+    filenames = await readdir(stateDirectory);
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return undefined;
+    }
+    throw error;
+  }
+
+  const matchingFilename = filenames
+    .filter((filename) => filename.startsWith("session-") && filename.endsWith(suffix))
+    .sort()
+    .at(-1);
+  return matchingFilename === undefined ? undefined : path.join(stateDirectory, matchingFilename);
 }

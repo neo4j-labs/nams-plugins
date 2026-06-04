@@ -46,12 +46,28 @@ test("builds config, state, and log paths under NAMS home", async () => {
     assert.equal(runtimeEnvironment.platformLogDirectory("gemini"), path.join(homeDir, ".nams", "logs", "gemini"));
     assert.equal(platformLogDirectory("gemini", runtimeEnvironment), path.join(homeDir, ".nams", "logs", "gemini"));
     assert.equal(
-      runtimeEnvironment.sessionStatePath("gemini", "session/1"),
-      path.join(homeDir, ".nams", "state", "gemini", `${sha256("session/1")}.json`),
+      runtimeEnvironment.sessionStateDirectory("gemini"),
+      path.join(homeDir, ".nams", "state", "gemini"),
     );
     assert.equal(
-      sessionStatePath("gemini", "session/1", runtimeEnvironment),
-      path.join(homeDir, ".nams", "state", "gemini", `${sha256("session/1")}.json`),
+      runtimeEnvironment.sessionStatePath("gemini", "session/1", "2026-05-11T12:00:01.234Z"),
+      path.join(
+        homeDir,
+        ".nams",
+        "state",
+        "gemini",
+        `session-2026-05-11T120001.234Z--${sha256("session/1")}.json`,
+      ),
+    );
+    assert.equal(
+      sessionStatePath("gemini", "session/1", "2026-05-11T12:00:01.234Z", runtimeEnvironment),
+      path.join(
+        homeDir,
+        ".nams",
+        "state",
+        "gemini",
+        `session-2026-05-11T120001.234Z--${sha256("session/1")}.json`,
+      ),
     );
   } finally {
     await rm(homeDir, { recursive: true, force: true });

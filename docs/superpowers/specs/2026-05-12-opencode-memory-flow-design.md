@@ -166,7 +166,7 @@ No OpenCode payload field should be read outside the OpenCode adapter.
 
 ### Session State
 
-Reuse `~/.nams/state/<platform>/<session-hash>.json` with platform `opencode`.
+Reuse `~/.nams/state/<platform>/session-<created-at>--<session-hash>.json` with platform `opencode`.
 
 OpenCode session key selection:
 
