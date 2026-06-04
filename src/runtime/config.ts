@@ -8,16 +8,26 @@ export interface NamsRuntimeConfig {
   baseUrl?: string;
 }
 
-export type ConfigSource = "missing" | "global:~/.nams/config.json" | "project:.nams/config.json" | "env:NAMS_API_KEY";
+type JsonConfigSource = "global:~/.nams/config.json" | "project:.nams/config.json";
+
+export type PlatformConfigSource = `platform:${string}:${string}`;
+
+export type ConfigSource =
+  | "missing"
+  | JsonConfigSource
+  | PlatformConfigSource
+  | "env:NAMS_API_KEY";
+
 export type WorkspaceIdSource =
   | "missing"
-  | "global:~/.nams/config.json"
-  | "project:.nams/config.json"
+  | JsonConfigSource
+  | PlatformConfigSource
   | "env:NAMS_WORKSPACE_ID";
+
 export type BaseUrlSource =
   | "default"
-  | "global:~/.nams/config.json"
-  | "project:.nams/config.json"
+  | JsonConfigSource
+  | PlatformConfigSource
   | "env:NAMS_BASE_URL";
 
 export interface NamsConfigSources {
@@ -25,6 +35,19 @@ export interface NamsConfigSources {
   workspaceId: WorkspaceIdSource;
   baseUrl: BaseUrlSource;
 }
+
+export interface DiscoveredNamsConfigValue {
+  value: string;
+  source: PlatformConfigSource;
+}
+
+export interface DiscoveredNamsConfig {
+  apiKey?: DiscoveredNamsConfigValue;
+  workspaceId?: DiscoveredNamsConfigValue;
+  baseUrl?: DiscoveredNamsConfigValue;
+}
+
+export type NamsConfigDiscovery = (runtimeEnvironment: RuntimeEnvironment) => DiscoveredNamsConfig | Promise<DiscoveredNamsConfig>;
 
 export type NamsConfigLoadResult =
   | {
@@ -75,7 +98,10 @@ export function configDiagnosticPayload(result: NamsConfigLoadResult): Record<st
   };
 }
 
-export async function loadNamsConfig(projectDirectory: string): Promise<NamsConfigLoadResult> {
+export async function loadNamsConfig(
+  projectDirectory: string,
+  discoverConfig?: NamsConfigDiscovery,
+): Promise<NamsConfigLoadResult> {
   const runtimeEnvironment = RuntimeEnvironment.fromProcess();
   const accumulated: Partial<NamsRuntimeConfig> = {};
   const sources: NamsConfigSources = {
@@ -99,6 +125,9 @@ export async function loadNamsConfig(projectDirectory: string): Promise<NamsConf
   }
   applyJsonConfig(accumulated, sources, projectResult.config, "project:.nams/config.json");
 
+  if (discoverConfig !== undefined) {
+    applyDiscoveredConfig(accumulated, sources, await discoverConfig(runtimeEnvironment));
+  }
   applyEnvironmentOverrides(accumulated, sources, runtimeEnvironment);
 
   if (accumulated.apiKey === undefined) {
@@ -126,8 +155,6 @@ export async function loadNamsConfig(projectDirectory: string): Promise<NamsConf
     sources,
   };
 }
-
-type JsonConfigSource = "global:~/.nams/config.json" | "project:.nams/config.json";
 
 type JsonConfigReadResult =
   | {
@@ -224,6 +251,37 @@ function applyJsonConfig(
   if (config.baseUrl !== undefined) {
     accumulated.baseUrl = config.baseUrl;
     sources.baseUrl = source;
+  }
+}
+
+function applyDiscoveredConfig(
+  accumulated: Partial<NamsRuntimeConfig>,
+  sources: NamsConfigSources,
+  config: DiscoveredNamsConfig,
+): void {
+  const discoveredApiKey = config.apiKey;
+  if (discoveredApiKey !== undefined) {
+    const apiKey = nonBlankString(discoveredApiKey.value);
+    if (apiKey !== undefined) {
+      accumulated.apiKey = apiKey;
+      sources.apiKey = discoveredApiKey.source;
+    }
+  }
+  const discoveredWorkspaceId = config.workspaceId;
+  if (discoveredWorkspaceId !== undefined) {
+    const workspaceId = nonBlankString(discoveredWorkspaceId.value);
+    if (workspaceId !== undefined) {
+      accumulated.workspaceId = workspaceId;
+      sources.workspaceId = discoveredWorkspaceId.source;
+    }
+  }
+  const discoveredBaseUrl = config.baseUrl;
+  if (discoveredBaseUrl !== undefined) {
+    const baseUrl = nonBlankString(discoveredBaseUrl.value);
+    if (baseUrl !== undefined) {
+      accumulated.baseUrl = baseUrl;
+      sources.baseUrl = discoveredBaseUrl.source;
+    }
   }
 }
 

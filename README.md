@@ -9,7 +9,7 @@ It ensures deterministic memory persistence and context recall across different 
 - **Deterministic Memory**: Automatically persists user and assistant messages to NAMS.
 - **Memory Recall**: Searches and injects relevant past context before the agent responds.
 - **Tool Logging**: Records tool-call metadata (name, input, status, duration) for observability.
-- **Platform Aware**: Full memory-flow support for **Gemini CLI** and **OpenCode**, with Claude Code and Codex adapter skeletons kept behind the same clean platform boundary.
+- **Platform Aware**: Memory-flow support for **Gemini CLI**, **Claude Code**, **Codex**, and **OpenCode**, with platform-specific behavior kept behind clean adapter boundaries.
 - **Zero Runtime Dependencies**: The hook runtime and generated distribution use only Node.js built-in modules, so target projects do not need extra package installs for transitive runtime libraries.
 - **JSON-First Runtime Storage**: Uses JSON configuration with user-local state and logs.
 
@@ -50,13 +50,16 @@ npm test
 # Run OpenAPI freshness check, build, and tests
 npm run check
 
+# Build and verify the generated release package, including Claude plugin files
+npm run package:check
+
 # Regenerate and build the OpenAPI client, then run OpenAPI client tests directly
 npm run openapi:test
 ```
 
 ### Runtime Configuration And Storage
 
-Runtime configuration is JSON-first: `~/.nams/config.json`, optional project `.nams/config.json`, then final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. `apiKey` and `workspaceId` are required for NAMS requests. Runtime state and logs are user-local under `~/.nams/state/<platform>/` and `~/.nams/logs/<platform>/`.
+Runtime configuration is JSON-first: `~/.nams/config.json`, optional project `.nams/config.json`, optional platform discovery such as Claude plugin user configuration, then final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. `apiKey` and `workspaceId` are required for NAMS requests. Runtime state and logs are user-local under `~/.nams/state/<platform>/` and `~/.nams/logs/<platform>/`.
 
 Gemini and OpenCode write session-scoped JSONL diagnostics. Events for one session are kept in a single file named like:
 

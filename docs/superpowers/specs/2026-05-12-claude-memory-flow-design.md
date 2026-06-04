@@ -37,11 +37,11 @@ The branch already has complete Gemini, Codex, and OpenCode memory flows:
 - `templates/gemini/hooks/hooks.json` wires Gemini `SessionStart`, `BeforeAgent`, `AfterAgent`, and `AfterTool`.
 - `templates/codex/hooks.json` and `templates/opencode/plugins/nams-hooks.js` translate native platform surfaces into the shared NAMS events.
 
-Configuration now loads from `~/.nams/config.json`, then `<project>/.nams/config.json`, then `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. Under the amendment in `docs/superpowers/specs/2026-06-03-nams-workspace-id-design.md`, `apiKey` and `workspaceId` are required for NAMS requests and the generated client sends `X-Workspace-Id` on every request. Loading returns a structured result, so adapters log sanitized configuration diagnostics with source metadata, including the `workspaceId` source, instead of throwing or inspecting `.env` files. Runtime state and logs are stored under `~/.nams/state/<platform>/` and `~/.nams/logs/<platform>/`. Readable global and project NAMS config files are tightened to `0600` when loaded; Claude-created runtime state and log files are written as `0600`, with runtime directories created as `0700`.
+Configuration now loads from `~/.nams/config.json`, then `<project>/.nams/config.json`, then optional platform discovery, then final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. Claude's platform discovery reads Claude plugin user configuration exports; platforms without user configuration provide no discovered values. Under the amendment in `docs/superpowers/specs/2026-06-03-nams-workspace-id-design.md`, `apiKey` and `workspaceId` are required for NAMS requests and the generated client sends `X-Workspace-Id` on every request. Loading returns a structured result, so adapters log sanitized configuration diagnostics with source metadata, including the `workspaceId` source, instead of throwing or inspecting `.env` files. Runtime state and logs are stored under `~/.nams/state/<platform>/` and `~/.nams/logs/<platform>/`. Readable global and project NAMS config files are tightened to `0600` when loaded; Claude-created runtime state and log files are written as `0600`, with runtime directories created as `0700`.
 
 Tests are authored in TypeScript and run with Node's built-in `node:test` through `tsx`. `npm run check` now runs OpenAPI generation, TypeScript build, test type-checking through `tsconfig.test.json`, and the full TypeScript test suite.
 
-Claude currently has a complete allow-only walking skeleton in `src/platforms/claude/index.ts`. It implements `startSession`, `beforeAgent`, `afterAgent`, and `afterTool`, logs raw payloads through the shared platform logger, and returns allow output. `templates/claude/settings.local.json` already translates Claude `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `Stop` to the shared NAMS events, with TypeScript coverage in `test/claude-template.test.ts` and `test/cli-session-start.test.ts`.
+Claude currently has a complete allow-only walking skeleton in `src/platforms/claude/index.ts`. It implements `startSession`, `beforeAgent`, `afterAgent`, and `afterTool`, logs raw payloads through the shared platform logger, and returns allow output. `templates/claude/.claude/settings.local.json` already translates Claude `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `Stop` to the shared NAMS events, with TypeScript coverage in `test/claude-template.test.ts` and `test/cli-session-start.test.ts`.
 
 ## Goals
 
@@ -328,7 +328,7 @@ The adapter must not log raw thrown error text because errors can contain secret
 
 ## Template Wiring
 
-`templates/claude/settings.local.json` already contains the complete native-hook to NAMS-event walking-skeleton wiring:
+`templates/claude/.claude/settings.local.json` already contains the complete native-hook to NAMS-event walking-skeleton wiring:
 
 - Keep `SessionStart` matcher `startup|resume|clear|compact`.
 - Claude `UserPromptSubmit` is translated to NAMS `BeforeAgent`.

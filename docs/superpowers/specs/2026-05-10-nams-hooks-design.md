@@ -6,7 +6,7 @@ Repository: nams-hooks
 
 ## Summary
 
-`nams-hooks` is a standalone Node.js integration layer that connects local agent harness hooks to the Neo4j Agent Memory Service (NAMS) REST API. Its hook runtime and generated release artifacts have zero runtime npm dependencies and use Node.js built-ins only, while the source repository may use dev-only build, generation, and test tooling. The first iteration supports macOS for Codex, Claude Code, Gemini CLI, and OpenCode. Codex, Claude, and OpenCode use project-level installs; Gemini uses extension distribution. Runtime configuration, state, and logs live under user-level `~/.nams/`, with optional project overrides in `.nams/config.json`.
+`nams-hooks` is a standalone Node.js integration layer that connects local agent harness hooks to the Neo4j Agent Memory Service (NAMS) REST API. Its hook runtime and generated release artifacts have zero runtime npm dependencies and use Node.js built-ins only, while the source repository may use dev-only build, generation, and test tooling. The first iteration supports macOS for Codex, Claude Code, Gemini CLI, and OpenCode. Gemini uses extension distribution. Claude Code can use a generated Claude plugin marketplace artifact, with project-level settings as a fallback path. Codex and OpenCode use project-level installs. Runtime configuration, state, and logs live under user-level `~/.nams/`, with optional project overrides in `.nams/config.json`.
 
 The hook runner owns deterministic memory persistence. Agents receive recalled context, but they are not responsible for deciding whether to write memory. The runner stores conversation messages, recalls relevant memory before agent work, and records limited tool metadata through NAMS REST endpoints.
 
@@ -16,6 +16,7 @@ The hook runner owns deterministic memory persistence. Agents receive recalled c
 - NAMS OpenAPI contract: `https://memory.neo4jlabs.com/openapi.json`
 - Local OpenAPI copy: `docs/nams-openapi.json`
 - Claude Code hooks reference: `https://code.claude.com/docs/en/hooks`
+- Claude Code plugin marketplace reference: `https://code.claude.com/docs/en/plugin-marketplaces`
 - Gemini CLI hooks reference: `https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/writing-hooks.md`
 - Codex hooks behavior note: `https://github.com/openai/codex/issues/16486`
 - OpenCode plugin reference: `https://opencode.ai/docs/plugins`
@@ -82,7 +83,16 @@ nams-hooks/
   install.mjs
   templates/
     claude/
-      settings.local.json
+      .claude-plugin/
+        marketplace.json
+      plugins/
+        nams-hooks/
+          .claude-plugin/
+            plugin.json
+          hooks/
+            hooks.json
+      .claude/
+        settings.local.json
     codex/
       hooks.json
     opencode/
@@ -149,10 +159,12 @@ Branch model:
 - `devel`: source branch containing TypeScript source, templates, docs, the pinned OpenAPI spec, the custom generator, and committed generated TypeScript client source.
 - `master`: generated release/distribution branch containing runnable JavaScript and Gemini extension root files.
 
-On `devel`, `dist/` is generated and ignored. `npm run dist` creates a Gemini-linkable extension tree in `dist/`:
+On `devel`, `dist/` is generated and ignored. `npm run dist` creates a Gemini-linkable extension tree and a Claude Code plugin marketplace tree in `dist/`:
 
 ```text
 dist/
+  .claude-plugin/
+    marketplace.json
   gemini-extension.json
   hooks/
     hooks.json
@@ -162,6 +174,18 @@ dist/
     runtime/
     generated/
       nams-client.js
+  plugins/
+    nams-hooks/
+      .claude-plugin/
+        plugin.json
+      hooks/
+        hooks.json
+      bin/
+        cli.js
+        platforms/
+        runtime/
+        generated/
+          nams-client.js
   docs/
     nams-openapi.json
   package.json
@@ -186,7 +210,14 @@ Gemini hook templates live under `templates/gemini/` on `devel`. The release art
 node "${extensionPath}/bin/cli.js" run gemini --event SessionStart
 ```
 
-Codex, Claude, and OpenCode distribution use the released CLI package and project-level installer:
+Claude Code users can add the generated release tree as a plugin marketplace and install the `nams-hooks` plugin. Claude loads the plugin's standard `hooks/hooks.json` automatically, so `.claude-plugin/plugin.json` must not point its `hooks` field at that file. The plugin manifest declares user configuration for a required sensitive `NAMS_API_KEY`, a required non-sensitive `NAMS_WORKSPACE_ID`, and an optional `NAMS_BASE_URL` defaulting to `https://memory.neo4jlabs.com`. Plugin hooks call the bundled compiled runtime through `${CLAUDE_PLUGIN_ROOT}/bin/cli.js`, so Claude plugin installs do not require a global `nams-hooks` executable:
+
+```bash
+claude plugin marketplace add neo4j-labs/nams-hooks@master
+claude plugin install nams-hooks@neo4j-nams-hooks
+```
+
+Codex and OpenCode distribution use the released CLI package and project-level installer. Claude Code can still use the project-level settings fallback when a plugin marketplace install is not desired:
 
 ```bash
 npm install -g @neo4j-labs/nams-hooks
@@ -211,10 +242,11 @@ Rules:
 - Release tags are created from `master`.
 - Gemini installs default to `master`.
 - Codex, Claude, and OpenCode npm releases are produced from the same validated artifact.
+- `npm run package:check` must verify that Claude marketplace and plugin files are present in `dist/` and included by npm dry-run packing.
 
 ## Configuration
 
-Persistent configuration is JSON. The runtime reads `~/.nams/config.json` first, overlays `<project>/.nams/config.json` when present, and finally overlays supported environment variables when they are set. Environment variables are the highest-precedence operational override.
+Persistent configuration is JSON plus environment-backed operational overrides. The runtime reads `~/.nams/config.json` first, overlays `<project>/.nams/config.json` when present, asks the active platform adapter for optional discovered configuration, and finally overlays supported `NAMS_*` environment variables when they are set. `NAMS_*` environment variables are the highest-precedence operational override. Platforms without a native user-configuration surface return no discovered configuration.
 
 Supported JSON keys:
 
@@ -232,7 +264,18 @@ Example:
 }
 ```
 
-Supported environment overrides:
+Platform-specific discovery:
+
+- Claude Code plugin installs discover `apiKey`, `workspaceId`, and `baseUrl` from Claude's plugin user configuration environment exports.
+- Codex, Gemini, and OpenCode currently provide no additional discovered configuration.
+
+Claude plugin discovery sources:
+
+- `CLAUDE_PLUGIN_OPTION_NAMS_API_KEY`: fills `apiKey` from the Claude plugin's required sensitive `NAMS_API_KEY` setting.
+- `CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID`: fills `workspaceId` from the Claude plugin's required non-sensitive `NAMS_WORKSPACE_ID` setting.
+- `CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL`: fills `baseUrl` from the Claude plugin's optional `NAMS_BASE_URL` setting, whose plugin default is `https://memory.neo4jlabs.com`.
+
+Supported final environment overrides:
 
 - `NAMS_API_KEY`: overrides `apiKey`.
 - `NAMS_WORKSPACE_ID`: overrides `workspaceId`.
@@ -241,13 +284,13 @@ Supported environment overrides:
 Required:
 
 - `apiKey`, from either JSON config or `NAMS_API_KEY`.
-- `workspaceId`, from either JSON config or `NAMS_WORKSPACE_ID`.
+- `workspaceId`, from JSON config, Claude plugin user configuration, or `NAMS_WORKSPACE_ID`.
 
 Optional:
 
-- `baseUrl`, from either JSON config or `NAMS_BASE_URL`.
+- `baseUrl`, from JSON config, Claude plugin user configuration, or `NAMS_BASE_URL`.
 
-The runtime records sanitized `configSources` diagnostics in the session log, for example `apiKey: "env:NAMS_API_KEY"`, `workspaceId: "env:NAMS_WORKSPACE_ID"`, `baseUrl: "project:.nams/config.json"`, or `baseUrl: "default"`. It never logs secret values or full config objects.
+Final environment overrides are limited to `NAMS_API_KEY`, `NAMS_WORKSPACE_ID` and `NAMS_BASE_URL` unless a future design explicitly adds more. The runtime records sanitized `configSources` diagnostics in the session log, for example `apiKey: "env:NAMS_API_KEY"`, `workspaceId: "env:NAMS_WORKSPACE_ID"`, `workspaceId: "platform:claude:CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID"`, `baseUrl: "project:.nams/config.json"`, or `baseUrl: "default"`. It never logs secret values or full config objects.
 
 `.env` files are not part of the target configuration model. Secrets remain outside committed harness configs. The installer ensures project `.nams/config.json` stays local and gitignored when it creates or modifies a project override.
 
@@ -376,7 +419,8 @@ Session end:
 Claude Code:
 
 - Strong v1 support because hook inputs include `session_id`, `transcript_path`, `cwd`, and event-specific fields.
-- Use project-level `.claude/settings.local.json` by default so generated local commands and secrets do not need to be committed.
+- Use generated Claude plugin marketplace distribution by default for releases. The plugin root contains the standard auto-loaded `hooks/hooks.json` and a bundled compiled `bin/cli.js`; hook commands reference `${CLAUDE_PLUGIN_ROOT}` rather than a global executable. The plugin manifest omits `hooks` unless future additional hook files are introduced, and declares Claude `userConfig` for the required sensitive NAMS API key plus optional base URL.
+- Keep project-level `.claude/settings.local.json` as a fallback path for local manual installs.
 - Use `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `Stop`.
 
 Gemini CLI:

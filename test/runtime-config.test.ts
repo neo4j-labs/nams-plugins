@@ -28,7 +28,13 @@ async function withFixture(fn: (fixture: ConfigFixture) => Promise<void>): Promi
 }
 
 function useRuntimeEnv(homeDir: string, overrides: RuntimeEnvOverrides = {}): void {
-  for (const key of ["HOME", "USERPROFILE", "NAMS_API_KEY", "NAMS_WORKSPACE_ID", "NAMS_BASE_URL"]) {
+  for (const key of [
+    "HOME",
+    "USERPROFILE",
+    "NAMS_API_KEY",
+    "NAMS_WORKSPACE_ID",
+    "NAMS_BASE_URL",
+  ]) {
     delete process.env[key];
   }
   Object.assign(process.env, { HOME: homeDir, USERPROFILE: homeDir, ...overrides });
@@ -143,31 +149,90 @@ test("environment variables overlay project and global JSON config", async () =>
   });
 });
 
-test("workspaceId follows apiKey source priority", async () => {
+test("platform config discovery overlays JSON config", async () => {
   await withFixture(async ({ homeDir, projectDir }) => {
     await writeGlobalConfig(homeDir, {
       apiKey: "global-key",
       workspaceId: "global-workspace",
       baseUrl: "https://global.example.test",
     });
-    await writeProjectConfig(projectDir, {
-      workspaceId: "project-workspace",
-    });
     useRuntimeEnv(homeDir, {
-      NAMS_WORKSPACE_ID: "env-workspace",
     });
-    const result = await loadNamsConfig(projectDir);
+    const result = await loadNamsConfig(projectDir, () => ({
+      apiKey: { value: "platform-key", source: "platform:test:apiKey" },
+      workspaceId: { value: "platform-workspace", source: "platform:test:workspaceId" },
+      baseUrl: { value: "https://platform.example.test", source: "platform:test:baseUrl" },
+    }));
+
+    assert.deepEqual(result, {
+      ok: true,
+      config: {
+        apiKey: "platform-key",
+        workspaceId: "platform-workspace",
+        baseUrl: "https://platform.example.test",
+      },
+      sources: {
+        apiKey: "platform:test:apiKey",
+        workspaceId: "platform:test:workspaceId",
+        baseUrl: "platform:test:baseUrl",
+      },
+    });
+  });
+});
+
+test("environment variables overlay platform config discovery", async () => {
+  await withFixture(async ({ homeDir, projectDir }) => {
+    useRuntimeEnv(homeDir, {
+      NAMS_API_KEY: "env-key",
+      NAMS_WORKSPACE_ID: "env-workspace",
+      NAMS_BASE_URL: "https://env.example.test",
+    });
+    const result = await loadNamsConfig(projectDir, () => ({
+      apiKey: { value: "platform-key", source: "platform:test:apiKey" },
+      workspaceId: { value: "platform-workspace", source: "platform:test:workspaceId" },
+      baseUrl: { value: "https://platform.example.test", source: "platform:test:baseUrl" },
+    }));
+
+    assert.deepEqual(result, {
+      ok: true,
+      config: {
+        apiKey: "env-key",
+        workspaceId: "env-workspace",
+        baseUrl: "https://env.example.test",
+      },
+      sources: {
+        apiKey: "env:NAMS_API_KEY",
+        workspaceId: "env:NAMS_WORKSPACE_ID",
+        baseUrl: "env:NAMS_BASE_URL",
+      },
+    });
+  });
+});
+
+test("blank platform config discovery values do not overwrite JSON config", async () => {
+  await withFixture(async ({ homeDir, projectDir }) => {
+    await writeGlobalConfig(homeDir, {
+      apiKey: "global-key",
+      workspaceId: "global-workspace",
+      baseUrl: "https://global.example.test",
+    });
+    useRuntimeEnv(homeDir);
+    const result = await loadNamsConfig(projectDir, () => ({
+      apiKey: { value: "", source: "platform:test:apiKey" },
+      workspaceId: { value: "  ", source: "platform:test:workspaceId" },
+      baseUrl: { value: "\t", source: "platform:test:baseUrl" },
+    }));
 
     assert.deepEqual(result, {
       ok: true,
       config: {
         apiKey: "global-key",
-        workspaceId: "env-workspace",
+        workspaceId: "global-workspace",
         baseUrl: "https://global.example.test",
       },
       sources: {
         apiKey: "global:~/.nams/config.json",
-        workspaceId: "env:NAMS_WORKSPACE_ID",
+        workspaceId: "global:~/.nams/config.json",
         baseUrl: "global:~/.nams/config.json",
       },
     });
