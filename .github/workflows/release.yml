@@ -54,6 +54,9 @@ jobs:
 
           release_tree="$(mktemp -d)"
           cp -R dist/. "$release_tree"/
+          release_asset_dir="$(mktemp -d)"
+          release_asset="$release_asset_dir/nams-hooks.tar.gz"
+          tar -czf "$release_asset" -C "$release_tree" .
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -66,7 +69,7 @@ jobs:
           publish_github_release() {
             local notes="Generated release artifacts from ${RELEASE_SOURCE_SHA}."
             gh release delete release --yes || true
-            gh release create release \
+            gh release create release "$release_asset" \
               --title "release" \
               --notes "$notes" \
               --latest \
