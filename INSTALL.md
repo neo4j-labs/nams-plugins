@@ -60,6 +60,13 @@ claude plugin marketplace add kubamarchwicki/nams-hooks@release
 claude plugin install nams-hooks@neo4j-nams-hooks
 ```
 
+After installation, configure and reload the plugin inside Claude Code:
+
+```text
+/plugin configure nams-hooks@neo4j-nams-hooks
+/reload-plugins
+```
+
 Claude prompts for:
 
 - `NAMS_API_KEY`: required, sensitive, stored by Claude Code in secure storage.
@@ -83,7 +90,7 @@ bundles the compiled runtime and hook configuration.
 Add the release marketplace:
 
 ```bash
-codex plugin marketplace add kubamarchwicki/nams-hooks --ref release
+codex plugin marketplace add kubamarchwicki/nams-hooks@release
 codex plugin marketplace list
 ```
 
@@ -103,7 +110,7 @@ The extension bundles the compiled runtime and hook configuration.
 Install the release extension:
 
 ```bash
-gemini extensions install kubamarchwicki/nams-hooks --ref release
+gemini extensions install https://github.com/kubamarchwicki/nams-hooks --ref release
 ```
 
 The Gemini extension declares these settings:

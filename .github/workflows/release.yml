@@ -48,6 +48,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+          publish_release_tag() {
+            git tag -f release
+            git push --force origin refs/tags/release
+          }
+
           git fetch origin release || true
           if git rev-parse --verify origin/release >/dev/null 2>&1; then
             git switch --track -c release origin/release
@@ -61,6 +66,7 @@ jobs:
 
           if git diff --cached --quiet; then
             echo "Release branch is already up to date."
+            publish_release_tag
             exit 0
           fi
 
@@ -68,3 +74,4 @@ jobs:
             -m "chore: publish release artifacts from ${GITHUB_SHA}" \
             -m "Co-authored-by: Codex <codex@openai.com>"
           git push origin HEAD:release
+          publish_release_tag
