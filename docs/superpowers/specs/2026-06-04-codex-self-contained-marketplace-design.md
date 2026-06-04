@@ -52,7 +52,7 @@ dist/
     plugins/
       marketplace.json
   plugins/
-    nams-hooks/
+    codex-nams-hooks/
       .codex-plugin/
         plugin.json
       hooks/
@@ -64,7 +64,7 @@ dist/
         generated/
 ```
 
-The marketplace file exposes a single plugin named `nams-hooks` with `source.path` set to `./plugins/nams-hooks`. Its policy sets `installation` to `AVAILABLE`. It does not make the plugin installed by default, and it does not declare Codex plugin authentication for NAMS credentials.
+The marketplace file exposes a single plugin named `nams-hooks` with `source.path` set to `./plugins/codex-nams-hooks`. Its policy sets `installation` to `AVAILABLE`. It does not make the plugin installed by default, and it does not declare Codex plugin authentication for NAMS credentials. The source directory is platform-specific because the existing Claude plugin release path already uses `dist/plugins/nams-hooks/hooks/hooks.json` for Claude-specific hook commands.
 
 The plugin manifest uses stable package metadata: `name`, `version`, `description`, `license`, `repository`, and keywords. Lifecycle hooks are provided through the default `hooks/hooks.json` file rather than inline manifest hook configuration.
 
@@ -115,10 +115,10 @@ The Codex plugin should therefore not invent NAMS credential storage. If require
 `scripts/build-dist.mjs` will render Codex templates into `dist/` alongside the existing Gemini and Claude release artifacts:
 
 - Render `templates/codex/.agents/plugins/marketplace.json` to `dist/.agents/plugins/marketplace.json`.
-- Render `templates/codex/plugins/nams-hooks/.codex-plugin/plugin.json` to `dist/plugins/nams-hooks/.codex-plugin/plugin.json`.
-- Render `templates/codex/plugins/nams-hooks/hooks/hooks.json` to `dist/plugins/nams-hooks/hooks/hooks.json`.
-- Copy compiled runtime output from `.build/tsc` to `dist/plugins/nams-hooks/bin`.
-- Mark the bundled `dist/plugins/nams-hooks/bin/cli.js` executable.
+- Render `templates/codex/plugins/codex-nams-hooks/.codex-plugin/plugin.json` to `dist/plugins/codex-nams-hooks/.codex-plugin/plugin.json`.
+- Render `templates/codex/plugins/codex-nams-hooks/hooks/hooks.json` to `dist/plugins/codex-nams-hooks/hooks/hooks.json`.
+- Copy compiled runtime output from `.build/tsc` to `dist/plugins/codex-nams-hooks/bin`.
+- Mark the bundled `dist/plugins/codex-nams-hooks/bin/cli.js` executable.
 
 Package placeholder rendering should reuse the existing package-version and package-license replacement flow introduced for Claude.
 
@@ -128,10 +128,10 @@ Tests and package checks should verify:
 
 - Codex plugin template hook commands invoke `node ${PLUGIN_ROOT}/bin/cli.js`.
 - Codex plugin hook commands preserve the current Codex-to-NAMS event mapping.
-- Codex repo marketplace exposes `nams-hooks` from `./plugins/nams-hooks`.
+- Codex repo marketplace exposes `nams-hooks` from `./plugins/codex-nams-hooks`.
 - Codex marketplace policy marks installation as available.
 - Codex plugin manifest renders package version and license values.
-- Generated `dist/plugins/nams-hooks/bin/cli.js` is executable.
+- Generated `dist/plugins/codex-nams-hooks/bin/cli.js` is executable.
 - `npm pack --dry-run` includes Codex marketplace and plugin files for both root and generated `dist/` package checks.
 - Generated artifacts do not include OpenAPI specs or runtime OpenAPI readers.
 - `npm run check` and `npm run package:check` pass.
