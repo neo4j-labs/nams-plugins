@@ -18,6 +18,7 @@ const codexMarketplacePath = path.join(root, "dist", ".agents", "plugins", "mark
 const codexPluginManifestPath = path.join(root, "dist", "plugins", "codex-nams-hooks", ".codex-plugin", "plugin.json");
 const codexPluginHooksPath = path.join(root, "dist", "plugins", "codex-nams-hooks", "hooks", "hooks.json");
 const codexPluginCliPath = path.join(root, "dist", "plugins", "codex-nams-hooks", "bin", "cli.js");
+const codexHookEvents = ["SessionStart", "UserPromptSubmit", "Stop", "PostToolUse"];
 const opencodeTemplatePath = path.join(root, "templates", "opencode", "plugins", "nams-hooks.js");
 const rootPackagePath = path.join(root, "package.json");
 const execFileAsync = promisify(execFile);
@@ -85,12 +86,24 @@ async function verifyCodexPluginFiles() {
   await assertExecutable(codexPluginCliPath);
 
   const packageJson = JSON.parse(await readFile(rootPackagePath, "utf8"));
-  const marketplace = JSON.parse(await readFile(codexMarketplacePath, "utf8"));
-  const plugin = JSON.parse(await readFile(codexPluginManifestPath, "utf8"));
-  const hooks = JSON.parse(await readFile(codexPluginHooksPath, "utf8"));
+  const marketplaceSource = await readFile(codexMarketplacePath, "utf8");
+  const pluginSource = await readFile(codexPluginManifestPath, "utf8");
+  const hooksSource = await readFile(codexPluginHooksPath, "utf8");
+  assertNoPackageTemplatePlaceholders([
+    [codexMarketplacePath, marketplaceSource],
+    [codexPluginManifestPath, pluginSource],
+    [codexPluginHooksPath, hooksSource],
+  ]);
+
+  const marketplace = JSON.parse(marketplaceSource);
+  const plugin = JSON.parse(pluginSource);
+  const hooks = JSON.parse(hooksSource);
 
   if (marketplace.name !== "neo4j-nams-hooks") {
     throw new Error("dist/.agents/plugins/marketplace.json must name the marketplace neo4j-nams-hooks.");
+  }
+  if (marketplace.metadata?.version !== packageJson.version) {
+    throw new Error("Codex marketplace metadata version must match package.json.");
   }
 
   const marketplacePlugin = marketplace.plugins?.[0];
@@ -105,6 +118,9 @@ async function verifyCodexPluginFiles() {
   }
   if (Object.hasOwn(marketplacePlugin.policy ?? {}, "authentication")) {
     throw new Error("Codex marketplace must not declare plugin authentication for NAMS credentials.");
+  }
+  if (Object.hasOwn(marketplacePlugin ?? {}, "userConfig") || Object.hasOwn(marketplacePlugin ?? {}, "authentication")) {
+    throw new Error("Codex marketplace plugin must not define NAMS credential prompts.");
   }
   if (marketplacePlugin.version !== packageJson.version) {
     throw new Error("Codex marketplace plugin version must match package.json.");
@@ -123,6 +139,7 @@ async function verifyCodexPluginFiles() {
     throw new Error("Codex plugin manifest must not define NAMS credential prompts.");
   }
 
+  assertCodexHookEventSet(hooks);
   assertCodexHookCommand(hooks, "SessionStart", "SessionStart", "Loading session notes", "startup|resume");
   assertCodexHookCommand(hooks, "UserPromptSubmit", "BeforeAgent", "NAMS memory recall");
   assertCodexHookCommand(hooks, "Stop", "AfterAgent", "NAMS assistant persistence");
@@ -163,9 +180,32 @@ function assertClaudeHookCommand(hooks, eventName, namsEvent) {
   }
 }
 
+function assertNoPackageTemplatePlaceholders(files) {
+  for (const [filePath, source] of files) {
+    if (/__PACKAGE_VERSION__|__PACKAGE_LICENSE__/.test(source)) {
+      throw new Error(`${path.relative(root, filePath)} must not contain unresolved package template placeholders.`);
+    }
+  }
+}
+
+function assertCodexHookEventSet(hooks) {
+  const actualEvents = Object.keys(hooks.hooks ?? {}).sort();
+  const expectedEvents = [...codexHookEvents].sort();
+  if (JSON.stringify(actualEvents) !== JSON.stringify(expectedEvents)) {
+    throw new Error(`Codex plugin hooks must define exactly these events: ${codexHookEvents.join(", ")}.`);
+  }
+}
+
 function assertCodexHookCommand(hooks, eventName, namsEvent, statusMessage, matcher) {
-  const group = hooks.hooks?.[eventName]?.[0];
-  const handler = group?.hooks?.[0];
+  const groups = hooks.hooks?.[eventName];
+  if (!Array.isArray(groups) || groups.length !== 1) {
+    throw new Error(`Codex plugin ${eventName} hook must define exactly one hook group.`);
+  }
+  const group = groups[0];
+  if (!Array.isArray(group.hooks) || group.hooks.length !== 1) {
+    throw new Error(`Codex plugin ${eventName} hook must define exactly one command handler.`);
+  }
+  const handler = group.hooks[0];
   if (matcher === undefined && Object.hasOwn(group ?? {}, "matcher")) {
     throw new Error(`Codex plugin ${eventName} hook must not declare a matcher.`);
   }
