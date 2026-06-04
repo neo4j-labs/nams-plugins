@@ -47,6 +47,7 @@ jobs:
       - name: Publish dist to release branch
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
           RELEASE_SOURCE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
           set -euo pipefail
@@ -60,6 +61,23 @@ jobs:
           publish_release_tag() {
             git tag -f release
             git push --force origin refs/tags/release
+          }
+
+          publish_github_release() {
+            local notes="Generated release artifacts from ${RELEASE_SOURCE_SHA}."
+            if gh release view release >/dev/null 2>&1; then
+              gh release edit release \
+                --title "release" \
+                --notes "$notes" \
+                --latest \
+                --verify-tag
+            else
+              gh release create release \
+                --title "release" \
+                --notes "$notes" \
+                --latest \
+                --verify-tag
+            fi
           }
 
           git fetch origin release || true
@@ -76,6 +94,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "Release branch is already up to date."
             publish_release_tag
+            publish_github_release
             exit 0
           fi
 
@@ -84,3 +103,4 @@ jobs:
             -m "Co-authored-by: Codex <codex@openai.com>"
           git push origin HEAD:release
           publish_release_tag
+          publish_github_release
