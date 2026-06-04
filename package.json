@@ -10,7 +10,8 @@
     "dist/",
     "templates/",
     "README.md",
-    "INSTALL.md"
+    "INSTALL.md",
+    "DEVELOPMENT.md"
   ],
   "scripts": {
     "openapi:generate": "node scripts/generate-nams-client.mjs",

@@ -1,19 +1,24 @@
 # Installation
 
-`nams-hooks` is built from TypeScript and distributed as generated JavaScript. Runtime hook code uses Node.js built-ins only.
+Use this guide to install `nams-hooks` from the generated `release` branch.
+For local development, generated artifact testing, and `./dist` workflows, see
+[DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Prerequisites
 
 - Node.js 20 or newer
-- A NAMS API key and workspace ID
-- Gemini CLI, for the Gemini local extension path
-- Codex, for the Codex repo marketplace path or project-level Codex hooks
-- Claude Code, for project-level Claude hooks
-- OpenCode, for the OpenCode project plugin path
+- A NAMS API key
+- A NAMS workspace ID
+- The agent platform CLI you want to use:
+  - Claude Code
+  - Codex
+  - Gemini CLI
 
-## Configuration
+## Runtime Configuration
 
-Create a user-local config file at `~/.nams/config.json`:
+Runtime configuration is JSON-first: `~/.nams/config.json`, optional project `.nams/config.json`, optional platform discovery such as Claude plugin user configuration, then final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. `apiKey` and `workspaceId` are required for NAMS requests. Runtime state and logs are user-local under `~/.nams/state/<platform>/` and `~/.nams/logs/<platform>/`.
+
+The portable configuration path is a user-local config file:
 
 ```json
 {
@@ -23,9 +28,10 @@ Create a user-local config file at `~/.nams/config.json`:
 }
 ```
 
-`apiKey` and `workspaceId` are required for NAMS requests. `baseUrl` is optional and defaults to the runtime client's built-in NAMS URL.
+`baseUrl` is optional and defaults to `https://memory.neo4jlabs.com`.
 
-Projects may override any key with `<project>/.nams/config.json`. A common setup is a global `apiKey` with project-specific `workspaceId` values.
+Projects can override any key with `<project>/.nams/config.json`. A common setup
+is a global API key plus project-specific workspace IDs:
 
 ```json
 {
@@ -33,190 +39,93 @@ Projects may override any key with `<project>/.nams/config.json`. A common setup
 }
 ```
 
-Keep project `.nams/config.json` local and gitignored, especially if it contains an API key. Prefer `~/.nams/config.json` or `NAMS_API_KEY` for secrets that apply across projects.
-
 Environment variables are final overrides:
 
 - `NAMS_API_KEY` overrides `apiKey`.
 - `NAMS_WORKSPACE_ID` overrides `workspaceId`.
 - `NAMS_BASE_URL` overrides `baseUrl`.
 
-Claude plugin installs also prompt for plugin user configuration:
-
-- `NAMS_API_KEY` is required, marked sensitive, and stored by Claude Code in secure storage.
-- `NAMS_WORKSPACE_ID` is required and routes memory requests to the selected NAMS workspace.
-- `NAMS_BASE_URL` is optional and defaults to `https://memory.neo4jlabs.com`.
-
-Claude exports those plugin values to hook subprocesses as `CLAUDE_PLUGIN_OPTION_NAMS_API_KEY`, `CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID`, and `CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL`. Explicit `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment variables still override plugin-provided values.
-
-The runtime does not read `.env` files.
-
-## Gemini CLI
-
-### From A Local Build
-
-Use this path when developing or testing the extension from a checkout.
-
-```bash
-npm install
-npm run dist
-gemini extensions link ./dist
-```
-
-This builds the generated Gemini extension tree under `dist/` and links it into Gemini CLI.
-
-### From Repository
-
-Repository-hosted Gemini installation is not published yet. For now, use the local build path above when testing Gemini CLI.
-
-## Codex
-
-Codex can install `nams-hooks` from a repo marketplace. The Codex plugin bundles the compiled runtime under its own plugin directory, so marketplace installs do not require a global `nams-hooks` executable.
-
-Codex plugin installs use the Configuration section above for NAMS credentials. Unlike Claude Code plugin installs, Codex does not currently provide a documented custom plugin secret prompt for `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, or `NAMS_BASE_URL`.
-
-### From A Generated Marketplace
-
-Use this path when testing the generated release tree locally:
-
-```bash
-npm install
-npm run dist
-codex plugin marketplace add ./dist
-codex plugin marketplace list
-```
-
-Restart Codex, open the plugin directory with `/plugins`, select the `neo4j-nams-hooks` marketplace, and install `NAMS Hooks`. Then use `/hooks` to review and trust the plugin-bundled hooks when Codex asks for hook review.
-
-The generated Codex marketplace lives at `dist/.agents/plugins/marketplace.json`. Its plugin source is `dist/plugins/codex-nams-hooks/`, with standard hook configuration at `hooks/hooks.json` and the compiled CLI at `bin/cli.js`.
-
-For a published generated release branch, add the repository marketplace instead of the local `./dist` directory:
-
-```bash
-codex plugin marketplace add neo4j-labs/nams-hooks --ref master
-```
-
-Restart Codex, open `/plugins`, select the repository marketplace, and install `NAMS Hooks`.
-
-### From Project Hook Settings
-
-Use this fallback path when you want a project-local `.codex/hooks.json` hook file instead of a Codex plugin marketplace install.
-
-Codex loads project hook settings from `.codex/hooks.json`. Hook execution is controlled by the `hooks` feature flag in Codex config.
-
-Install the package so `nams-hooks` is on `PATH`, then copy the Codex hook template into the target project:
-
-```bash
-npm install -g @neo4j-labs/nams-hooks
-mkdir -p .codex
-cp "$(npm root -g)/@neo4j-labs/nams-hooks/templates/codex/hooks.json" .codex/hooks.json
-```
-
-If `.codex/hooks.json` already exists, merge the `hooks` entries from `templates/codex/hooks.json` instead of replacing the file.
-
-For local development from this repository:
-
-```bash
-npm install
-npm run dist
-npm install -g ./dist
-mkdir -p /path/to/project/.codex
-cp templates/codex/hooks.json /path/to/project/.codex/hooks.json
-```
-
-Add the hooks feature flag to `~/.codex/config.toml` or project-local `.codex/config.toml`:
-
-```toml
-[features]
-hooks = true
-```
-
-If `.codex/config.toml` already exists, merge `hooks = true` into its existing `[features]` table instead of replacing the file.
-
-Start Codex from the target project and use `/hooks` to review and trust the new command hooks. Codex loads project-local `.codex/` configuration only after the project is trusted.
-
-## OpenCode
-
-OpenCode loads project plugins from `.opencode/plugins/`.
-
-OpenCode uses the same NAMS configuration hierarchy as other harnesses: `~/.nams/config.json`, optional project `.nams/config.json`, then final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides.
-
-Install the package so `nams-hooks` is on `PATH`:
-
-```bash
-npm install -g @neo4j-labs/nams-hooks
-mkdir -p .opencode/plugins
-cp "$(npm root -g)/@neo4j-labs/nams-hooks/templates/opencode/plugins/nams-hooks.js" .opencode/plugins/nams-hooks.js
-```
-
-If your global npm root is customized, run `npm root -g` first and copy the template from the reported package directory.
-
-For local development from this repository:
-
-```bash
-npm install
-npm run dist
-mkdir -p /path/to/project/.opencode/plugins
-cp templates/opencode/plugins/nams-hooks.js /path/to/project/.opencode/plugins/nams-hooks.js
-```
-
-If `nams-hooks` is not on OpenCode's `PATH`, set `NAMS_HOOKS_COMMAND` to the executable path before starting OpenCode. For a local checkout, use the generated executable:
-
-```bash
-export NAMS_HOOKS_COMMAND=/absolute/path/to/nams-hooks/dist/bin/cli.js
-```
-
-The plugin listens for OpenCode events and routes them through the CLI gateway, for example `nams-hooks run opencode --event SessionStart`.
+The runtime does not read `.env` files. Keep project `.nams/config.json` local
+and gitignored, especially if it contains an API key.
 
 ## Claude Code
 
-Claude Code can install `nams-hooks` as a Claude plugin marketplace entry. The plugin bundles the compiled runtime under its own plugin directory, so hook commands do not require a global `nams-hooks` install.
+Claude Code installs `nams-hooks` as a plugin marketplace entry. The plugin
+bundles the compiled runtime, hook configuration, and credential prompts.
 
-### From A Generated Marketplace
-
-Use this path when testing the generated release tree locally:
+Add the release marketplace and install the plugin:
 
 ```bash
-npm install
-npm run dist
-claude plugin validate ./dist
-claude plugin marketplace add ./dist
+claude plugin marketplace add kubamarchwicki/nams-hooks@release
 claude plugin install nams-hooks@neo4j-nams-hooks
 ```
 
-The generated marketplace lives at `dist/.claude-plugin/marketplace.json`. Its plugin source is `dist/plugins/nams-hooks/`, with standard hook configuration at `hooks/hooks.json`, the compiled CLI at `bin/cli.js`, and NAMS credential prompts in `.claude-plugin/plugin.json`. Claude loads the standard `hooks/hooks.json` file automatically, so the plugin manifest intentionally omits a `hooks` field.
+Claude prompts for:
 
-For a published generated release branch, add the repository marketplace instead of the local `./dist` directory:
+- `NAMS_API_KEY`: required, sensitive, stored by Claude Code in secure storage.
+- `NAMS_WORKSPACE_ID`: required, non-sensitive.
+- `NAMS_BASE_URL`: optional, defaults to `https://memory.neo4jlabs.com`.
 
-```bash
-claude plugin marketplace add neo4j-labs/nams-hooks@master
-claude plugin install nams-hooks@neo4j-nams-hooks
-```
+Claude exposes those values to hook subprocesses as
+`CLAUDE_PLUGIN_OPTION_NAMS_API_KEY`, `CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID`,
+and `CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL`. Explicit `NAMS_API_KEY`,
+`NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment variables still override
+plugin-provided values.
 
-Use `--scope project`, `--scope local`, or `--scope user` on the Claude plugin commands when you need a specific installation scope.
+Use `--scope project`, `--scope local`, or `--scope user` on Claude plugin
+commands when you need a specific installation scope.
 
-### From Project Hook Settings
+## Codex
 
-Use this fallback path when you want a project-local `.claude/settings.local.json` hook file instead of a Claude plugin marketplace install.
+Codex installs `nams-hooks` from the generated repo marketplace. The plugin
+bundles the compiled runtime and hook configuration.
 
-Install the package so `nams-hooks` is on `PATH`, then copy the Claude hook template into the target project:
-
-```bash
-npm install -g @neo4j-labs/nams-hooks
-mkdir -p .claude
-cp "$(npm root -g)/@neo4j-labs/nams-hooks/templates/claude/.claude/settings.local.json" .claude/settings.local.json
-```
-
-If `.claude/settings.local.json` already exists, merge the `hooks` entries from `templates/claude/.claude/settings.local.json` instead of replacing the file.
-
-For local development from this repository:
+Add the release marketplace:
 
 ```bash
-npm install
-npm run dist
-npm install -g ./dist
-mkdir -p /path/to/project/.claude
-cp templates/claude/.claude/settings.local.json /path/to/project/.claude/settings.local.json
+codex plugin marketplace add kubamarchwicki/nams-hooks --ref release
+codex plugin marketplace list
 ```
 
-Use the Configuration section above for NAMS credentials.
+Restart Codex, open `/plugins`, select the `neo4j-nams-hooks` marketplace, and
+install `NAMS Hooks`. Then use `/hooks` to review and trust the plugin-bundled
+hooks when Codex asks for hook review.
+
+Codex plugin installs do not currently define a custom NAMS credential prompt.
+Configure NAMS through `~/.nams/config.json`, project `.nams/config.json`, or the
+`NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment variables.
+
+## Gemini CLI
+
+Gemini CLI installs `nams-hooks` as a Gemini extension from the release branch.
+The extension bundles the compiled runtime and hook configuration.
+
+Install the release extension:
+
+```bash
+gemini extensions install kubamarchwicki/nams-hooks --ref release
+```
+
+The Gemini extension declares these settings:
+
+- `NAMS_API_KEY`: required for NAMS requests and marked sensitive.
+- `NAMS_WORKSPACE_ID`: required for NAMS requests.
+- `NAMS_BASE_URL`: optional, defaults to `https://memory.neo4jlabs.com` when not
+  set.
+
+You can provide those values through Gemini extension settings, through
+`~/.nams/config.json`, through project `.nams/config.json`, or through the
+`NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment variables.
+
+## Verify Runtime Logs
+
+After installing a platform integration, start the agent from a project directory
+and run a short prompt. Runtime state and logs are written under:
+
+```text
+~/.nams/state/<platform>/
+~/.nams/logs/<platform>/
+```
+
+Session log entries use `kind: "hook.event"` for raw platform hook payloads and
+`kind: "nams.request"` for sanitized NAMS HTTP request/response diagnostics.

@@ -31,7 +31,40 @@ It ensures deterministic memory persistence and context recall across different 
 
 ## Getting Started
 
-For installation steps, see [INSTALL.md](INSTALL.md).
+Install the Claude Code marketplace release:
+
+```bash
+claude plugin marketplace add kubamarchwicki/nams-hooks@release
+claude plugin install nams-hooks@neo4j-nams-hooks
+```
+
+The Claude plugin prompts for the required NAMS API key and workspace ID during
+installation. For Gemini, Codex, OpenCode, and full setup details, see
+[INSTALL.md](INSTALL.md).
+
+### Runtime Configuration And Storage
+
+Runtime configuration is JSON-first: `~/.nams/config.json`, optional project `.nams/config.json`, optional platform discovery such as Claude plugin user configuration, then final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. `apiKey` and `workspaceId` are required for NAMS requests. Runtime state and logs are user-local under `~/.nams/state/<platform>/` and `~/.nams/logs/<platform>/`.
+
+Codex plugin installs use the same JSON and `NAMS_*` environment configuration path; Codex does not currently define NAMS credentials through plugin install prompts.
+
+Gemini and OpenCode write session-scoped JSONL diagnostics. Events for one session are kept in a single file named like:
+
+```text
+~/.nams/logs/gemini/session-2026-05-11T15-40-1b11dfee.jsonl
+```
+
+Hook payload entries use `kind: "hook.event"` and keep the raw hook payload for local debugging. NAMS HTTP entries use `kind: "nams.request"` and include operation metadata plus logged request and response details. Request headers omit `Authorization`; request and response bodies are kept for debugging.
+
+## Development
+
+`nams-hooks` follows a strict "no runtime dependencies" rule for hook code and release artifacts. Development dependencies are allowed for TypeScript, generation, architecture checks, and tests as long as they stay out of runtime imports and published hook execution paths.
+
+All platform-specific logic should be contained within its respective adapter in `src/platforms/`.
+
+For more details on the design, see `docs/superpowers/specs/2026-05-10-nams-hooks-design.md`.
+
+For local development and generated marketplace testing, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ### Prerequisites
 
@@ -56,25 +89,3 @@ npm run package:check
 # Regenerate and build the OpenAPI client, then run OpenAPI client tests directly
 npm run openapi:test
 ```
-
-### Runtime Configuration And Storage
-
-Runtime configuration is JSON-first: `~/.nams/config.json`, optional project `.nams/config.json`, optional platform discovery such as Claude plugin user configuration, then final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. `apiKey` and `workspaceId` are required for NAMS requests. Runtime state and logs are user-local under `~/.nams/state/<platform>/` and `~/.nams/logs/<platform>/`.
-
-Codex plugin installs use the same JSON and `NAMS_*` environment configuration path; Codex does not currently define NAMS credentials through plugin install prompts.
-
-Gemini and OpenCode write session-scoped JSONL diagnostics. Events for one session are kept in a single file named like:
-
-```text
-~/.nams/logs/gemini/session-2026-05-11T15-40-1b11dfee.jsonl
-```
-
-Hook payload entries use `kind: "hook.event"` and keep the raw hook payload for local debugging. NAMS HTTP entries use `kind: "nams.request"` and include operation metadata plus logged request and response details. Request headers omit `Authorization`; request and response bodies are kept for debugging.
-
-## Development
-
-`nams-hooks` follows a strict "no runtime dependencies" rule for hook code and release artifacts. Development dependencies are allowed for TypeScript, generation, architecture checks, and tests as long as they stay out of runtime imports and published hook execution paths.
-
-All platform-specific logic should be contained within its respective adapter in `src/platforms/`.
-
-For more details on the design, see `docs/superpowers/specs/2026-05-10-nams-hooks-design.md`.
