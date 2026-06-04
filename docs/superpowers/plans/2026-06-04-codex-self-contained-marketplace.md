@@ -30,7 +30,7 @@
 **Files:**
 - Modify: `docs/superpowers/specs/2026-06-04-codex-self-contained-marketplace-design.md`
 
-- [ ] **Step 1: Edit the Codex plugin directory in the spec**
+- [x] **Step 1: Edit the Codex plugin directory in the spec**
 
 Replace the generated tree section so Codex uses `plugins/codex-nams-hooks`:
 
@@ -58,7 +58,7 @@ Update the adjacent marketplace sentence to:
 The marketplace file exposes a single plugin named `nams-hooks` with `source.path` set to `./plugins/codex-nams-hooks`. Its policy sets `installation` to `AVAILABLE`. It does not make the plugin installed by default, and it does not declare Codex plugin authentication for NAMS credentials. The source directory is platform-specific because the existing Claude plugin release path already uses `dist/plugins/nams-hooks/hooks/hooks.json` for Claude-specific hook commands.
 ```
 
-- [ ] **Step 2: Edit the build integration bullets in the spec**
+- [x] **Step 2: Edit the build integration bullets in the spec**
 
 Replace the Codex template paths in the Build Integration section with:
 
@@ -70,7 +70,7 @@ Replace the Codex template paths in the Build Integration section with:
 - Mark the bundled `dist/plugins/codex-nams-hooks/bin/cli.js` executable.
 ```
 
-- [ ] **Step 3: Edit the verification bullet in the spec**
+- [x] **Step 3: Edit the verification bullet in the spec**
 
 Replace the executable verification bullet with:
 
@@ -78,7 +78,7 @@ Replace the executable verification bullet with:
 - Generated `dist/plugins/codex-nams-hooks/bin/cli.js` is executable.
 ```
 
-- [ ] **Step 4: Review the spec diff**
+- [x] **Step 4: Review the spec diff**
 
 Run:
 
@@ -88,7 +88,7 @@ git diff -- docs/superpowers/specs/2026-06-04-codex-self-contained-marketplace-d
 
 Expected: only the Codex plugin source directory changes from `plugins/nams-hooks` to `plugins/codex-nams-hooks`, plus the explanation that this avoids the Claude hook file collision.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 
@@ -107,7 +107,7 @@ git commit -m "docs: clarify codex plugin release path" -m "Co-authored-by: Code
 - Create: `templates/codex/plugins/codex-nams-hooks/.codex-plugin/plugin.json`
 - Create: `templates/codex/plugins/codex-nams-hooks/hooks/hooks.json`
 
-- [ ] **Step 1: Write the failing template test**
+- [x] **Step 1: Write the failing template test**
 
 Create `test/codex-template.test.ts` with this content:
 
@@ -201,7 +201,7 @@ function codexHookFor(template: any, eventName: string): Record<string, string> 
 }
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run:
 
@@ -211,7 +211,7 @@ node --import=tsx --test test/codex-template.test.ts
 
 Expected: FAIL with an `ENOENT` error for `templates/codex/.agents/plugins/marketplace.json`.
 
-- [ ] **Step 3: Create the Codex marketplace template**
+- [x] **Step 3: Create the Codex marketplace template**
 
 Create `templates/codex/.agents/plugins/marketplace.json`:
 
@@ -255,7 +255,7 @@ Create `templates/codex/.agents/plugins/marketplace.json`:
 }
 ```
 
-- [ ] **Step 4: Create the Codex plugin manifest template**
+- [x] **Step 4: Create the Codex plugin manifest template**
 
 Create `templates/codex/plugins/codex-nams-hooks/.codex-plugin/plugin.json`:
 
@@ -279,7 +279,7 @@ Create `templates/codex/plugins/codex-nams-hooks/.codex-plugin/plugin.json`:
 }
 ```
 
-- [ ] **Step 5: Create the Codex plugin hook template**
+- [x] **Step 5: Create the Codex plugin hook template**
 
 Create `templates/codex/plugins/codex-nams-hooks/hooks/hooks.json`:
 
@@ -335,7 +335,7 @@ Create `templates/codex/plugins/codex-nams-hooks/hooks/hooks.json`:
 }
 ```
 
-- [ ] **Step 6: Run the template test to verify it passes**
+- [x] **Step 6: Run the template test to verify it passes**
 
 Run:
 
@@ -345,7 +345,7 @@ node --import=tsx --test test/codex-template.test.ts
 
 Expected: PASS for all three Codex template tests.
 
-- [ ] **Step 7: Run the full test suite**
+- [x] **Step 7: Run the full test suite**
 
 Run:
 
@@ -355,7 +355,7 @@ npm run check
 
 Expected: PASS. Existing Codex project hook template tests in `test/cli-session-start.test.ts` still expect `templates/codex/hooks.json` to call the global `nams-hooks` command and should remain unchanged.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 Run:
 
@@ -372,7 +372,7 @@ git commit -m "feat: add codex marketplace templates" -m "Co-authored-by: Codex 
 - Modify: `scripts/build-dist.mjs`
 - Modify: `scripts/check-dist.mjs`
 
-- [ ] **Step 1: Extend `check-dist.mjs` with failing Codex artifact checks**
+- [x] **Step 1: Extend `check-dist.mjs` with failing Codex artifact checks**
 
 In `scripts/check-dist.mjs`, add these constants below the Claude constants:
 
@@ -493,7 +493,7 @@ function codexPackedFiles(packageDir) {
 }
 ```
 
-- [ ] **Step 2: Run dist verification to verify it fails before build wiring**
+- [x] **Step 2: Run dist verification to verify it fails before build wiring**
 
 Run:
 
@@ -504,7 +504,7 @@ npm run dist:check
 
 Expected: `npm run dist` succeeds, then `npm run dist:check` fails because `dist/.agents/plugins/marketplace.json` is missing.
 
-- [ ] **Step 3: Wire Codex templates into `build-dist.mjs`**
+- [x] **Step 3: Wire Codex templates into `build-dist.mjs`**
 
 In `scripts/build-dist.mjs`, add a Codex plugin directory constant below `claudePluginDir`:
 
@@ -539,7 +539,7 @@ async function writeCodexTemplates(source) {
 }
 ```
 
-- [ ] **Step 4: Run dist verification to verify it passes**
+- [x] **Step 4: Run dist verification to verify it passes**
 
 Run:
 
@@ -550,7 +550,7 @@ npm run dist:check
 
 Expected: both commands PASS. `dist/.agents/plugins/marketplace.json`, `dist/plugins/codex-nams-hooks/.codex-plugin/plugin.json`, `dist/plugins/codex-nams-hooks/hooks/hooks.json`, and `dist/plugins/codex-nams-hooks/bin/cli.js` exist.
 
-- [ ] **Step 5: Run the full package check**
+- [x] **Step 5: Run the full package check**
 
 Run:
 
@@ -560,7 +560,7 @@ npm run package:check
 
 Expected: PASS. This verifies OpenAPI freshness, TypeScript build, typecheck, tests, dist generation, dist checks, executable bits, and dry-run package contents.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 Run:
 
@@ -578,7 +578,7 @@ git commit -m "feat: bundle codex marketplace in dist" -m "Co-authored-by: Codex
 - Modify: `INSTALL.md`
 - Modify: `docs/superpowers/specs/2026-05-10-nams-hooks-design.md`
 
-- [ ] **Step 1: Update the README release-package command description**
+- [x] **Step 1: Update the README release-package command description**
 
 In `README.md`, replace:
 
@@ -594,7 +594,7 @@ with:
 npm run package:check
 ```
 
-- [ ] **Step 2: Update the README runtime configuration paragraph**
+- [x] **Step 2: Update the README runtime configuration paragraph**
 
 In `README.md`, replace the first sentence under `### Runtime Configuration And Storage` with:
 
@@ -604,7 +604,7 @@ Runtime configuration is JSON-first: `~/.nams/config.json`, optional project `.n
 
 Keep the rest of the paragraph about state and logs.
 
-- [ ] **Step 3: Update INSTALL prerequisites for Codex**
+- [x] **Step 3: Update INSTALL prerequisites for Codex**
 
 In `INSTALL.md`, replace:
 
@@ -618,7 +618,7 @@ with:
 - Codex, for the Codex repo marketplace path or project-level Codex hooks
 ```
 
-- [ ] **Step 4: Add the Codex marketplace install path to INSTALL**
+- [x] **Step 4: Add the Codex marketplace install path to INSTALL**
 
 In `INSTALL.md`, replace the first Codex section through the local development copy command block with this text:
 
@@ -681,7 +681,7 @@ cp templates/codex/hooks.json /path/to/project/.codex/hooks.json
 
 Keep the existing `[features] hooks = true` and `/hooks` trust text after this replacement.
 
-- [ ] **Step 5: Update the architecture summary**
+- [x] **Step 5: Update the architecture summary**
 
 In `docs/superpowers/specs/2026-05-10-nams-hooks-design.md`, replace the current summary sentence that says Codex uses project-level installs with:
 
@@ -689,7 +689,7 @@ In `docs/superpowers/specs/2026-05-10-nams-hooks-design.md`, replace the current
 `nams-hooks` is a standalone Node.js integration layer that connects local agent harness hooks to the Neo4j Agent Memory Service (NAMS) REST API. Its hook runtime and generated release artifacts have zero runtime npm dependencies and use Node.js built-ins only, while the source repository may use dev-only build, generation, and test tooling. The first iteration supports macOS for Codex, Claude Code, Gemini CLI, and OpenCode. Gemini uses extension distribution. Claude Code can use a generated Claude plugin marketplace artifact, with project-level settings as a fallback path. Codex can use a generated repo marketplace plugin artifact, with project-level hooks as a fallback path. OpenCode uses a project-level plugin install. Runtime configuration, state, and logs live under user-level `~/.nams/`, with optional project overrides in `.nams/config.json`.
 ```
 
-- [ ] **Step 6: Update the generated dist tree in the architecture design**
+- [x] **Step 6: Update the generated dist tree in the architecture design**
 
 In `docs/superpowers/specs/2026-05-10-nams-hooks-design.md`, update the `dist/` tree in the Build And Distribution section so it contains the Codex marketplace and plugin:
 
@@ -735,7 +735,7 @@ dist/
   package.json
 ```
 
-- [ ] **Step 7: Add the Codex marketplace release paragraph in the architecture design**
+- [x] **Step 7: Add the Codex marketplace release paragraph in the architecture design**
 
 In `docs/superpowers/specs/2026-05-10-nams-hooks-design.md`, replace the paragraph that starts `Codex and OpenCode distribution use the released CLI package` with:
 
@@ -754,7 +754,7 @@ nams-hooks install --harness codex,claude,opencode
 ```
 ````
 
-- [ ] **Step 8: Update the architecture rules bullets**
+- [x] **Step 8: Update the architecture rules bullets**
 
 In the same design document, replace:
 
@@ -770,7 +770,7 @@ with:
 - `npm run package:check` must verify that Claude and Codex marketplace/plugin files are present in `dist/` and included by npm dry-run packing.
 ```
 
-- [ ] **Step 9: Update the Codex platform-specific distribution bullets**
+- [x] **Step 9: Update the Codex platform-specific distribution bullets**
 
 In the Codex subsection near the platform notes, add this bullet before the project-level `.codex/hooks.json` bullet:
 
@@ -780,7 +780,7 @@ In the Codex subsection near the platform notes, add this bullet before the proj
 
 Keep the existing project-level `.codex/hooks.json` bullet as the fallback path.
 
-- [ ] **Step 10: Run checks**
+- [x] **Step 10: Run checks**
 
 Run:
 
@@ -791,7 +791,7 @@ npm run package:check
 
 Expected: both commands PASS.
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 Run:
 
@@ -807,7 +807,7 @@ git commit -m "docs: document codex marketplace install" -m "Co-authored-by: Cod
 **Files:**
 - No source file changes expected.
 
-- [ ] **Step 1: Run the complete verification target**
+- [x] **Step 1: Run the complete verification target**
 
 Run:
 
@@ -817,7 +817,7 @@ npm run package:check
 
 Expected: PASS.
 
-- [ ] **Step 2: Inspect the generated Codex marketplace files**
+- [x] **Step 2: Inspect the generated Codex marketplace files**
 
 Run:
 
@@ -834,7 +834,7 @@ dist/plugins/codex-nams-hooks/bin/cli.js
 dist/plugins/codex-nams-hooks/hooks/hooks.json
 ```
 
-- [ ] **Step 3: Inspect the generated Codex marketplace JSON**
+- [x] **Step 3: Inspect the generated Codex marketplace JSON**
 
 Run:
 
@@ -859,7 +859,7 @@ Expected output:
 }
 ```
 
-- [ ] **Step 4: Inspect the generated Codex hook commands**
+- [x] **Step 4: Inspect the generated Codex hook commands**
 
 Run:
 
@@ -876,7 +876,7 @@ Stop: node ${PLUGIN_ROOT}/bin/cli.js run codex --event AfterAgent
 PostToolUse: node ${PLUGIN_ROOT}/bin/cli.js run codex --event AfterTool
 ```
 
-- [ ] **Step 5: Confirm the worktree only has expected generated output**
+- [x] **Step 5: Confirm the worktree only has expected generated output**
 
 Run:
 
