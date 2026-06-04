@@ -1,0 +1,94 @@
+export function parseOpenCodePayload(payload, processCwd) {
+    const input = firstRecord(payload.input);
+    const event = firstRecord(payload.event);
+    const eventProperties = firstRecord(event?.properties);
+    const eventInfo = firstRecord(eventProperties?.info);
+    const output = firstRecord(payload.output);
+    const outputMessage = firstRecord(output?.message);
+    const inputMessage = firstRecord(input?.message);
+    const message = firstRecord(outputMessage, inputMessage, payload.message);
+    const hookName = firstString(payload.hook, payload.hookName);
+    const eventType = firstString(event?.type);
+    const sessionId = firstString(input?.sessionID, input?.sessionId, message?.sessionID, eventProperties?.sessionID, eventInfo?.id);
+    const messageId = firstString(input?.messageID, input?.messageId, outputMessage?.id, inputMessage?.id, message?.id);
+    const partId = firstString(input?.partID, input?.partId);
+    const projectDirectory = firstString(payload.directory, payload.cwd, eventInfo?.directory, payload.worktree) ?? processCwd;
+    const userPrompt = extractUserPrompt(output?.parts, message?.parts);
+    const assistantText = firstString(output?.text);
+    const toolName = firstString(input?.tool);
+    return {
+        ...(hookName !== undefined ? { hookName } : {}),
+        ...(eventType !== undefined ? { eventType } : {}),
+        ...(sessionId !== undefined ? { sessionId } : {}),
+        ...(messageId !== undefined ? { messageId } : {}),
+        ...(partId !== undefined ? { partId } : {}),
+        projectDirectory,
+        ...(userPrompt !== undefined ? { userPrompt } : {}),
+        ...(assistantText !== undefined ? { assistantText } : {}),
+        ...(toolName !== undefined
+            ? {
+                toolName,
+                ...extractToolFields(input, output),
+            }
+            : {}),
+    };
+}
+function extractUserPrompt(...values) {
+    const parts = firstArray(...values);
+    if (parts === undefined) {
+        return undefined;
+    }
+    const textParts = [];
+    for (const partValue of parts) {
+        const part = firstRecord(partValue);
+        if (part?.type !== "text" || part.ignored === true) {
+            continue;
+        }
+        const text = firstString(part.text);
+        if (text !== undefined) {
+            textParts.push(text);
+        }
+    }
+    return textParts.length > 0 ? textParts.join("\n") : undefined;
+}
+function extractToolFields(input, output) {
+    const toolCallId = firstString(input?.callID, input?.callId);
+    const toolTitle = firstString(output?.title);
+    const toolOutput = firstString(output?.output);
+    const toolStatus = firstString(output?.status) ?? "completed";
+    return {
+        ...(toolCallId !== undefined ? { toolCallId } : {}),
+        ...(input?.args !== undefined ? { toolInput: input.args } : {}),
+        ...(toolTitle !== undefined ? { toolTitle } : {}),
+        ...(toolOutput !== undefined ? { toolOutput } : {}),
+        toolStatus,
+    };
+}
+function firstArray(...values) {
+    for (const value of values) {
+        if (Array.isArray(value)) {
+            return value;
+        }
+    }
+    return undefined;
+}
+function firstRecord(...values) {
+    for (const value of values) {
+        if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+            return value;
+        }
+    }
+    return undefined;
+}
+function firstString(...values) {
+    for (const value of values) {
+        const stringValue = optionalString(value);
+        if (stringValue !== undefined) {
+            return stringValue;
+        }
+    }
+    return undefined;
+}
+function optionalString(value) {
+    return typeof value === "string" && value.trim() !== "" ? value : undefined;
+}

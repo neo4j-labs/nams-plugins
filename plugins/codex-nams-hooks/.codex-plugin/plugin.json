@@ -1,0 +1,17 @@
+{
+  "name": "nams-hooks",
+  "version": "0.1.0",
+  "description": "Persistent Neo4j Agent Memory Service hooks for Codex.",
+  "author": {
+    "name": "Neo4j Labs"
+  },
+  "repository": "https://github.com/neo4j-labs/nams-hooks",
+  "license": "Apache-2.0",
+  "keywords": [
+    "memory",
+    "context",
+    "persistence",
+    "neo4j",
+    "nams"
+  ]
+}
