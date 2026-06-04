@@ -34,9 +34,6 @@ function useRuntimeEnv(homeDir: string, overrides: RuntimeEnvOverrides = {}): vo
     "NAMS_API_KEY",
     "NAMS_WORKSPACE_ID",
     "NAMS_BASE_URL",
-    "CLAUDE_PLUGIN_OPTION_NAMS_API_KEY",
-    "CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID",
-    "CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL",
   ]) {
     delete process.env[key];
   }
@@ -152,42 +149,49 @@ test("environment variables overlay project and global JSON config", async () =>
   });
 });
 
-test("Claude plugin user config environment fills NAMS config", async () => {
+test("platform config discovery overlays JSON config", async () => {
   await withFixture(async ({ homeDir, projectDir }) => {
-    useRuntimeEnv(homeDir, {
-      CLAUDE_PLUGIN_OPTION_NAMS_API_KEY: "plugin-key",
-      CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID: "plugin-workspace",
-      CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL: "https://plugin.example.test",
+    await writeGlobalConfig(homeDir, {
+      apiKey: "global-key",
+      workspaceId: "global-workspace",
+      baseUrl: "https://global.example.test",
     });
-    const result = await loadNamsConfig(projectDir);
+    useRuntimeEnv(homeDir, {
+    });
+    const result = await loadNamsConfig(projectDir, () => ({
+      apiKey: { value: "platform-key", source: "platform:test:apiKey" },
+      workspaceId: { value: "platform-workspace", source: "platform:test:workspaceId" },
+      baseUrl: { value: "https://platform.example.test", source: "platform:test:baseUrl" },
+    }));
 
     assert.deepEqual(result, {
       ok: true,
       config: {
-        apiKey: "plugin-key",
-        workspaceId: "plugin-workspace",
-        baseUrl: "https://plugin.example.test",
+        apiKey: "platform-key",
+        workspaceId: "platform-workspace",
+        baseUrl: "https://platform.example.test",
       },
       sources: {
-        apiKey: "env:CLAUDE_PLUGIN_OPTION_NAMS_API_KEY",
-        workspaceId: "env:CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID",
-        baseUrl: "env:CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL",
+        apiKey: "platform:test:apiKey",
+        workspaceId: "platform:test:workspaceId",
+        baseUrl: "platform:test:baseUrl",
       },
     });
   });
 });
 
-test("environment variables overlay Claude plugin user config", async () => {
+test("environment variables overlay platform config discovery", async () => {
   await withFixture(async ({ homeDir, projectDir }) => {
     useRuntimeEnv(homeDir, {
-      CLAUDE_PLUGIN_OPTION_NAMS_API_KEY: "plugin-key",
-      CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID: "plugin-workspace",
-      CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL: "https://plugin.example.test",
       NAMS_API_KEY: "env-key",
       NAMS_WORKSPACE_ID: "env-workspace",
       NAMS_BASE_URL: "https://env.example.test",
     });
-    const result = await loadNamsConfig(projectDir);
+    const result = await loadNamsConfig(projectDir, () => ({
+      apiKey: { value: "platform-key", source: "platform:test:apiKey" },
+      workspaceId: { value: "platform-workspace", source: "platform:test:workspaceId" },
+      baseUrl: { value: "https://platform.example.test", source: "platform:test:baseUrl" },
+    }));
 
     assert.deepEqual(result, {
       ok: true,
@@ -200,6 +204,36 @@ test("environment variables overlay Claude plugin user config", async () => {
         apiKey: "env:NAMS_API_KEY",
         workspaceId: "env:NAMS_WORKSPACE_ID",
         baseUrl: "env:NAMS_BASE_URL",
+      },
+    });
+  });
+});
+
+test("blank platform config discovery values do not overwrite JSON config", async () => {
+  await withFixture(async ({ homeDir, projectDir }) => {
+    await writeGlobalConfig(homeDir, {
+      apiKey: "global-key",
+      workspaceId: "global-workspace",
+      baseUrl: "https://global.example.test",
+    });
+    useRuntimeEnv(homeDir);
+    const result = await loadNamsConfig(projectDir, () => ({
+      apiKey: { value: "", source: "platform:test:apiKey" },
+      workspaceId: { value: "  ", source: "platform:test:workspaceId" },
+      baseUrl: { value: "\t", source: "platform:test:baseUrl" },
+    }));
+
+    assert.deepEqual(result, {
+      ok: true,
+      config: {
+        apiKey: "global-key",
+        workspaceId: "global-workspace",
+        baseUrl: "https://global.example.test",
+      },
+      sources: {
+        apiKey: "global:~/.nams/config.json",
+        workspaceId: "global:~/.nams/config.json",
+        baseUrl: "global:~/.nams/config.json",
       },
     });
   });

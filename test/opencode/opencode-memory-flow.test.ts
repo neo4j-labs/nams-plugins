@@ -23,9 +23,6 @@ function testEnv(projectDir: string, overrides: TestEnvOverrides = {}): TestEnv 
     "NAMS_API_KEY",
     "NAMS_WORKSPACE_ID",
     "NAMS_BASE_URL",
-    "CLAUDE_PLUGIN_OPTION_NAMS_API_KEY",
-    "CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID",
-    "CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL",
   ]) {
     delete process.env[key];
   }

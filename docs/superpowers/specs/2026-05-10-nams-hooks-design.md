@@ -275,7 +275,7 @@ Rules:
 
 ## Configuration
 
-Persistent configuration is JSON plus environment-backed operational overrides. The runtime reads `~/.nams/config.json` first, overlays `<project>/.nams/config.json` when present, overlays Claude plugin user configuration exported as `CLAUDE_PLUGIN_OPTION_NAMS_API_KEY`, `CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID`, and `CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL`, and finally overlays supported `NAMS_*` environment variables when they are set. `NAMS_*` environment variables are the highest-precedence operational override.
+Persistent configuration is JSON plus environment-backed operational overrides. The runtime reads `~/.nams/config.json` first, overlays `<project>/.nams/config.json` when present, asks the active platform adapter for optional discovered configuration, and finally overlays supported `NAMS_*` environment variables when they are set. `NAMS_*` environment variables are the highest-precedence operational override. Platforms without a native user-configuration surface return no discovered configuration.
 
 Supported JSON keys:
 
@@ -293,7 +293,12 @@ Example:
 }
 ```
 
-Supported Claude plugin user configuration exports:
+Platform-specific discovery:
+
+- Claude Code plugin installs discover `apiKey`, `workspaceId`, and `baseUrl` from Claude's plugin user configuration environment exports.
+- Codex, Gemini, and OpenCode currently provide no additional discovered configuration.
+
+Claude plugin discovery sources:
 
 - `CLAUDE_PLUGIN_OPTION_NAMS_API_KEY`: fills `apiKey` from the Claude plugin's required sensitive `NAMS_API_KEY` setting.
 - `CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID`: fills `workspaceId` from the Claude plugin's required non-sensitive `NAMS_WORKSPACE_ID` setting.
@@ -314,7 +319,7 @@ Optional:
 
 - `baseUrl`, from JSON config, Claude plugin user configuration, or `NAMS_BASE_URL`.
 
-Environment overrides are limited to `CLAUDE_PLUGIN_OPTION_NAMS_API_KEY`, `CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID`, `CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL`, `NAMS_API_KEY`, `NAMS_WORKSPACE_ID` and `NAMS_BASE_URL` unless a future design explicitly adds more. The runtime records sanitized `configSources` diagnostics in the session log, for example `apiKey: "env:NAMS_API_KEY"`, `workspaceId: "env:NAMS_WORKSPACE_ID"`, `baseUrl: "project:.nams/config.json"`, or `baseUrl: "default"`. It never logs secret values or full config objects.
+Final environment overrides are limited to `NAMS_API_KEY`, `NAMS_WORKSPACE_ID` and `NAMS_BASE_URL` unless a future design explicitly adds more. The runtime records sanitized `configSources` diagnostics in the session log, for example `apiKey: "env:NAMS_API_KEY"`, `workspaceId: "env:NAMS_WORKSPACE_ID"`, `workspaceId: "platform:claude:CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID"`, `baseUrl: "project:.nams/config.json"`, or `baseUrl: "default"`. It never logs secret values or full config objects.
 
 `.env` files are not part of the target configuration model. Secrets remain outside committed harness configs. The installer ensures project `.nams/config.json` stays local and gitignored when it creates or modifies a project override.
 
