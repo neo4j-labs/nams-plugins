@@ -210,7 +210,7 @@ Gemini hook templates live under `templates/gemini/` on `devel`. The release art
 node "${extensionPath}/bin/cli.js" run gemini --event SessionStart
 ```
 
-Claude Code users can add the generated release tree as a plugin marketplace and install the `nams-hooks` plugin. Claude loads the plugin's standard `hooks/hooks.json` automatically, so `.claude-plugin/plugin.json` must not point its `hooks` field at that file. The plugin manifest declares user configuration for a required sensitive `NAMS_API_KEY` and an optional `NAMS_BASE_URL` defaulting to `https://memory.neo4jlabs.com`. Plugin hooks call the bundled compiled runtime through `${CLAUDE_PLUGIN_ROOT}/bin/cli.js`, so Claude plugin installs do not require a global `nams-hooks` executable:
+Claude Code users can add the generated release tree as a plugin marketplace and install the `nams-hooks` plugin. Claude loads the plugin's standard `hooks/hooks.json` automatically, so `.claude-plugin/plugin.json` must not point its `hooks` field at that file. The plugin manifest declares user configuration for a required sensitive `NAMS_API_KEY`, a required non-sensitive `NAMS_WORKSPACE_ID`, and an optional `NAMS_BASE_URL` defaulting to `https://memory.neo4jlabs.com`. Plugin hooks call the bundled compiled runtime through `${CLAUDE_PLUGIN_ROOT}/bin/cli.js`, so Claude plugin installs do not require a global `nams-hooks` executable:
 
 ```bash
 claude plugin marketplace add neo4j-labs/nams-hooks@master
@@ -246,7 +246,7 @@ Rules:
 
 ## Configuration
 
-Persistent configuration is JSON plus environment-backed operational overrides. The runtime reads `~/.nams/config.json` first, overlays `<project>/.nams/config.json` when present, overlays Claude plugin user configuration exported as `CLAUDE_PLUGIN_OPTION_NAMS_API_KEY` and `CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL`, and finally overlays supported `NAMS_*` environment variables when they are set. `NAMS_*` environment variables are the highest-precedence operational override.
+Persistent configuration is JSON plus environment-backed operational overrides. The runtime reads `~/.nams/config.json` first, overlays `<project>/.nams/config.json` when present, overlays Claude plugin user configuration exported as `CLAUDE_PLUGIN_OPTION_NAMS_API_KEY`, `CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID`, and `CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL`, and finally overlays supported `NAMS_*` environment variables when they are set. `NAMS_*` environment variables are the highest-precedence operational override.
 
 Supported JSON keys:
 
@@ -267,6 +267,7 @@ Example:
 Supported Claude plugin user configuration exports:
 
 - `CLAUDE_PLUGIN_OPTION_NAMS_API_KEY`: fills `apiKey` from the Claude plugin's required sensitive `NAMS_API_KEY` setting.
+- `CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID`: fills `workspaceId` from the Claude plugin's required non-sensitive `NAMS_WORKSPACE_ID` setting.
 - `CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL`: fills `baseUrl` from the Claude plugin's optional `NAMS_BASE_URL` setting, whose plugin default is `https://memory.neo4jlabs.com`.
 
 Supported final environment overrides:
@@ -278,13 +279,13 @@ Supported final environment overrides:
 Required:
 
 - `apiKey`, from either JSON config or `NAMS_API_KEY`.
-- `workspaceId`, from either JSON config or `NAMS_WORKSPACE_ID`.
+- `workspaceId`, from JSON config, Claude plugin user configuration, or `NAMS_WORKSPACE_ID`.
 
 Optional:
 
 - `baseUrl`, from JSON config, Claude plugin user configuration, or `NAMS_BASE_URL`.
 
-Environment overrides are limited to `CLAUDE_PLUGIN_OPTION_NAMS_API_KEY`, `CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL`, `NAMS_API_KEY`, `NAMS_WORKSPACE_ID` and `NAMS_BASE_URL` unless a future design explicitly adds more. The runtime records sanitized `configSources` diagnostics in the session log, for example `apiKey: "env:NAMS_API_KEY"`, `workspaceId: "env:NAMS_WORKSPACE_ID"`, `baseUrl: "project:.nams/config.json"`, or `baseUrl: "default"`. It never logs secret values or full config objects.
+Environment overrides are limited to `CLAUDE_PLUGIN_OPTION_NAMS_API_KEY`, `CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID`, `CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL`, `NAMS_API_KEY`, `NAMS_WORKSPACE_ID` and `NAMS_BASE_URL` unless a future design explicitly adds more. The runtime records sanitized `configSources` diagnostics in the session log, for example `apiKey: "env:NAMS_API_KEY"`, `workspaceId: "env:NAMS_WORKSPACE_ID"`, `baseUrl: "project:.nams/config.json"`, or `baseUrl: "default"`. It never logs secret values or full config objects.
 
 `.env` files are not part of the target configuration model. Secrets remain outside committed harness configs. The installer ensures project `.nams/config.json` stays local and gitignored when it creates or modifies a project override.
 

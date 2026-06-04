@@ -28,7 +28,16 @@ async function withFixture(fn: (fixture: ConfigFixture) => Promise<void>): Promi
 }
 
 function useRuntimeEnv(homeDir: string, overrides: RuntimeEnvOverrides = {}): void {
-  for (const key of ["HOME", "USERPROFILE", "NAMS_API_KEY", "NAMS_WORKSPACE_ID", "NAMS_BASE_URL", "CLAUDE_PLUGIN_OPTION_NAMS_API_KEY", "CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL"]) {
+  for (const key of [
+    "HOME",
+    "USERPROFILE",
+    "NAMS_API_KEY",
+    "NAMS_WORKSPACE_ID",
+    "NAMS_BASE_URL",
+    "CLAUDE_PLUGIN_OPTION_NAMS_API_KEY",
+    "CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID",
+    "CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL",
+  ]) {
     delete process.env[key];
   }
   Object.assign(process.env, { HOME: homeDir, USERPROFILE: homeDir, ...overrides });
@@ -146,8 +155,8 @@ test("environment variables overlay project and global JSON config", async () =>
 test("Claude plugin user config environment fills NAMS config", async () => {
   await withFixture(async ({ homeDir, projectDir }) => {
     useRuntimeEnv(homeDir, {
-      NAMS_WORKSPACE_ID: "env-workspace",
       CLAUDE_PLUGIN_OPTION_NAMS_API_KEY: "plugin-key",
+      CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID: "plugin-workspace",
       CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL: "https://plugin.example.test",
     });
     const result = await loadNamsConfig(projectDir);
@@ -156,12 +165,12 @@ test("Claude plugin user config environment fills NAMS config", async () => {
       ok: true,
       config: {
         apiKey: "plugin-key",
-        workspaceId: "env-workspace",
+        workspaceId: "plugin-workspace",
         baseUrl: "https://plugin.example.test",
       },
       sources: {
         apiKey: "env:CLAUDE_PLUGIN_OPTION_NAMS_API_KEY",
-        workspaceId: "env:NAMS_WORKSPACE_ID",
+        workspaceId: "env:CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID",
         baseUrl: "env:CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL",
       },
     });
@@ -172,6 +181,7 @@ test("environment variables overlay Claude plugin user config", async () => {
   await withFixture(async ({ homeDir, projectDir }) => {
     useRuntimeEnv(homeDir, {
       CLAUDE_PLUGIN_OPTION_NAMS_API_KEY: "plugin-key",
+      CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID: "plugin-workspace",
       CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL: "https://plugin.example.test",
       NAMS_API_KEY: "env-key",
       NAMS_WORKSPACE_ID: "env-workspace",

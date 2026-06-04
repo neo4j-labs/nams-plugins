@@ -44,9 +44,10 @@ Environment variables are final overrides:
 Claude plugin installs also prompt for plugin user configuration:
 
 - `NAMS_API_KEY` is required, marked sensitive, and stored by Claude Code in secure storage.
+- `NAMS_WORKSPACE_ID` is required and routes memory requests to the selected NAMS workspace.
 - `NAMS_BASE_URL` is optional and defaults to `https://memory.neo4jlabs.com`.
 
-Claude exports those plugin values to hook subprocesses as `CLAUDE_PLUGIN_OPTION_NAMS_API_KEY` and `CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL`. Explicit `NAMS_API_KEY` and `NAMS_BASE_URL` environment variables still override plugin-provided values.
+Claude exports those plugin values to hook subprocesses as `CLAUDE_PLUGIN_OPTION_NAMS_API_KEY`, `CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID`, and `CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL`. Explicit `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment variables still override plugin-provided values.
 
 The runtime does not read `.env` files.
 

@@ -22,6 +22,12 @@
       "sensitive": true,
       "required": true
     },
+    "NAMS_WORKSPACE_ID": {
+      "type": "string",
+      "title": "NAMS workspace ID",
+      "description": "Neo4j Agent Memory Service workspace ID.",
+      "required": true
+    },
     "NAMS_BASE_URL": {
       "type": "string",
       "title": "NAMS base URL",
