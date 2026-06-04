@@ -8,25 +8,26 @@ export interface NamsRuntimeConfig {
   baseUrl?: string;
 }
 
+type JsonConfigSource = "global:~/.nams/config.json" | "project:.nams/config.json";
+
+export type PlatformConfigSource = `platform:${string}:${string}`;
+
 export type ConfigSource =
   | "missing"
-  | "global:~/.nams/config.json"
-  | "project:.nams/config.json"
-  | "env:CLAUDE_PLUGIN_OPTION_NAMS_API_KEY"
+  | JsonConfigSource
+  | PlatformConfigSource
   | "env:NAMS_API_KEY";
 
 export type WorkspaceIdSource =
   | "missing"
-  | "global:~/.nams/config.json"
-  | "project:.nams/config.json"
-  | "env:CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID"
+  | JsonConfigSource
+  | PlatformConfigSource
   | "env:NAMS_WORKSPACE_ID";
 
 export type BaseUrlSource =
   | "default"
-  | "global:~/.nams/config.json"
-  | "project:.nams/config.json"
-  | "env:CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL"
+  | JsonConfigSource
+  | PlatformConfigSource
   | "env:NAMS_BASE_URL";
 
 export interface NamsConfigSources {
@@ -34,6 +35,19 @@ export interface NamsConfigSources {
   workspaceId: WorkspaceIdSource;
   baseUrl: BaseUrlSource;
 }
+
+export interface DiscoveredNamsConfigValue {
+  value: string;
+  source: PlatformConfigSource;
+}
+
+export interface DiscoveredNamsConfig {
+  apiKey?: DiscoveredNamsConfigValue;
+  workspaceId?: DiscoveredNamsConfigValue;
+  baseUrl?: DiscoveredNamsConfigValue;
+}
+
+export type NamsConfigDiscovery = (runtimeEnvironment: RuntimeEnvironment) => DiscoveredNamsConfig | Promise<DiscoveredNamsConfig>;
 
 export type NamsConfigLoadResult =
   | {
@@ -84,7 +98,10 @@ export function configDiagnosticPayload(result: NamsConfigLoadResult): Record<st
   };
 }
 
-export async function loadNamsConfig(projectDirectory: string): Promise<NamsConfigLoadResult> {
+export async function loadNamsConfig(
+  projectDirectory: string,
+  discoverConfig?: NamsConfigDiscovery,
+): Promise<NamsConfigLoadResult> {
   const runtimeEnvironment = RuntimeEnvironment.fromProcess();
   const accumulated: Partial<NamsRuntimeConfig> = {};
   const sources: NamsConfigSources = {
@@ -108,7 +125,9 @@ export async function loadNamsConfig(projectDirectory: string): Promise<NamsConf
   }
   applyJsonConfig(accumulated, sources, projectResult.config, "project:.nams/config.json");
 
-  applyClaudePluginEnvironment(accumulated, sources, runtimeEnvironment);
+  if (discoverConfig !== undefined) {
+    applyDiscoveredConfig(accumulated, sources, await discoverConfig(runtimeEnvironment));
+  }
   applyEnvironmentOverrides(accumulated, sources, runtimeEnvironment);
 
   if (accumulated.apiKey === undefined) {
@@ -136,8 +155,6 @@ export async function loadNamsConfig(projectDirectory: string): Promise<NamsConf
     sources,
   };
 }
-
-type JsonConfigSource = "global:~/.nams/config.json" | "project:.nams/config.json";
 
 type JsonConfigReadResult =
   | {
@@ -237,6 +254,37 @@ function applyJsonConfig(
   }
 }
 
+function applyDiscoveredConfig(
+  accumulated: Partial<NamsRuntimeConfig>,
+  sources: NamsConfigSources,
+  config: DiscoveredNamsConfig,
+): void {
+  const discoveredApiKey = config.apiKey;
+  if (discoveredApiKey !== undefined) {
+    const apiKey = nonBlankString(discoveredApiKey.value);
+    if (apiKey !== undefined) {
+      accumulated.apiKey = apiKey;
+      sources.apiKey = discoveredApiKey.source;
+    }
+  }
+  const discoveredWorkspaceId = config.workspaceId;
+  if (discoveredWorkspaceId !== undefined) {
+    const workspaceId = nonBlankString(discoveredWorkspaceId.value);
+    if (workspaceId !== undefined) {
+      accumulated.workspaceId = workspaceId;
+      sources.workspaceId = discoveredWorkspaceId.source;
+    }
+  }
+  const discoveredBaseUrl = config.baseUrl;
+  if (discoveredBaseUrl !== undefined) {
+    const baseUrl = nonBlankString(discoveredBaseUrl.value);
+    if (baseUrl !== undefined) {
+      accumulated.baseUrl = baseUrl;
+      sources.baseUrl = discoveredBaseUrl.source;
+    }
+  }
+}
+
 function applyEnvironmentOverrides(
   accumulated: Partial<NamsRuntimeConfig>,
   sources: NamsConfigSources,
@@ -258,30 +306,6 @@ function applyEnvironmentOverrides(
   if (baseUrl !== undefined) {
     accumulated.baseUrl = baseUrl;
     sources.baseUrl = "env:NAMS_BASE_URL";
-  }
-}
-
-function applyClaudePluginEnvironment(
-  accumulated: Partial<NamsRuntimeConfig>,
-  sources: NamsConfigSources,
-  runtimeEnvironment: RuntimeEnvironment,
-): void {
-  const apiKey = runtimeEnvironment.value("CLAUDE_PLUGIN_OPTION_NAMS_API_KEY");
-  if (apiKey !== undefined) {
-    accumulated.apiKey = apiKey;
-    sources.apiKey = "env:CLAUDE_PLUGIN_OPTION_NAMS_API_KEY";
-  }
-
-  const workspaceId = runtimeEnvironment.value("CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID");
-  if (workspaceId !== undefined) {
-    accumulated.workspaceId = workspaceId;
-    sources.workspaceId = "env:CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID";
-  }
-
-  const baseUrl = runtimeEnvironment.value("CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL");
-  if (baseUrl !== undefined) {
-    accumulated.baseUrl = baseUrl;
-    sources.baseUrl = "env:CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL";
   }
 }
 

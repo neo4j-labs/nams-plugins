@@ -11,6 +11,7 @@ import {
   createNamsMemoryService,
 } from "../../runtime/memory-service.js";
 import { createInitialSessionState, loadSessionState, saveSessionState } from "../../runtime/session-state.js";
+import { discoverClaudeNamsConfig } from "./config.js";
 import { parseClaudePayload } from "./payload.js";
 
 export class ClaudeAdapter implements PlatformAdapter {
@@ -47,7 +48,7 @@ export class ClaudeAdapter implements PlatformAdapter {
       return allowOutput();
     }
 
-    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
+    const configResult = await loadNamsConfig(payloadInfo.projectDirectory, discoverClaudeNamsConfig);
     await appendNamsConfigDiagnostic(invocation, state, configResult);
     if (!configResult.ok) {
       await saveSessionState(invocation.platform, state.sessionKey, state);
@@ -125,7 +126,7 @@ export class ClaudeAdapter implements PlatformAdapter {
       return allowOutput();
     }
 
-    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
+    const configResult = await loadNamsConfig(payloadInfo.projectDirectory, discoverClaudeNamsConfig);
     await appendNamsConfigDiagnostic(invocation, state, configResult);
     if (!configResult.ok) {
       await saveSessionState(invocation.platform, state.sessionKey, state);
@@ -177,7 +178,7 @@ export class ClaudeAdapter implements PlatformAdapter {
       return allowOutput();
     }
 
-    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
+    const configResult = await loadNamsConfig(payloadInfo.projectDirectory, discoverClaudeNamsConfig);
     await appendNamsConfigDiagnostic(invocation, state, configResult);
     if (!configResult.ok) {
       await saveSessionState(invocation.platform, state.sessionKey, state);
