@@ -116,8 +116,8 @@ async function verifyCodexPluginFiles() {
   if (marketplacePlugin.policy?.installation !== "AVAILABLE") {
     throw new Error("Codex marketplace must mark nams-hooks as available for installation.");
   }
-  if (Object.hasOwn(marketplacePlugin.policy ?? {}, "authentication")) {
-    throw new Error("Codex marketplace must not declare plugin authentication for NAMS credentials.");
+  if (marketplacePlugin.policy?.authentication !== "ON_USE") {
+    throw new Error("Codex marketplace must defer marketplace authentication policy until first use.");
   }
   if (Object.hasOwn(marketplacePlugin ?? {}, "userConfig") || Object.hasOwn(marketplacePlugin ?? {}, "authentication")) {
     throw new Error("Codex marketplace plugin must not define NAMS credential prompts.");

@@ -240,7 +240,7 @@ claude plugin marketplace add neo4j-labs/nams-hooks@master
 claude plugin install nams-hooks@neo4j-nams-hooks
 ```
 
-Codex users can add the generated release tree as a repo marketplace and install the available `nams-hooks` plugin. The Codex marketplace lives at `.agents/plugins/marketplace.json` and points to `./plugins/codex-nams-hooks`. The plugin bundles its own compiled `bin/cli.js` and standard `hooks/hooks.json`, with hook commands using `${PLUGIN_ROOT}/bin/cli.js`, so Codex marketplace installs do not require a global `nams-hooks` executable. Codex plugin installs do not define NAMS credentials through plugin metadata; they use the existing `.nams/config.json` and `NAMS_*` environment configuration model:
+Codex users can add the generated release tree as a repo marketplace and install the available `nams-hooks` plugin. The Codex marketplace lives at `.agents/plugins/marketplace.json` and points to `./plugins/codex-nams-hooks`. The plugin bundles its own compiled `bin/cli.js` and standard `hooks/hooks.json`, with hook commands using `${PLUGIN_ROOT}/bin/cli.js`, so Codex marketplace installs do not require a global `nams-hooks` executable. Codex marketplace policy uses `authentication: "ON_USE"` as marketplace auth timing metadata, but plugin installs do not define NAMS credential values or prompts through plugin metadata; they use the existing `.nams/config.json` and `NAMS_*` environment configuration model:
 
 ```bash
 codex plugin marketplace add neo4j-labs/nams-hooks --ref master

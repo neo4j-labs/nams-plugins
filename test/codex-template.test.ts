@@ -14,6 +14,8 @@ test("Codex repo marketplace template exposes nams-hooks as available", async ()
   assert.equal(template.metadata.description, "Neo4j Agent Memory Service hooks for Codex.");
   assert.equal(template.metadata.version, "__PACKAGE_VERSION__");
 
+  assert.equal(template.plugins.length, 1);
+
   const plugin = template.plugins[0];
   assert.equal(plugin.name, "nams-hooks");
   assert.deepEqual(plugin.source, {
@@ -22,8 +24,8 @@ test("Codex repo marketplace template exposes nams-hooks as available", async ()
   });
   assert.deepEqual(plugin.policy, {
     installation: "AVAILABLE",
+    authentication: "ON_USE",
   });
-  assert.equal(Object.hasOwn(plugin.policy, "authentication"), false);
   assert.equal(plugin.interface.displayName, "NAMS Hooks");
   assert.equal(plugin.description, "Persistent Neo4j Agent Memory Service hooks for Codex.");
   assert.equal(plugin.version, "__PACKAGE_VERSION__");

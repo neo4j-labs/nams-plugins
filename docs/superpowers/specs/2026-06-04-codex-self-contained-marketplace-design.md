@@ -64,7 +64,7 @@ dist/
         generated/
 ```
 
-The marketplace file exposes a single plugin named `nams-hooks` with `source.path` set to `./plugins/codex-nams-hooks`. Its policy sets `installation` to `AVAILABLE`. It does not make the plugin installed by default, and it does not declare Codex plugin authentication for NAMS credentials. The source directory is platform-specific because the existing Claude plugin release path already uses `dist/plugins/nams-hooks/hooks/hooks.json` for Claude-specific hook commands.
+The marketplace file exposes a single plugin named `nams-hooks` with `source.path` set to `./plugins/codex-nams-hooks`. Its policy sets `installation` to `AVAILABLE` and `authentication` to `ON_USE`. It does not make the plugin installed by default, and it does not define Codex plugin NAMS credential prompts. The source directory is platform-specific because the existing Claude plugin release path already uses `dist/plugins/nams-hooks/hooks/hooks.json` for Claude-specific hook commands.
 
 The plugin manifest uses stable package metadata: `name`, `version`, `description`, `license`, `repository`, and keywords. Lifecycle hooks are provided through the default `hooks/hooks.json` file rather than inline manifest hook configuration.
 
@@ -129,7 +129,7 @@ Tests and package checks should verify:
 - Codex plugin template hook commands invoke `node ${PLUGIN_ROOT}/bin/cli.js`.
 - Codex plugin hook commands preserve the current Codex-to-NAMS event mapping.
 - Codex repo marketplace exposes `nams-hooks` from `./plugins/codex-nams-hooks`.
-- Codex marketplace policy marks installation as available.
+- Codex marketplace policy marks installation as available and marketplace authentication as first-use.
 - Codex plugin manifest renders package version and license values.
 - Generated `dist/plugins/codex-nams-hooks/bin/cli.js` is executable.
 - `npm pack --dry-run` includes Codex marketplace and plugin files for both root and generated `dist/` package checks.

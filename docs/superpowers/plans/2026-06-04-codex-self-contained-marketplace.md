@@ -55,7 +55,7 @@ dist/
 Update the adjacent marketplace sentence to:
 
 ```markdown
-The marketplace file exposes a single plugin named `nams-hooks` with `source.path` set to `./plugins/codex-nams-hooks`. Its policy sets `installation` to `AVAILABLE`. It does not make the plugin installed by default, and it does not declare Codex plugin authentication for NAMS credentials. The source directory is platform-specific because the existing Claude plugin release path already uses `dist/plugins/nams-hooks/hooks/hooks.json` for Claude-specific hook commands.
+The marketplace file exposes a single plugin named `nams-hooks` with `source.path` set to `./plugins/codex-nams-hooks`. Its policy sets `installation` to `AVAILABLE` and `authentication` to `ON_USE`. It does not make the plugin installed by default, and it does not define Codex plugin NAMS credential prompts. The source directory is platform-specific because the existing Claude plugin release path already uses `dist/plugins/nams-hooks/hooks/hooks.json` for Claude-specific hook commands.
 ```
 
 - [x] **Step 2: Edit the build integration bullets in the spec**
@@ -128,6 +128,8 @@ test("Codex repo marketplace template exposes nams-hooks as available", async ()
   assert.equal(template.metadata.description, "Neo4j Agent Memory Service hooks for Codex.");
   assert.equal(template.metadata.version, "__PACKAGE_VERSION__");
 
+  assert.equal(template.plugins.length, 1);
+
   const plugin = template.plugins[0];
   assert.equal(plugin.name, "nams-hooks");
   assert.deepEqual(plugin.source, {
@@ -136,8 +138,8 @@ test("Codex repo marketplace template exposes nams-hooks as available", async ()
   });
   assert.deepEqual(plugin.policy, {
     installation: "AVAILABLE",
+    authentication: "ON_USE",
   });
-  assert.equal(Object.hasOwn(plugin.policy, "authentication"), false);
   assert.equal(plugin.interface.displayName, "NAMS Hooks");
   assert.equal(plugin.description, "Persistent Neo4j Agent Memory Service hooks for Codex.");
   assert.equal(plugin.version, "__PACKAGE_VERSION__");
@@ -230,7 +232,8 @@ Create `templates/codex/.agents/plugins/marketplace.json`:
         "path": "./plugins/codex-nams-hooks"
       },
       "policy": {
-        "installation": "AVAILABLE"
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
       },
       "interface": {
         "displayName": "NAMS Hooks"
@@ -417,8 +420,8 @@ async function verifyCodexPluginFiles() {
   if (marketplacePlugin.policy?.installation !== "AVAILABLE") {
     throw new Error("Codex marketplace must mark nams-hooks as available for installation.");
   }
-  if (Object.hasOwn(marketplacePlugin.policy ?? {}, "authentication")) {
-    throw new Error("Codex marketplace must not declare plugin authentication for NAMS credentials.");
+  if (marketplacePlugin.policy?.authentication !== "ON_USE") {
+    throw new Error("Codex marketplace must defer marketplace authentication policy until first use.");
   }
   if (marketplacePlugin.version !== packageJson.version) {
     throw new Error("Codex marketplace plugin version must match package.json.");
@@ -740,7 +743,7 @@ dist/
 In `docs/superpowers/specs/2026-05-10-nams-hooks-design.md`, replace the paragraph that starts `Codex and OpenCode distribution use the released CLI package` with:
 
 ````markdown
-Codex users can add the generated release tree as a repo marketplace and install the available `nams-hooks` plugin. The Codex marketplace lives at `.agents/plugins/marketplace.json` and points to `./plugins/codex-nams-hooks`. The plugin bundles its own compiled `bin/cli.js` and standard `hooks/hooks.json`, with hook commands using `${PLUGIN_ROOT}/bin/cli.js`, so Codex marketplace installs do not require a global `nams-hooks` executable. Codex plugin installs do not define NAMS credentials through plugin metadata; they use the existing `.nams/config.json` and `NAMS_*` environment configuration model:
+Codex users can add the generated release tree as a repo marketplace and install the available `nams-hooks` plugin. The Codex marketplace lives at `.agents/plugins/marketplace.json` and points to `./plugins/codex-nams-hooks`. The plugin bundles its own compiled `bin/cli.js` and standard `hooks/hooks.json`, with hook commands using `${PLUGIN_ROOT}/bin/cli.js`, so Codex marketplace installs do not require a global `nams-hooks` executable. Codex marketplace policy uses `authentication: "ON_USE"` as marketplace auth timing metadata, but plugin installs do not define NAMS credential values or prompts through plugin metadata; they use the existing `.nams/config.json` and `NAMS_*` environment configuration model:
 
 ```bash
 codex plugin marketplace add neo4j-labs/nams-hooks --ref master
@@ -853,7 +856,8 @@ Expected output:
     "path": "./plugins/codex-nams-hooks"
   },
   "policy": {
-    "installation": "AVAILABLE"
+    "installation": "AVAILABLE",
+    "authentication": "ON_USE"
   },
   "version": "0.1.0"
 }
