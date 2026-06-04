@@ -94,6 +94,15 @@ nams-hooks/
       .claude/
         settings.local.json
     codex/
+      .agents/
+        plugins/
+          marketplace.json
+      plugins/
+        codex-nams-hooks/
+          .codex-plugin/
+            plugin.json
+          hooks/
+            hooks.json
       hooks.json
     opencode/
       plugins/
@@ -615,7 +624,7 @@ Approved decisions from brainstorming:
 - Standalone `nams-hooks` repo.
 - First iteration: Codex, Claude Code, Gemini CLI, and OpenCode on macOS.
 - User-level runtime state and logs under `~/.nams/`.
-- Project-level installs for Codex, Claude, and OpenCode; Gemini extension distribution for v1.
+- Codex and Claude Code use generated marketplace distribution by default, with project-level settings as fallbacks; OpenCode uses a project-level plugin install; Gemini uses extension distribution for v1.
 - Plain Node.js with built-in modules only.
 - JSON configuration with global defaults in `~/.nams/config.json`, optional project overrides in `.nams/config.json`, and final environment overrides from `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL`.
 - Deterministic REST writes from hook runner, not MCP-driven writes.
