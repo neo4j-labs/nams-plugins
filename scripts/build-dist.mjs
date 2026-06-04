@@ -8,6 +8,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const distDir = path.join(root, "dist");
 const compileDir = path.join(root, ".build", "tsc");
 const claudePluginDir = path.join(distDir, "plugins", "nams-hooks");
+const codexPluginDir = path.join(distDir, "plugins", "codex-nams-hooks");
 
 async function main() {
   const source = await readRootPackageJson();
@@ -20,6 +21,7 @@ async function main() {
   await cp(path.join(root, "templates", "gemini", "gemini-extension.json"), path.join(distDir, "gemini-extension.json"));
   await cp(path.join(root, "templates", "gemini", "hooks"), path.join(distDir, "hooks"), { recursive: true });
   await writeClaudeTemplates(source);
+  await writeCodexTemplates(source);
   await writeReleasePackageJson(source);
 }
 
@@ -36,6 +38,21 @@ async function writeClaudeTemplates(source) {
   );
   await cp(path.join(compileDir), path.join(claudePluginDir, "bin"), { recursive: true });
   await chmod(path.join(claudePluginDir, "bin", "cli.js"), 0o755);
+}
+
+async function writeCodexTemplates(source) {
+  await renderTemplateTree(
+    path.join(root, "templates", "codex", ".agents"),
+    path.join(distDir, ".agents"),
+    packageTemplateReplacements(source),
+  );
+  await renderTemplateTree(
+    path.join(root, "templates", "codex", "plugins"),
+    path.join(distDir, "plugins"),
+    packageTemplateReplacements(source),
+  );
+  await cp(path.join(compileDir), path.join(codexPluginDir, "bin"), { recursive: true });
+  await chmod(path.join(codexPluginDir, "bin", "cli.js"), 0o755);
 }
 
 async function writeReleasePackageJson(source) {

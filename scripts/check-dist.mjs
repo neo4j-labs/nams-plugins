@@ -14,6 +14,11 @@ const claudeMarketplacePath = path.join(root, "dist", ".claude-plugin", "marketp
 const claudePluginManifestPath = path.join(root, "dist", "plugins", "nams-hooks", ".claude-plugin", "plugin.json");
 const claudePluginHooksPath = path.join(root, "dist", "plugins", "nams-hooks", "hooks", "hooks.json");
 const claudePluginCliPath = path.join(root, "dist", "plugins", "nams-hooks", "bin", "cli.js");
+const codexMarketplacePath = path.join(root, "dist", ".agents", "plugins", "marketplace.json");
+const codexPluginManifestPath = path.join(root, "dist", "plugins", "codex-nams-hooks", ".codex-plugin", "plugin.json");
+const codexPluginHooksPath = path.join(root, "dist", "plugins", "codex-nams-hooks", "hooks", "hooks.json");
+const codexPluginCliPath = path.join(root, "dist", "plugins", "codex-nams-hooks", "bin", "cli.js");
+const codexHookEvents = ["SessionStart", "UserPromptSubmit", "Stop", "PostToolUse"];
 const opencodeTemplatePath = path.join(root, "templates", "opencode", "plugins", "nams-hooks.js");
 const rootPackagePath = path.join(root, "package.json");
 const execFileAsync = promisify(execFile);
@@ -24,6 +29,7 @@ await access(opencodeTemplatePath);
 await verifyRootPackageFiles(rootPackagePath);
 await verifyGeminiExtensionSettings(geminiExtensionPath);
 await verifyClaudePluginFiles();
+await verifyCodexPluginFiles();
 
 const source = await readFile(generatedClientPath, "utf8");
 if (/nams-openapi|readFile/.test(source)) {
@@ -73,6 +79,73 @@ async function verifyClaudePluginFiles() {
   assertClaudeHookCommand(hooks, "Stop", "AfterAgent");
 }
 
+async function verifyCodexPluginFiles() {
+  await access(codexMarketplacePath);
+  await access(codexPluginManifestPath);
+  await access(codexPluginHooksPath);
+  await assertExecutable(codexPluginCliPath);
+
+  const packageJson = JSON.parse(await readFile(rootPackagePath, "utf8"));
+  const marketplaceSource = await readFile(codexMarketplacePath, "utf8");
+  const pluginSource = await readFile(codexPluginManifestPath, "utf8");
+  const hooksSource = await readFile(codexPluginHooksPath, "utf8");
+  assertNoPackageTemplatePlaceholders([
+    [codexMarketplacePath, marketplaceSource],
+    [codexPluginManifestPath, pluginSource],
+    [codexPluginHooksPath, hooksSource],
+  ]);
+
+  const marketplace = JSON.parse(marketplaceSource);
+  const plugin = JSON.parse(pluginSource);
+  const hooks = JSON.parse(hooksSource);
+
+  if (marketplace.name !== "neo4j-nams-hooks") {
+    throw new Error("dist/.agents/plugins/marketplace.json must name the marketplace neo4j-nams-hooks.");
+  }
+  if (marketplace.metadata?.version !== packageJson.version) {
+    throw new Error("Codex marketplace metadata version must match package.json.");
+  }
+
+  const marketplacePlugin = marketplace.plugins?.[0];
+  if (marketplacePlugin?.name !== "nams-hooks") {
+    throw new Error("Codex marketplace must expose the nams-hooks plugin.");
+  }
+  if (marketplacePlugin.source?.source !== "local" || marketplacePlugin.source?.path !== "./plugins/codex-nams-hooks") {
+    throw new Error("Codex marketplace must expose nams-hooks from ./plugins/codex-nams-hooks.");
+  }
+  if (marketplacePlugin.policy?.installation !== "AVAILABLE") {
+    throw new Error("Codex marketplace must mark nams-hooks as available for installation.");
+  }
+  if (marketplacePlugin.policy?.authentication !== "ON_USE") {
+    throw new Error("Codex marketplace must defer marketplace authentication policy until first use.");
+  }
+  if (Object.hasOwn(marketplacePlugin ?? {}, "userConfig") || Object.hasOwn(marketplacePlugin ?? {}, "authentication")) {
+    throw new Error("Codex marketplace plugin must not define NAMS credential prompts.");
+  }
+  if (marketplacePlugin.version !== packageJson.version) {
+    throw new Error("Codex marketplace plugin version must match package.json.");
+  }
+  if (marketplacePlugin.license !== packageJson.license) {
+    throw new Error("Codex marketplace plugin license must match package.json.");
+  }
+
+  if (plugin.name !== "nams-hooks" || plugin.version !== packageJson.version) {
+    throw new Error("Codex plugin manifest must name nams-hooks and match package.json version.");
+  }
+  if (plugin.license !== packageJson.license) {
+    throw new Error("Codex plugin manifest license must match package.json.");
+  }
+  if (Object.hasOwn(plugin, "userConfig") || Object.hasOwn(plugin, "authentication")) {
+    throw new Error("Codex plugin manifest must not define NAMS credential prompts.");
+  }
+
+  assertCodexHookEventSet(hooks);
+  assertCodexHookCommand(hooks, "SessionStart", "SessionStart", "Loading session notes", "startup|resume");
+  assertCodexHookCommand(hooks, "UserPromptSubmit", "BeforeAgent", "NAMS memory recall");
+  assertCodexHookCommand(hooks, "Stop", "AfterAgent", "NAMS assistant persistence");
+  assertCodexHookCommand(hooks, "PostToolUse", "AfterTool", "NAMS tool metadata");
+}
+
 function assertClaudePluginUserConfig(plugin) {
   const apiKey = plugin.userConfig?.NAMS_API_KEY;
   if (apiKey?.type !== "string" || apiKey.title !== "NAMS API key" || apiKey.sensitive !== true || apiKey.required !== true) {
@@ -107,6 +180,50 @@ function assertClaudeHookCommand(hooks, eventName, namsEvent) {
   }
 }
 
+function assertNoPackageTemplatePlaceholders(files) {
+  for (const [filePath, source] of files) {
+    if (/__PACKAGE_VERSION__|__PACKAGE_LICENSE__/.test(source)) {
+      throw new Error(`${path.relative(root, filePath)} must not contain unresolved package template placeholders.`);
+    }
+  }
+}
+
+function assertCodexHookEventSet(hooks) {
+  const actualEvents = Object.keys(hooks.hooks ?? {}).sort();
+  const expectedEvents = [...codexHookEvents].sort();
+  if (JSON.stringify(actualEvents) !== JSON.stringify(expectedEvents)) {
+    throw new Error(`Codex plugin hooks must define exactly these events: ${codexHookEvents.join(", ")}.`);
+  }
+}
+
+function assertCodexHookCommand(hooks, eventName, namsEvent, statusMessage, matcher) {
+  const groups = hooks.hooks?.[eventName];
+  if (!Array.isArray(groups) || groups.length !== 1) {
+    throw new Error(`Codex plugin ${eventName} hook must define exactly one hook group.`);
+  }
+  const group = groups[0];
+  if (!Array.isArray(group.hooks) || group.hooks.length !== 1) {
+    throw new Error(`Codex plugin ${eventName} hook must define exactly one command handler.`);
+  }
+  const handler = group.hooks[0];
+  if (matcher === undefined && Object.hasOwn(group ?? {}, "matcher")) {
+    throw new Error(`Codex plugin ${eventName} hook must not declare a matcher.`);
+  }
+  if (matcher !== undefined && group?.matcher !== matcher) {
+    throw new Error(`Codex plugin ${eventName} hook must use matcher ${matcher}.`);
+  }
+  if (handler?.type !== "command") {
+    throw new Error(`Codex plugin ${eventName} hook must be a command hook.`);
+  }
+  const expectedCommand = `node \${PLUGIN_ROOT}/bin/cli.js run codex --event ${namsEvent}`;
+  if (handler.command !== expectedCommand) {
+    throw new Error(`Codex plugin ${eventName} hook must invoke the bundled CLI with --event ${namsEvent}.`);
+  }
+  if (handler.statusMessage !== statusMessage) {
+    throw new Error(`Codex plugin ${eventName} hook must use status message ${statusMessage}.`);
+  }
+}
+
 async function listFiles(directory, prefix = "") {
   const entries = await readdir(directory, { withFileTypes: true });
   const files = [];
@@ -138,9 +255,9 @@ async function checkPackedPackage(packageDir, binTarget) {
   if (!packedFiles.includes(binTarget)) {
     throw new Error(`packed package is missing nams-hooks bin target: ${binTarget}`);
   }
-  for (const expectedFile of claudePackedFiles(packageDir)) {
+  for (const expectedFile of [...claudePackedFiles(packageDir), ...codexPackedFiles(packageDir)]) {
     if (!packedFiles.includes(expectedFile)) {
-      throw new Error(`packed package is missing Claude plugin file: ${expectedFile}`);
+      throw new Error(`packed package is missing plugin file: ${expectedFile}`);
     }
   }
 }
@@ -152,6 +269,16 @@ function claudePackedFiles(packageDir) {
     `${prefix}plugins/nams-hooks/.claude-plugin/plugin.json`,
     `${prefix}plugins/nams-hooks/hooks/hooks.json`,
     `${prefix}plugins/nams-hooks/bin/cli.js`,
+  ];
+}
+
+function codexPackedFiles(packageDir) {
+  const prefix = packageDir === root ? "dist/" : "";
+  return [
+    `${prefix}.agents/plugins/marketplace.json`,
+    `${prefix}plugins/codex-nams-hooks/.codex-plugin/plugin.json`,
+    `${prefix}plugins/codex-nams-hooks/hooks/hooks.json`,
+    `${prefix}plugins/codex-nams-hooks/bin/cli.js`,
   ];
 }
 

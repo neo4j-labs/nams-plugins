@@ -7,7 +7,7 @@
 - Node.js 20 or newer
 - A NAMS API key and workspace ID
 - Gemini CLI, for the Gemini local extension path
-- Codex, for project-level Codex hooks
+- Codex, for the Codex repo marketplace path or project-level Codex hooks
 - Claude Code, for project-level Claude hooks
 - OpenCode, for the OpenCode project plugin path
 
@@ -70,6 +70,37 @@ This builds the generated Gemini extension tree under `dist/` and links it into 
 Repository-hosted Gemini installation is not published yet. For now, use the local build path above when testing Gemini CLI.
 
 ## Codex
+
+Codex can install `nams-hooks` from a repo marketplace. The Codex plugin bundles the compiled runtime under its own plugin directory, so marketplace installs do not require a global `nams-hooks` executable.
+
+Codex plugin installs use the Configuration section above for NAMS credentials. Unlike Claude Code plugin installs, Codex does not currently provide a documented custom plugin secret prompt for `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, or `NAMS_BASE_URL`.
+
+### From A Generated Marketplace
+
+Use this path when testing the generated release tree locally:
+
+```bash
+npm install
+npm run dist
+codex plugin marketplace add ./dist
+codex plugin marketplace list
+```
+
+Restart Codex, open the plugin directory with `/plugins`, select the `neo4j-nams-hooks` marketplace, and install `NAMS Hooks`. Then use `/hooks` to review and trust the plugin-bundled hooks when Codex asks for hook review.
+
+The generated Codex marketplace lives at `dist/.agents/plugins/marketplace.json`. Its plugin source is `dist/plugins/codex-nams-hooks/`, with standard hook configuration at `hooks/hooks.json` and the compiled CLI at `bin/cli.js`.
+
+For a published generated release branch, add the repository marketplace instead of the local `./dist` directory:
+
+```bash
+codex plugin marketplace add neo4j-labs/nams-hooks --ref master
+```
+
+Restart Codex, open `/plugins`, select the repository marketplace, and install `NAMS Hooks`.
+
+### From Project Hook Settings
+
+Use this fallback path when you want a project-local `.codex/hooks.json` hook file instead of a Codex plugin marketplace install.
 
 Codex loads project hook settings from `.codex/hooks.json`. Hook execution is controlled by the `hooks` feature flag in Codex config.
 
