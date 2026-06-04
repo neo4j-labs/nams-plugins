@@ -50,7 +50,7 @@ npm test
 # Run OpenAPI freshness check, build, and tests
 npm run check
 
-# Build and verify the generated release package, including Claude plugin files
+# Build and verify the generated release package, including Claude and Codex plugin files
 npm run package:check
 
 # Regenerate and build the OpenAPI client, then run OpenAPI client tests directly
@@ -59,7 +59,7 @@ npm run openapi:test
 
 ### Runtime Configuration And Storage
 
-Runtime configuration is JSON-first: `~/.nams/config.json`, optional project `.nams/config.json`, Claude plugin user configuration when running inside a Claude plugin, then final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. `apiKey` and `workspaceId` are required for NAMS requests. Runtime state and logs are user-local under `~/.nams/state/<platform>/` and `~/.nams/logs/<platform>/`.
+Runtime configuration is JSON-first: `~/.nams/config.json`, optional project `.nams/config.json`, Claude plugin user configuration when running inside a Claude plugin, then final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. Codex plugin installs use the same JSON and `NAMS_*` environment configuration path; Codex does not currently define NAMS credentials through plugin install prompts. `apiKey` and `workspaceId` are required for NAMS requests. Runtime state and logs are user-local under `~/.nams/state/<platform>/` and `~/.nams/logs/<platform>/`.
 
 Gemini and OpenCode write session-scoped JSONL diagnostics. Events for one session are kept in a single file named like:
 
