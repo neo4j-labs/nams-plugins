@@ -166,7 +166,7 @@ Dependency policy:
 Branch model:
 
 - `devel`: source branch containing TypeScript source, templates, docs, the pinned OpenAPI spec, the custom generator, and committed generated TypeScript client source.
-- `master`: generated release/distribution branch containing runnable JavaScript and Gemini extension root files.
+- `latest`: generated release/distribution branch containing runnable JavaScript, Gemini extension root files, Claude plugin marketplace files, and Codex repo marketplace files.
 
 On `devel`, `dist/` is generated and ignored. `npm run dist` creates a Gemini-linkable extension tree, a Claude Code plugin marketplace tree, and a Codex repo marketplace tree in `dist/`:
 
@@ -217,7 +217,7 @@ dist/
 Gemini users install from the generated release branch:
 
 ```bash
-gemini extensions install https://github.com/neo4j-labs/nams-hooks
+gemini extensions install https://github.com/kubamarchwicki/nams-hooks --ref latest
 ```
 
 For local testing, link the generated extension folder:
@@ -236,14 +236,14 @@ node "${extensionPath}/bin/cli.js" run gemini --event SessionStart
 Claude Code users can add the generated release tree as a plugin marketplace and install the `nams-hooks` plugin. Claude loads the plugin's standard `hooks/hooks.json` automatically, so `.claude-plugin/plugin.json` must not point its `hooks` field at that file. The plugin manifest declares user configuration for a required sensitive `NAMS_API_KEY`, a required non-sensitive `NAMS_WORKSPACE_ID`, and an optional `NAMS_BASE_URL` defaulting to `https://memory.neo4jlabs.com`. Plugin hooks call the bundled compiled runtime through `${CLAUDE_PLUGIN_ROOT}/bin/cli.js`, so Claude plugin installs do not require a global `nams-hooks` executable:
 
 ```bash
-claude plugin marketplace add neo4j-labs/nams-hooks@master
+claude plugin marketplace add kubamarchwicki/nams-hooks@latest
 claude plugin install nams-hooks@neo4j-nams-hooks
 ```
 
 Codex users can add the generated release tree as a repo marketplace and install the available `nams-hooks` plugin. The Codex marketplace lives at `.agents/plugins/marketplace.json` and points to `./plugins/codex-nams-hooks`. The plugin bundles its own compiled `bin/cli.js` and standard `hooks/hooks.json`, with hook commands using `${PLUGIN_ROOT}/bin/cli.js`, so Codex marketplace installs do not require a global `nams-hooks` executable. Codex marketplace policy uses `authentication: "ON_USE"` as marketplace auth timing metadata, but plugin installs do not define NAMS credential values or prompts through plugin metadata; they use the existing `.nams/config.json` and `NAMS_*` environment configuration model:
 
 ```bash
-codex plugin marketplace add neo4j-labs/nams-hooks --ref master
+codex plugin marketplace add kubamarchwicki/nams-hooks@latest
 ```
 
 OpenCode distribution uses the released CLI package and project-level plugin. Codex and Claude Code can still use project-level settings fallbacks when plugin marketplace installs are not desired:
@@ -261,15 +261,15 @@ Manual or CI release flow:
 4. Commit `docs/nams-openapi.json` and `src/generated/nams-client.ts` if they changed.
 5. Run package verification.
 6. Run release preparation to create the release tree.
-7. Replace `master` contents with the validated release tree.
-8. Commit the release artifact on `master`.
-9. Tag the release commit, for example `v0.1.0`.
+7. Replace `latest` contents with the validated release tree.
+8. Commit the release artifact on `latest`.
+9. Force-update the `latest` tag and recreate the GitHub Release named `latest`.
 
 Rules:
 
-- `master` is generated from `devel`; no hand edits.
-- Release tags are created from `master`.
-- Gemini installs default to `master`.
+- `latest` is generated from `devel`; no hand edits.
+- The `latest` release tag is created from `latest`.
+- Gemini installs use `--ref latest`.
 - Codex, Claude, and OpenCode npm releases are produced from the same validated artifact.
 - `npm run package:check` must verify that Claude and Codex marketplace/plugin files are present in `dist/` and included by npm dry-run packing.
 

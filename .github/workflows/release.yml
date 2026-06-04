@@ -14,12 +14,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: release
+  group: latest-release
   cancel-in-progress: false
 
 jobs:
   publish:
-    name: Publish generated release branch
+    name: Publish generated latest branch
     runs-on: ubuntu-latest
     if: >-
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/devel') ||
@@ -44,11 +44,12 @@ jobs:
       - name: Build and verify release artifacts
         run: npm run package:check
 
-      - name: Publish dist to release branch
+      - name: Publish dist to latest branch
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_SOURCE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          RELEASE_REF: latest
         run: |
           set -euo pipefail
 
@@ -62,25 +63,25 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           publish_release_tag() {
-            git tag -f release
-            git push --force origin refs/tags/release
+            git tag -f "$RELEASE_REF"
+            git push --force origin "refs/tags/$RELEASE_REF"
           }
 
           publish_github_release() {
             local notes="Generated release artifacts from ${RELEASE_SOURCE_SHA}."
-            gh release delete release --yes || true
-            gh release create release "$release_asset" \
-              --title "release" \
+            gh release delete "$RELEASE_REF" --yes || true
+            gh release create "$RELEASE_REF" "$release_asset" \
+              --title "$RELEASE_REF" \
               --notes "$notes" \
               --latest \
               --verify-tag
           }
 
-          git fetch origin refs/heads/release:refs/remotes/origin/release || true
-          if git rev-parse --verify origin/release >/dev/null 2>&1; then
-            git switch --track -c release origin/release
+          git fetch origin "refs/heads/$RELEASE_REF:refs/remotes/origin/$RELEASE_REF" || true
+          if git rev-parse --verify "origin/$RELEASE_REF" >/dev/null 2>&1; then
+            git switch --track -c "$RELEASE_REF" "origin/$RELEASE_REF"
           else
-            git switch --orphan release
+            git switch --orphan "$RELEASE_REF"
           fi
 
           find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
@@ -91,6 +92,6 @@ jobs:
             --allow-empty \
             -m "chore: publish release artifacts from ${RELEASE_SOURCE_SHA}" \
             -m "Co-authored-by: Codex <codex@openai.com>"
-          git push origin HEAD:refs/heads/release
+          git push origin "HEAD:refs/heads/$RELEASE_REF"
           publish_release_tag
           publish_github_release

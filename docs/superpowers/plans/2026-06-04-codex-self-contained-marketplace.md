@@ -650,7 +650,7 @@ The generated Codex marketplace lives at `dist/.agents/plugins/marketplace.json`
 For a published generated release branch, add the repository marketplace instead of the local `./dist` directory:
 
 ```bash
-codex plugin marketplace add neo4j-labs/nams-hooks --ref master
+codex plugin marketplace add kubamarchwicki/nams-hooks@latest
 ```
 
 Restart Codex, open `/plugins`, select the repository marketplace, and install `NAMS Hooks`.
@@ -746,7 +746,7 @@ In `docs/superpowers/specs/2026-05-10-nams-hooks-design.md`, replace the paragra
 Codex users can add the generated release tree as a repo marketplace and install the available `nams-hooks` plugin. The Codex marketplace lives at `.agents/plugins/marketplace.json` and points to `./plugins/codex-nams-hooks`. The plugin bundles its own compiled `bin/cli.js` and standard `hooks/hooks.json`, with hook commands using `${PLUGIN_ROOT}/bin/cli.js`, so Codex marketplace installs do not require a global `nams-hooks` executable. Codex marketplace policy uses `authentication: "ON_USE"` as marketplace auth timing metadata, but plugin installs do not define NAMS credential values or prompts through plugin metadata; they use the existing `.nams/config.json` and `NAMS_*` environment configuration model:
 
 ```bash
-codex plugin marketplace add neo4j-labs/nams-hooks --ref master
+codex plugin marketplace add kubamarchwicki/nams-hooks@latest
 ```
 
 OpenCode distribution uses the released CLI package and project-level plugin. Codex and Claude Code can still use project-level settings fallbacks when plugin marketplace installs are not desired:

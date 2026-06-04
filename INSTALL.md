@@ -1,6 +1,6 @@
 # Installation
 
-Use this guide to install `nams-hooks` from the generated `release` branch.
+Use this guide to install `nams-hooks` from the generated `latest` branch.
 For local development, generated artifact testing, and `./dist` workflows, see
 [DEVELOPMENT.md](DEVELOPMENT.md).
 
@@ -56,7 +56,7 @@ bundles the compiled runtime, hook configuration, and credential prompts.
 Add the release marketplace and install the plugin:
 
 ```bash
-claude plugin marketplace add kubamarchwicki/nams-hooks@release
+claude plugin marketplace add kubamarchwicki/nams-hooks@latest
 claude plugin install nams-hooks@neo4j-nams-hooks
 ```
 
@@ -90,7 +90,7 @@ bundles the compiled runtime and hook configuration.
 Add the release marketplace:
 
 ```bash
-codex plugin marketplace add kubamarchwicki/nams-hooks@release
+codex plugin marketplace add kubamarchwicki/nams-hooks@latest
 codex plugin marketplace list
 ```
 
@@ -104,13 +104,13 @@ Configure NAMS through `~/.nams/config.json`, project `.nams/config.json`, or th
 
 ## Gemini CLI
 
-Gemini CLI installs `nams-hooks` as a Gemini extension from the release branch.
+Gemini CLI installs `nams-hooks` as a Gemini extension from the latest branch.
 The extension bundles the compiled runtime and hook configuration.
 
 Install the release extension:
 
 ```bash
-gemini extensions install https://github.com/kubamarchwicki/nams-hooks --ref release
+gemini extensions install https://github.com/kubamarchwicki/nams-hooks --ref latest
 ```
 
 The Gemini extension declares these settings:

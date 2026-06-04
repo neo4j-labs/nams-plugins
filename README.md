@@ -34,7 +34,7 @@ It ensures deterministic memory persistence and context recall across different 
 Install the Claude Code marketplace release:
 
 ```bash
-claude plugin marketplace add kubamarchwicki/nams-hooks@release
+claude plugin marketplace add kubamarchwicki/nams-hooks@latest
 claude plugin install nams-hooks@neo4j-nams-hooks
 ```
 
