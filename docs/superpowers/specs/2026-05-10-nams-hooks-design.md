@@ -132,7 +132,7 @@ User runtime layout:
     opencode/
   state/
     gemini/
-      <session-hash>.json
+      session-<created-at>--<session-hash>.json
     claude/
     codex/
     opencode/
@@ -294,7 +294,7 @@ When global or project JSON config files exist and are readable, the runtime tig
 
 Do not rely on the agent harness as a mutable variable store. Harness IDs are keys, not storage.
 
-The runtime persists session state under `~/.nams/state/<harness>/<session-hash>.json`. The path is platform-scoped and hash-based to avoid unsafe filenames and leaking raw session IDs through filenames. The state file itself keeps the readable project directory and resolved session key for debugging:
+The runtime persists session state under `~/.nams/state/<harness>/session-<created-at>--<session-hash>.json`. The timestamp comes from the state file's `createdAt` value, is UTC ISO-8601 with filename-unsafe separators removed, and appears first so state files sort naturally by session initialization time. The path is platform-scoped and keeps the raw session key hashed to avoid unsafe filenames and leaking raw session IDs through filenames. The runtime resolves state by scanning the platform directory for the matching session-key hash suffix. Hash-only filenames from older builds are not part of the supported lookup contract. The state file itself keeps the readable project directory and resolved session key for debugging:
 
 ```json
 {

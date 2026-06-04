@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { ClaudeAdapter } from "../../src/platforms/claude/index.js";
-import { sha256 } from "../../src/runtime/hashing.js";
+import { sessionStatePath } from "../../src/runtime/paths.js";
 import { loadSessionState } from "../../src/runtime/session-state.js";
 import { createNamsFetchMock } from "../support/nams-fetch-mock.js";
-import { namsHome, readSingleSessionLog } from "../support/runtime-home.js";
+import { readSingleSessionLog } from "../support/runtime-home.js";
 
 type TestEnvOverrides = Record<string, string | undefined>;
 interface TestEnv extends TestEnvOverrides {
@@ -62,7 +62,7 @@ test("initializes Claude session state on SessionStart without creating a conver
     assert.equal(state.conversationId, undefined);
     assert.equal(nams.calls().length, 0);
 
-    const statePath = path.join(namsHome(env.HOME), "state", "claude", `${sha256("session-1")}.json`);
+    const statePath = sessionStatePath("claude", "session-1", state.createdAt);
     assert.deepEqual(JSON.parse(await readFile(statePath, "utf8")), state);
 
     const { lines } = await readSingleSessionLog(env.HOME, "claude");

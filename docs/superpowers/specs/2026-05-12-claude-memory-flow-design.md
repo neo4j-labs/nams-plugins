@@ -181,7 +181,7 @@ Claude `SessionStart` fires for `startup`, `resume`, `clear`, and `compact`.
 Flow:
 
 1. Parse `session_id`, `cwd`, `transcript_path`, and `source`.
-2. Resolve or create local session state under `~/.nams/state/claude/<sha256(sessionKey)>.json`.
+2. Resolve or create local session state under `~/.nams/state/claude/session-<created-at>--<sha256(sessionKey)>.json`.
 3. Append a raw `hook.event` log using session-scoped log naming.
 4. Save state without creating a NAMS conversation.
 5. Return `{ "continue": true, "suppressOutput": true }`.

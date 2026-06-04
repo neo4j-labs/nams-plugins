@@ -121,7 +121,7 @@ When Gemini reads existing global or project NAMS config files, the shared runti
 Session state lives under:
 
 ```text
-~/.nams/state/gemini/<session-hash>.json
+~/.nams/state/gemini/session-<created-at>--<session-hash>.json
 ```
 
 Gemini session key selection:
