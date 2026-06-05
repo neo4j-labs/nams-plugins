@@ -30,6 +30,7 @@
 - `src/platforms/codex/workspaces.ts`: config-time `InstallConfigure` behavior and non-runtime first-prompt behavior.
 - `src/runtime/config.ts`: split config loading so API key/base URL can be loaded without requiring `workspaceId`.
 - `src/runtime/config-writer.ts`: new JSON config writer for `nams-hooks workspaces configure`.
+- `src/runtime/workspace-configuration.ts`: shared `InstallConfigure` workspace selection, workspace listing, sanitized setup errors, and config-write orchestration used by workspace adapters.
 - `src/runtime/workspace-resolution.ts`: new shared workspace resolution flow, diagnostics, session-state updates, and `NamsWorkspaceClient` construction.
 - `src/runtime/memory-service.ts`: keep memory service workspace-scoped and add a helper that refuses to build without an effective workspace ID.
 - `src/runtime/session-state.ts`: add session-local workspace selection state.
@@ -74,12 +75,12 @@ export interface WorkspaceHookInvocation<E extends WorkspaceHookEvent = Workspac
   processCwd: string;
 }
 
-export interface WorkspaceHookResult {
-  stdout: Record<string, unknown>;
-}
+export type WorkspaceHookResult = HookResult;
 ```
 
 `MemoryPlatformAdapter` owns agent-memory operations and backs commands such as `nams-hooks run gemini --event BeforeAgent`. `WorkspacePlatformAdapter` owns workspace discovery/configuration and backs commands such as `nams-hooks workspaces gemini --event BeforeAgent`. Do not use a generic `PlatformAdapter` name after this plan is implemented.
+
+For the OpenCode plugin shim only, workspace command stdout may include `namsMemoryReady: true`. The shim uses that internal NAMS signal to decide whether to invoke the memory command. Absence of `namsMemoryReady: true` means the shim must not run the memory command for that `chat.message` event.
 
 Workspace list response shape from the pinned OpenAPI spec:
 
@@ -198,12 +199,12 @@ Keep the existing architecture intent:
 Run:
 
 ```bash
-rg -n "\bPlatformAdapter\b|getPlatformAdapter" src test
+rg -n "\bgetPlatformAdapter\b|\bexport interface PlatformAdapter\b|\bimplements PlatformAdapter\b|\bRecord<Platform, PlatformAdapter>\b|\btype PlatformAdapter\b" src test
 node --import=tsx --test test/architecture.test.ts
 npm run build
 ```
 
-Expected: the search returns no old generic memory adapter names, architecture tests pass, and TypeScript compiles.
+Expected: the search returns no old exact generic memory adapter names while allowing the later `WorkspacePlatformAdapter` name, architecture tests pass, and TypeScript compiles.
 
 Commit:
 
@@ -656,13 +657,13 @@ test("loads NAMS connection config without requiring workspaceId", async () => {
         apiKey: "env-key",
         baseUrl: "https://env.example.test",
       },
-      workspaceId: undefined,
       sources: {
         apiKey: "env:NAMS_API_KEY",
         workspaceId: "missing",
         baseUrl: "env:NAMS_BASE_URL",
       },
     });
+    assert.equal(result.workspaceId, undefined);
   });
 });
 ```
@@ -1306,20 +1307,60 @@ Create `test/cli-workspaces.test.ts`:
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
+import { createServer, type IncomingHttpHeaders } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { createNamsFetchMock } from "./support/nams-fetch-mock.js";
 
 const execFileAsync = promisify(execFile);
 
+// CLI tests spawn a separate Node process, so fetch-mock's parent-process
+// globalThis.fetch patch is not visible to the command under test.
+interface NamsHttpCall {
+  method: string | undefined;
+  url: string | undefined;
+  headers: IncomingHttpHeaders;
+  body: string;
+}
+
+async function startNamsHttpServer(response: Record<string, unknown>, status = 200) {
+  const calls: NamsHttpCall[] = [];
+  const server = createServer((request, reply) => {
+    let body = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk) => {
+      body += chunk;
+    });
+    request.on("end", () => {
+      calls.push({ method: request.method, url: request.url, headers: request.headers, body });
+      if (request.method === "GET" && request.url === "/v1/users/me/workspaces") {
+        reply.writeHead(status, { "Content-Type": "application/json" });
+        reply.end(JSON.stringify(response));
+        return;
+      }
+      reply.writeHead(404, { "Content-Type": "application/json" });
+      reply.end(JSON.stringify({ error: "not found" }));
+    });
+  });
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  assert.ok(address !== null && typeof address === "object");
+  return {
+    baseUrl: `http://127.0.0.1:${address.port}`,
+    calls,
+    close: () => new Promise<void>((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error))),
+  };
+}
+
 test("routes workspace BeforeAgent command through workspace adapter", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-"));
+  const nams = await startNamsHttpServer({
+    workspaces: [{ id: "workspace-1", name: "Engineering", role: "owner", status: "active" }],
+  });
   try {
-    createNamsFetchMock().workspaces({
-      workspaces: [{ id: "workspace-1", name: "Engineering", role: "owner", status: "active" }],
-    });
     const { stdout } = await execFileAsync(
       process.execPath,
       ["--import=tsx", "src/cli.ts", "workspaces", "gemini", "--event", "BeforeAgent"],
@@ -1331,13 +1372,17 @@ test("routes workspace BeforeAgent command through workspace adapter", async () 
           HOME: path.join(projectDir, "home"),
           USERPROFILE: path.join(projectDir, "home"),
           NAMS_API_KEY: "key",
-          NAMS_BASE_URL: "https://memory.example.test",
+          NAMS_BASE_URL: nams.baseUrl,
         },
       },
     );
 
     assert.deepEqual(JSON.parse(stdout), { continue: true, suppressOutput: true });
+    assert.equal(nams.calls.length, 1);
+    assert.equal(nams.calls[0].headers.authorization, "Bearer key");
+    assert.equal(nams.calls[0].headers["x-workspace-id"], undefined);
   } finally {
+    await nams.close();
     await rm(projectDir, { recursive: true, force: true });
   }
 });
@@ -1383,8 +1428,8 @@ export interface WorkspaceHookInvocation<E extends WorkspaceHookEvent = Workspac
 }
 
 export interface WorkspacePlatformAdapter {
-  beforeAgent?(invocation: WorkspaceHookInvocation<"BeforeAgent">): Promise<HookResult>;
-  installConfigure?(invocation: WorkspaceHookInvocation<"InstallConfigure">): Promise<HookResult>;
+  beforeAgent?(invocation: WorkspaceHookInvocation<"BeforeAgent">): Promise<WorkspaceHookResult>;
+  installConfigure?(invocation: WorkspaceHookInvocation<"InstallConfigure">): Promise<WorkspaceHookResult>;
 }
 
 export function isWorkspaceHookEvent(value: string | undefined): value is WorkspaceHookEvent {
@@ -1397,14 +1442,14 @@ export function isWorkspaceHookEvent(value: string | undefined): value is Worksp
 Create `src/platforms/gemini/workspaces.ts`:
 
 ```ts
-import type { HookResult, WorkspaceHookInvocation, WorkspacePlatformAdapter } from "../../interfaces.js";
+import type { WorkspaceHookInvocation, WorkspaceHookResult, WorkspacePlatformAdapter } from "../../interfaces.js";
 import { appendRawPlatformLog } from "../../runtime/logging.js";
 import { createInitialSessionState, loadSessionState, saveSessionState } from "../../runtime/session-state.js";
 import { resolveWorkspaceForMemory } from "../../runtime/workspace-resolution.js";
 import { parseGeminiPayload } from "./payload.js";
 
 export class GeminiWorkspaceAdapter implements WorkspacePlatformAdapter {
-  async beforeAgent(invocation: WorkspaceHookInvocation<"BeforeAgent">): Promise<HookResult> {
+  async beforeAgent(invocation: WorkspaceHookInvocation<"BeforeAgent">): Promise<WorkspaceHookResult> {
     const payloadInfo = parseGeminiPayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({
       platform: invocation.platform,
@@ -1425,7 +1470,7 @@ export class GeminiWorkspaceAdapter implements WorkspacePlatformAdapter {
   }
 }
 
-function allowOutput(): HookResult {
+function allowOutput(): WorkspaceHookResult {
   return { stdout: { continue: true, suppressOutput: true } };
 }
 ```
@@ -1433,14 +1478,14 @@ function allowOutput(): HookResult {
 Create `src/platforms/opencode/workspaces.ts`:
 
 ```ts
-import type { HookResult, WorkspaceHookInvocation, WorkspacePlatformAdapter } from "../../interfaces.js";
+import type { WorkspaceHookInvocation, WorkspaceHookResult, WorkspacePlatformAdapter } from "../../interfaces.js";
 import { appendRawPlatformLog } from "../../runtime/logging.js";
 import { createInitialSessionState, loadSessionState, saveSessionState } from "../../runtime/session-state.js";
 import { resolveWorkspaceForMemory } from "../../runtime/workspace-resolution.js";
 import { parseOpenCodePayload } from "./payload.js";
 
 export class OpenCodeWorkspaceAdapter implements WorkspacePlatformAdapter {
-  async beforeAgent(invocation: WorkspaceHookInvocation<"BeforeAgent">): Promise<HookResult> {
+  async beforeAgent(invocation: WorkspaceHookInvocation<"BeforeAgent">): Promise<WorkspaceHookResult> {
     const payloadInfo = parseOpenCodePayload(invocation.rawPayload, invocation.processCwd);
     if (payloadInfo.hookName !== "chat.message") {
       return allowOutput();
@@ -1461,11 +1506,15 @@ export class OpenCodeWorkspaceAdapter implements WorkspacePlatformAdapter {
       interaction: "single-only",
     });
     await saveSessionState(invocation.platform, state.sessionKey, state);
-    return result.status === "ready" ? allowOutput() : result.output;
+    return result.status === "ready" ? memoryReadyOutput() : result.output;
   }
 }
 
-function allowOutput(): HookResult {
+function memoryReadyOutput(): WorkspaceHookResult {
+  return { stdout: { continue: true, suppressOutput: true, namsMemoryReady: true } };
+}
+
+function allowOutput(): WorkspaceHookResult {
   return { stdout: { continue: true, suppressOutput: true } };
 }
 ```
@@ -1473,10 +1522,10 @@ function allowOutput(): HookResult {
 Create `src/platforms/claude/workspaces.ts`:
 
 ```ts
-import type { HookResult, WorkspacePlatformAdapter } from "../../interfaces.js";
+import type { WorkspaceHookResult, WorkspacePlatformAdapter } from "../../interfaces.js";
 
 export class ClaudeWorkspaceAdapter implements WorkspacePlatformAdapter {
-  async installConfigure(): Promise<HookResult> {
+  async installConfigure(): Promise<WorkspaceHookResult> {
     return {
       stdout: {
         continue: true,
@@ -1491,10 +1540,10 @@ export class ClaudeWorkspaceAdapter implements WorkspacePlatformAdapter {
 Create `src/platforms/codex/workspaces.ts`:
 
 ```ts
-import type { HookResult, WorkspacePlatformAdapter } from "../../interfaces.js";
+import type { WorkspaceHookResult, WorkspacePlatformAdapter } from "../../interfaces.js";
 
 export class CodexWorkspaceAdapter implements WorkspacePlatformAdapter {
-  async installConfigure(): Promise<HookResult> {
+  async installConfigure(): Promise<WorkspaceHookResult> {
     return {
       stdout: {
         continue: true,
@@ -1583,7 +1632,7 @@ Add:
 async function routeWorkspaceEvent(
   adapter: WorkspacePlatformAdapter,
   invocation: WorkspaceHookInvocation,
-): Promise<HookResult> {
+): Promise<WorkspaceHookResult> {
   switch (invocation.event) {
     case "BeforeAgent":
       return adapter.beforeAgent?.({ ...invocation, event: "BeforeAgent" }) ?? allowHook();
@@ -1889,6 +1938,8 @@ git commit -m "feat: use resolved workspace in memory hooks" -m "Co-authored-by:
 - Modify: `test/gemini-template.test.ts`
 - Modify: `test/opencode/opencode-template.test.ts`
 - Modify: `test/opencode-template.test.ts`
+- Modify: `test/claude-template.test.js`
+- Modify: `test/codex-template.test.ts`
 
 - [ ] **Step 1: Add failing template tests**
 
@@ -1926,13 +1977,102 @@ Update the existing settings test to expect optional workspace wording:
 assert.match(settings[1].description, /Optional/);
 ```
 
-In `test/opencode/opencode-template.test.ts`, update the `chat.message handler sends real two-argument input and output to nams-hooks` test so it expects:
+In `test/opencode/opencode-template.test.ts`, extend the `createNamsHooksStub` helper so tests can pass per-command stdout fixtures:
 
 ```ts
-assert.deepEqual(invocations.map((entry) => entry.args.slice(0, 4)), [
+async function createNamsHooksStub(
+  commandOutputs: Partial<Record<"workspaces" | "run", Record<string, unknown>>> = {},
+): Promise<TemplateFixture> {
+```
+
+In the generated stub script, after writing the call record and before the existing system-transform response, emit the configured response for `process.argv[2]` when one is present:
+
+```ts
+  const commandName = process.argv[2];
+  const commandOutputs = ${JSON.stringify(commandOutputs)};
+  const commandOutput = commandOutputs[commandName];
+  if (commandOutput !== undefined) {
+    process.stdout.write(JSON.stringify(commandOutput));
+    return;
+  }
+```
+
+Then update the `chat.message handler sends real two-argument input and output to nams-hooks` test to create the fixture with a memory-ready workspace response and expect both commands:
+
+```ts
+const fixture = await createNamsHooksStub({
+  workspaces: { continue: true, suppressOutput: true, namsMemoryReady: true },
+});
+
+assert.deepEqual(calls.map((entry) => entry.args), [
   ["workspaces", "opencode", "--event", "BeforeAgent"],
   ["run", "opencode", "--event", "BeforeAgent"],
 ]);
+```
+
+Add a second OpenCode template test:
+
+```ts
+test("chat.message skips memory command when workspace phase is not memory-ready", async () => {
+  const fixture = await createNamsHooksStub({
+    workspaces: { continue: true, suppressOutput: true },
+  });
+
+  await plugin["chat.message"](
+    { sessionID: "session-1" },
+    {
+      messageID: "user-1",
+      parts: [{ type: "text", text: "hello" }],
+    },
+  );
+
+  const calls = await readCalls(fixture.callsPath);
+  assert.deepEqual(calls.map((entry) => entry.args), [
+    ["workspaces", "opencode", "--event", "BeforeAgent"],
+  ]);
+});
+```
+
+In root `test/opencode-template.test.ts`, update the source-shape test so it no longer expects the old literal `"run"` spawn argument. It should assert that the plugin has a workspace phase, gates memory on `namsMemoryReady`, and passes the command name into `invokeNams`:
+
+```ts
+assert.match(source, /runWorkspace\("BeforeAgent", \{ hook: "chat\.message", input, output \}\)/);
+assert.match(source, /workspaceResult\?\.namsMemoryReady !== true/);
+assert.match(source, /spawn\(command, \[commandName, "opencode", "--event", event\]/);
+```
+
+In `test/claude-template.test.js`, add:
+
+```js
+test("Claude templates keep first-prompt hooks memory-only and workspace config required", async () => {
+  const settingsTemplate = JSON.parse(await readFile("templates/claude/.claude/settings.local.json", "utf8"));
+  const pluginHooksTemplate = JSON.parse(await readFile("templates/claude/plugins/nams-hooks/hooks/hooks.json", "utf8"));
+  const manifestTemplate = JSON.parse(await readFile("templates/claude/plugins/nams-hooks/.claude-plugin/plugin.json", "utf8"));
+
+  assert.equal(commandFor(settingsTemplate, "UserPromptSubmit"), "nams-hooks run claude --event BeforeAgent");
+  assert.deepEqual(pluginCommandFor(pluginHooksTemplate, "UserPromptSubmit"), ["node", "${CLAUDE_PLUGIN_ROOT}/bin/cli.js", "run", "claude", "--event", "BeforeAgent"]);
+  assert.doesNotMatch(JSON.stringify(settingsTemplate), /workspaces\s+claude\s+--event\s+BeforeAgent/);
+  assert.doesNotMatch(JSON.stringify(pluginHooksTemplate), /workspaces|InstallConfigure/);
+  assert.equal(manifestTemplate.userConfig.NAMS_WORKSPACE_ID.required, true);
+});
+```
+
+In `test/codex-template.test.ts`, add:
+
+```ts
+test("Codex templates keep first-prompt hooks memory-only", async () => {
+  const pluginHooksTemplate = JSON.parse(await readFile(pluginHooksPath, "utf8"));
+  const fallbackHooksTemplate = JSON.parse(await readFile("templates/codex/hooks.json", "utf8"));
+
+  assert.deepEqual(codexHookFor(pluginHooksTemplate, "UserPromptSubmit"), {
+    type: "command",
+    command: `node ${pluginRoot}/bin/cli.js run codex --event BeforeAgent`,
+    statusMessage: "NAMS memory recall",
+  });
+  assert.equal(fallbackHooksTemplate.hooks.UserPromptSubmit[0].hooks[0].command, "nams-hooks run codex --event BeforeAgent");
+  assert.doesNotMatch(JSON.stringify(pluginHooksTemplate), /workspaces\s+codex\s+--event\s+BeforeAgent|InstallConfigure/);
+  assert.doesNotMatch(JSON.stringify(fallbackHooksTemplate), /workspaces\s+codex\s+--event\s+BeforeAgent|InstallConfigure/);
+});
 ```
 
 - [ ] **Step 2: Run tests to verify failure**
@@ -1940,7 +2080,7 @@ assert.deepEqual(invocations.map((entry) => entry.args.slice(0, 4)), [
 Run:
 
 ```bash
-node --import=tsx --test test/gemini-template.test.ts test/opencode/opencode-template.test.ts test/opencode-template.test.ts
+node --import=tsx --test test/gemini-template.test.ts test/opencode/opencode-template.test.ts test/opencode-template.test.ts test/claude-template.test.js test/codex-template.test.ts
 ```
 
 Expected: fail because templates have not been updated.
@@ -2010,7 +2150,10 @@ Change `chat.message` handler:
 
 ```js
 "chat.message": async (input, output) => {
-  await runWorkspace("BeforeAgent", { hook: "chat.message", input, output });
+  const workspaceResult = await runWorkspace("BeforeAgent", { hook: "chat.message", input, output });
+  if (workspaceResult?.namsMemoryReady !== true) {
+    return;
+  }
   await run("BeforeAgent", { hook: "chat.message", input, output });
 },
 ```
@@ -2030,7 +2173,7 @@ async function invokeNams(commandName, event, payload) {
 Run:
 
 ```bash
-node --import=tsx --test test/gemini-template.test.ts test/opencode/opencode-template.test.ts test/opencode-template.test.ts
+node --import=tsx --test test/gemini-template.test.ts test/opencode/opencode-template.test.ts test/opencode-template.test.ts test/claude-template.test.js test/codex-template.test.ts
 npm run dist
 npm run dist:check
 ```
@@ -2040,7 +2183,7 @@ Expected: template tests and dist checks pass.
 Commit:
 
 ```bash
-git add templates/gemini/hooks/hooks.json templates/gemini/gemini-extension.json templates/opencode/plugins/nams-hooks.js test/gemini-template.test.ts test/opencode/opencode-template.test.ts test/opencode-template.test.ts
+git add templates/gemini/hooks/hooks.json templates/gemini/gemini-extension.json templates/opencode/plugins/nams-hooks.js test/gemini-template.test.ts test/opencode/opencode-template.test.ts test/opencode-template.test.ts test/claude-template.test.js test/codex-template.test.ts
 git commit -m "feat: package ordered workspace hooks" -m "Co-authored-by: Codex <codex@openai.com>"
 ```
 
@@ -2050,7 +2193,10 @@ git commit -m "feat: package ordered workspace hooks" -m "Co-authored-by: Codex 
 
 **Files:**
 - Create: `src/runtime/config-writer.ts`
+- Create: `src/runtime/workspace-configuration.ts`
 - Modify: `src/cli.ts`
+- Modify: `src/platforms/gemini/workspaces.ts`
+- Modify: `src/platforms/opencode/workspaces.ts`
 - Modify: `src/platforms/claude/workspaces.ts`
 - Modify: `src/platforms/codex/workspaces.ts`
 - Modify: `test/cli-workspaces.test.ts`
@@ -2125,13 +2271,13 @@ In `test/cli-workspaces.test.ts`, add:
 ```ts
 test("workspace configure writes selected project workspace", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-"));
+  const nams = await startNamsHttpServer({
+    workspaces: [
+      { id: "workspace-1", name: "Engineering", role: "owner", status: "active" },
+      { id: "workspace-2", name: "Research", role: "member", status: "active" },
+    ],
+  });
   try {
-    createNamsFetchMock().workspaces({
-      workspaces: [
-        { id: "workspace-1", name: "Engineering", role: "owner", status: "active" },
-        { id: "workspace-2", name: "Research", role: "member", status: "active" },
-      ],
-    });
     const { stdout } = await execFileAsync(
       process.execPath,
       [
@@ -2153,7 +2299,7 @@ test("workspace configure writes selected project workspace", async () => {
           HOME: path.join(projectDir, "home"),
           USERPROFILE: path.join(projectDir, "home"),
           NAMS_API_KEY: "key",
-          NAMS_BASE_URL: "https://memory.example.test",
+          NAMS_BASE_URL: nams.baseUrl,
         },
       },
     );
@@ -2162,15 +2308,51 @@ test("workspace configure writes selected project workspace", async () => {
     const config = JSON.parse(await readFile(path.join(projectDir, ".nams", "config.json"), "utf8"));
     assert.equal(config.workspaceId, "workspace-2");
   } finally {
+    await nams.close();
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("workspace configure reports sanitized workspace listing failures without writing config", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-"));
+  const nams = await startNamsHttpServer({ error: "backend detail that must not leak" }, 500);
+  try {
+    await assert.rejects(
+      () =>
+        execFileAsync(
+          process.execPath,
+          ["--import=tsx", "src/cli.ts", "workspaces", "configure", "codex", "--scope", "project"],
+          {
+            cwd: projectDir,
+            input: "",
+            env: {
+              ...process.env,
+              HOME: path.join(projectDir, "home"),
+              USERPROFILE: path.join(projectDir, "home"),
+              NAMS_API_KEY: "key",
+              NAMS_BASE_URL: nams.baseUrl,
+            },
+          },
+        ),
+      (error: unknown) => {
+        const stderr = (error as { stderr: string }).stderr;
+        assert.match(stderr, /NAMS workspace request failed/);
+        assert.doesNotMatch(stderr, /backend detail|key/);
+        return true;
+      },
+    );
+    await assert.rejects(() => readFile(path.join(projectDir, ".nams", "config.json"), "utf8"), /ENOENT/);
+  } finally {
+    await nams.close();
     await rm(projectDir, { recursive: true, force: true });
   }
 });
 ```
 
-Add imports:
+Add `readFile` to the existing `node:fs/promises` import:
 
 ```ts
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 ```
 
 - [ ] **Step 3: Run tests to verify failure**
@@ -2181,7 +2363,7 @@ Run:
 node --import=tsx --test test/config-writer.test.ts test/cli-workspaces.test.ts
 ```
 
-Expected: fail because config writer and configure command are missing.
+Expected: fail because config writer, shared workspace configuration, adapter-backed configure handling, and configure command routing are missing.
 
 - [ ] **Step 4: Implement config writer**
 
@@ -2243,7 +2425,104 @@ async function readExistingConfig(configPath: string): Promise<Record<string, un
 }
 ```
 
-- [ ] **Step 5: Implement configure command parser**
+- [ ] **Step 5: Implement shared workspace configuration runtime**
+
+Create `src/runtime/workspace-configuration.ts`:
+
+```ts
+import { NamsWorkspaceClient, type WorkspaceSummary } from "../generated/nams-client.js";
+import type { WorkspaceHookInvocation, WorkspaceHookResult } from "../interfaces.js";
+import { configDiagnosticPayload, loadNamsConnectionConfig } from "./config.js";
+import { writeNamsJsonConfig, type NamsConfigWriteScope } from "./config-writer.js";
+
+export async function configureWorkspaceSelection(
+  invocation: WorkspaceHookInvocation<"InstallConfigure">,
+): Promise<WorkspaceHookResult> {
+  const configureInput = parseConfigureInput(invocation.rawPayload);
+  if (configureInput === undefined) {
+    return configureOutput(1, "NAMS workspace configure requires --scope project or --scope user.");
+  }
+
+  const projectDirectory = invocation.processCwd;
+  const configResult = await loadNamsConnectionConfig(projectDirectory);
+  if (!configResult.ok) {
+    return configureOutput(1, String(configDiagnosticPayload(configResult).message));
+  }
+
+  const client = new NamsWorkspaceClient({
+    apiKey: configResult.config.apiKey,
+    ...(configResult.config.baseUrl !== undefined ? { baseUrl: configResult.config.baseUrl } : {}),
+  });
+  let workspaces: Array<WorkspaceSummary & { id: string }>;
+  try {
+    const response = await client.listMyWorkspaces();
+    workspaces = validWorkspaces(response.workspaces);
+  } catch {
+    return configureOutput(1, "NAMS workspace request failed. Check NAMS_API_KEY and NAMS_BASE_URL, then try again.");
+  }
+
+  const selectedWorkspace =
+    configureInput.workspaceId !== undefined
+      ? workspaces.find((workspace) => workspace.id === configureInput.workspaceId)
+      : workspaces.length === 1
+        ? workspaces[0]
+        : undefined;
+  if (selectedWorkspace === undefined) {
+    return configureOutput(
+      2,
+      workspaceSelectionMessage(workspaces),
+    );
+  }
+
+  const configPath = await writeNamsJsonConfig({
+    scope: configureInput.scope,
+    projectDirectory,
+    values: { workspaceId: selectedWorkspace.id },
+  });
+  return configureOutput(
+    0,
+    `NAMS workspace configured for ${invocation.platform}: ${selectedWorkspace.id}\nUpdated ${configPath}`,
+  );
+}
+
+function parseConfigureInput(rawPayload: Record<string, unknown>): { scope: NamsConfigWriteScope; workspaceId?: string } | undefined {
+  const scope = rawPayload.scope;
+  const workspaceId = rawPayload.workspaceId;
+  if (scope !== "project" && scope !== "user") {
+    return undefined;
+  }
+  return {
+    scope,
+    ...(typeof workspaceId === "string" && workspaceId.trim() !== "" ? { workspaceId } : {}),
+  };
+}
+
+function validWorkspaces(workspaces: WorkspaceSummary[] | undefined): Array<WorkspaceSummary & { id: string }> {
+  return (workspaces ?? []).filter((workspace): workspace is WorkspaceSummary & { id: string } => {
+    return typeof workspace.id === "string" && workspace.id.trim() !== "";
+  });
+}
+
+function workspaceSelectionMessage(workspaces: Array<WorkspaceSummary & { id: string }>): string {
+  return [
+    "NAMS workspace selection required. Re-run with --workspace-id and one of these IDs:",
+    ...workspaces.map((workspace) => `- ${workspace.name ?? "(unnamed workspace)"} (${workspace.role ?? "unknown-role"}, ${workspace.status ?? "unknown-status"}) - ${workspace.id}`),
+  ].join("\n");
+}
+
+function configureOutput(exitCode: number, message: string): WorkspaceHookResult {
+  return {
+    stdout: {
+      continue: exitCode === 0,
+      suppressOutput: false,
+      exitCode,
+      message,
+    },
+  };
+}
+```
+
+- [ ] **Step 6: Route configure command through workspace adapters**
 
 In `src/cli.ts`, add a CLI args variant:
 
@@ -2275,60 +2554,51 @@ Add handler:
 
 ```ts
 if (args.command === "workspace-configure") {
-  const code = await configureWorkspace(args);
-  return code;
+  const adapter = getWorkspacePlatformAdapter(args.platform);
+  const result = await routeWorkspaceEvent(adapter, {
+    platform: args.platform,
+    event: "InstallConfigure",
+    rawPayload: {
+      scope: args.scope,
+      ...(args.workspaceId !== undefined ? { workspaceId: args.workspaceId } : {}),
+    },
+    processCwd: process.cwd(),
+  });
+  return writeWorkspaceConfigureResult(result);
 }
 ```
 
-Implement `configureWorkspace` in `src/cli.ts`:
+Add:
 
 ```ts
-async function configureWorkspace(args: { platform: Platform; scope: "project" | "user"; workspaceId?: string }): Promise<number> {
-  const projectDirectory = process.cwd();
-  const configResult = await loadNamsConnectionConfig(projectDirectory);
-  if (!configResult.ok) {
-    process.stderr.write(`${configDiagnosticPayload(configResult).message}\n`);
-    return 1;
-  }
-  const client = new NamsWorkspaceClient({
-    apiKey: configResult.config.apiKey,
-    ...(configResult.config.baseUrl !== undefined ? { baseUrl: configResult.config.baseUrl } : {}),
-  });
-  const response = await client.listMyWorkspaces();
-  const workspaces = (response.workspaces ?? []).filter((workspace) => typeof workspace.id === "string" && workspace.id.trim() !== "");
-  const selectedWorkspace =
-    args.workspaceId !== undefined
-      ? workspaces.find((workspace) => workspace.id === args.workspaceId)
-      : workspaces.length === 1
-        ? workspaces[0]
-        : undefined;
-  if (selectedWorkspace === undefined) {
-    process.stderr.write("NAMS workspace selection required. Re-run with --workspace-id and one of these IDs:\n");
-    for (const workspace of workspaces) {
-      process.stderr.write(`- ${workspace.name ?? "(unnamed workspace)"} (${workspace.role ?? "unknown-role"}, ${workspace.status ?? "unknown-status"}) - ${workspace.id}\n`);
-    }
-    return 2;
-  }
-  const configPath = await writeNamsJsonConfig({
-    scope: args.scope,
-    projectDirectory,
-    values: { workspaceId: selectedWorkspace.id },
-  });
-  process.stdout.write(`NAMS workspace configured for ${args.platform}: ${selectedWorkspace.id}\n`);
-  process.stdout.write(`Updated ${configPath}\n`);
-  return 0;
+function writeWorkspaceConfigureResult(result: WorkspaceHookResult): number {
+  const exitCode = typeof result.stdout.exitCode === "number" ? result.stdout.exitCode : 0;
+  const message = typeof result.stdout.message === "string" ? result.stdout.message : JSON.stringify(result.stdout);
+  const stream = exitCode === 0 ? process.stdout : process.stderr;
+  stream.write(`${message}\n`);
+  return exitCode;
 }
 ```
 
-Add imports:
+Add `WorkspaceHookResult` to the existing `src/cli.ts` type imports from `./interfaces.js`.
+
+Update workspace adapters so `InstallConfigure` is real and delegates to the shared runtime. In each of `src/platforms/gemini/workspaces.ts`, `src/platforms/opencode/workspaces.ts`, `src/platforms/claude/workspaces.ts`, and `src/platforms/codex/workspaces.ts`, add:
 
 ```ts
-import { NamsWorkspaceClient } from "./generated/nams-client.js";
-import { configDiagnosticPayload, loadNamsConnectionConfig } from "./runtime/config.js";
-import { writeNamsJsonConfig } from "./runtime/config-writer.js";
+import { configureWorkspaceSelection } from "../../runtime/workspace-configuration.js";
 ```
 
-- [ ] **Step 6: Update README and INSTALL**
+and implement:
+
+```ts
+async installConfigure(invocation: WorkspaceHookInvocation<"InstallConfigure">): Promise<WorkspaceHookResult> {
+  return configureWorkspaceSelection(invocation);
+}
+```
+
+For Claude and Codex, replace the earlier message-only `installConfigure` implementation with this shared configuration call, and add `WorkspaceHookInvocation` to their type imports.
+
+- [ ] **Step 7: Update README and INSTALL**
 
 In `README.md`, replace the runtime configuration paragraph with text that says:
 
@@ -2352,7 +2622,7 @@ nams-hooks workspaces configure codex --scope project --workspace-id 11111111-11
 Replace `codex` with the target harness name when configuring another platform, and replace the sample UUID with the workspace ID from your NAMS workspace list. For user-level defaults, use `--scope user`. If `--workspace-id` is omitted and your account has exactly one workspace, the command writes that workspace automatically. If your account has multiple workspaces, the command prints the available choices and exits without writing until you pass one ID explicitly.
 ````
 
-- [ ] **Step 7: Verify and commit**
+- [ ] **Step 8: Verify and commit**
 
 Run:
 
@@ -2367,7 +2637,7 @@ Expected: tests pass, docs contain platform-specific workspace setup text, and f
 Commit:
 
 ```bash
-git add src/runtime/config-writer.ts src/cli.ts test/config-writer.test.ts test/cli-workspaces.test.ts README.md INSTALL.md
+git add src/runtime/config-writer.ts src/runtime/workspace-configuration.ts src/cli.ts src/platforms/gemini/workspaces.ts src/platforms/opencode/workspaces.ts src/platforms/claude/workspaces.ts src/platforms/codex/workspaces.ts test/config-writer.test.ts test/cli-workspaces.test.ts README.md INSTALL.md
 git commit -m "feat: configure NAMS workspace selection" -m "Co-authored-by: Codex <codex@openai.com>"
 ```
 
