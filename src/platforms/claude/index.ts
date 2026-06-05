@@ -1,4 +1,4 @@
-import type { HookInvocation, HookResult, PlatformAdapter } from "../../interfaces.js";
+import type { HookInvocation, HookResult, MemoryPlatformAdapter } from "../../interfaces.js";
 import { loadNamsConfig } from "../../runtime/config.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
 import {
@@ -14,7 +14,7 @@ import { createInitialSessionState, loadSessionState, saveSessionState } from ".
 import { discoverClaudeNamsConfig } from "./config.js";
 import { parseClaudePayload } from "./payload.js";
 
-export class ClaudeAdapter implements PlatformAdapter {
+export class ClaudeAdapter implements MemoryPlatformAdapter {
   async startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
     const payloadInfo = parseClaudePayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({

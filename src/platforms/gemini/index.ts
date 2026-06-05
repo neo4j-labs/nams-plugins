@@ -1,4 +1,4 @@
-import type { HookInvocation, HookResult, PlatformAdapter } from "../../interfaces.js";
+import type { HookInvocation, HookResult, MemoryPlatformAdapter } from "../../interfaces.js";
 import { loadNamsConfig } from "../../runtime/config.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
 import {
@@ -20,7 +20,7 @@ import {
 import { parseGeminiPayload } from "./payload.js";
 import { readGeminiTranscript, type GeminiTranscriptEntry } from "./transcript.js";
 
-export class GeminiAdapter implements PlatformAdapter {
+export class GeminiAdapter implements MemoryPlatformAdapter {
   async startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
     const payloadInfo = parseGeminiPayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({

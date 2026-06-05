@@ -105,7 +105,7 @@ test("only the platform registry imports all concrete adapters", async () => {
 test("platform adapters do not accept test-only runtime dependencies", async () => {
   const content = await readFile("src/interfaces.ts", "utf8");
 
-  assert.equal(/\bPlatformAdapterOptions\b/.test(content), false);
+  assert.equal(/\bMemoryPlatformAdapterOptions\b/.test(content), false);
   assert.equal(/\bfetch\?: typeof fetch\b/.test(content), false);
   assert.equal(/\bruntimeEnvironment\?:/.test(content), false);
   assert.equal(/\benv\?:/.test(content), false);
@@ -114,10 +114,20 @@ test("platform adapters do not accept test-only runtime dependencies", async () 
     const filePath = `src/platforms/${platform}/index.ts`;
     const platformContent = await readFile(filePath, "utf8");
 
-    assert.equal(/\bPlatformAdapterOptions\b/.test(platformContent), false);
+    assert.equal(/\bMemoryPlatformAdapterOptions\b/.test(platformContent), false);
     assert.equal(/\bprivate readonly options\b|\bthis\.options\b/.test(platformContent), false);
     assert.equal(/\bfetch\b/.test(platformContent), false);
   }
+});
+
+test("memory platform adapter contract is named explicitly", async () => {
+  const interfaceContent = await readFile("src/interfaces.ts", "utf8");
+  const registryContent = await readFile("src/platforms/index.ts", "utf8");
+
+  assert.match(interfaceContent, /\bexport interface MemoryPlatformAdapter\b/);
+  assert.doesNotMatch(interfaceContent, /\bexport interface PlatformAdapter\b/);
+  assert.match(registryContent, /\bgetMemoryPlatformAdapter\b/);
+  assert.doesNotMatch(registryContent, /\bgetPlatformAdapter\b/);
 });
 
 test("platform session-start contract names local session initialization", async () => {

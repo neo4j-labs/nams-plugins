@@ -1,4 +1,4 @@
-import type { HookInvocation, HookResult, PlatformAdapter } from "../../interfaces.js";
+import type { HookInvocation, HookResult, MemoryPlatformAdapter } from "../../interfaces.js";
 import { loadNamsConfig } from "../../runtime/config.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
 import {
@@ -11,7 +11,7 @@ import { createInitialSessionState, loadSessionState, saveSessionState } from ".
 import type { SessionState } from "../../runtime/session-state.js";
 import { parseOpenCodePayload, type OpenCodePayloadInfo } from "./payload.js";
 
-export class OpenCodeAdapter implements PlatformAdapter {
+export class OpenCodeAdapter implements MemoryPlatformAdapter {
   async startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
     const payloadInfo = parseOpenCodePayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({

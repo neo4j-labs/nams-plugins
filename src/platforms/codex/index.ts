@@ -1,4 +1,4 @@
-import type { HookInvocation, HookResult, PlatformAdapter } from "../../interfaces.js";
+import type { HookInvocation, HookResult, MemoryPlatformAdapter } from "../../interfaces.js";
 import { loadNamsConfig } from "../../runtime/config.js";
 import { sha256 } from "../../runtime/hashing.js";
 import {
@@ -21,7 +21,7 @@ import {
 import { parseCodexPayload } from "./payload.js";
 import { readCodexTranscript, type CodexTranscriptEntry } from "./transcript.js";
 
-export class CodexAdapter implements PlatformAdapter {
+export class CodexAdapter implements MemoryPlatformAdapter {
   async startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
     const payloadInfo = parseCodexPayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({

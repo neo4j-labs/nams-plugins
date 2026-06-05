@@ -7,10 +7,10 @@ import {
   type HookEvent,
   type HookInvocation,
   type HookResult,
+  type MemoryPlatformAdapter,
   type Platform,
-  type PlatformAdapter,
 } from "./interfaces.js";
-import { getPlatformAdapter } from "./platforms/index.js";
+import { getMemoryPlatformAdapter } from "./platforms/index.js";
 import { readJsonPayload } from "./runtime/stdin.js";
 
 interface RunArgs {
@@ -28,7 +28,7 @@ async function main(argv: string[]): Promise<number> {
   }
 
   const rawPayload = await readJsonPayload();
-  const adapter = getPlatformAdapter(args.platform);
+  const adapter = getMemoryPlatformAdapter(args.platform);
   const result = await routeEvent(adapter, {
     platform: args.platform,
     event: args.event,
@@ -51,7 +51,7 @@ function parseRunArgs(argv: string[]): RunArgs | null {
 }
 
 async function routeEvent(
-  adapter: PlatformAdapter,
+  adapter: MemoryPlatformAdapter,
   invocation: HookInvocation,
 ): Promise<HookResult> {
   switch (invocation.event) {

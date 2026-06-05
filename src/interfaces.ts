@@ -15,7 +15,7 @@ export interface HookResult {
   stdout: Record<string, unknown>;
 }
 
-export interface PlatformAdapter {
+export interface MemoryPlatformAdapter {
   startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult>;
   beforeAgent?(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult>;
   afterAgent?(invocation: HookInvocation<"AfterAgent">): Promise<HookResult>;
