@@ -8,6 +8,12 @@ export interface NamsRuntimeConfig {
   baseUrl?: string;
 }
 
+export interface NamsConnectionConfig {
+  apiKey: string;
+  workspaceId?: string;
+  baseUrl?: string;
+}
+
 type JsonConfigSource = "global:~/.nams/config.json" | "project:.nams/config.json";
 
 export type PlatformConfigSource = `platform:${string}:${string}`;
@@ -72,7 +78,26 @@ export type NamsConfigLoadResult =
       sources: NamsConfigSources;
     };
 
-export function configDiagnosticPayload(result: NamsConfigLoadResult): Record<string, unknown> {
+export type NamsConnectionConfigLoadResult =
+  | {
+      ok: true;
+      config: NamsConnectionConfig;
+      workspaceId?: string;
+      sources: NamsConfigSources;
+    }
+  | {
+      ok: false;
+      reason: "missing-api-key";
+      sources: NamsConfigSources;
+    }
+  | {
+      ok: false;
+      reason: "invalid-json";
+      errorSource: "global:~/.nams/config.json" | "project:.nams/config.json";
+      sources: NamsConfigSources;
+    };
+
+export function configDiagnosticPayload(result: NamsConfigLoadResult | NamsConnectionConfigLoadResult): Record<string, unknown> {
   if (result.ok) {
     return {
       message: "NAMS config loaded",
@@ -102,8 +127,35 @@ export async function loadNamsConfig(
   projectDirectory: string,
   discoverConfig?: NamsConfigDiscovery,
 ): Promise<NamsConfigLoadResult> {
+  const connectionResult = await loadNamsConnectionConfig(projectDirectory, discoverConfig);
+  if (!connectionResult.ok) {
+    return connectionResult;
+  }
+  if (connectionResult.config.workspaceId === undefined) {
+    return {
+      ok: false,
+      reason: "missing-workspace-id",
+      sources: connectionResult.sources,
+    };
+  }
+
+  return {
+    ok: true,
+    config: {
+      apiKey: connectionResult.config.apiKey,
+      workspaceId: connectionResult.config.workspaceId,
+      ...(connectionResult.config.baseUrl !== undefined ? { baseUrl: connectionResult.config.baseUrl } : {}),
+    },
+    sources: connectionResult.sources,
+  };
+}
+
+export async function loadNamsConnectionConfig(
+  projectDirectory: string,
+  discoverConfig?: NamsConfigDiscovery,
+): Promise<NamsConnectionConfigLoadResult> {
   const runtimeEnvironment = RuntimeEnvironment.fromProcess();
-  const accumulated: Partial<NamsRuntimeConfig> = {};
+  const accumulated: Partial<NamsConnectionConfig> = {};
   const sources: NamsConfigSources = {
     apiKey: "missing",
     workspaceId: "missing",
@@ -137,21 +189,15 @@ export async function loadNamsConfig(
       sources,
     };
   }
-  if (accumulated.workspaceId === undefined) {
-    return {
-      ok: false,
-      reason: "missing-workspace-id",
-      sources,
-    };
-  }
 
   return {
     ok: true,
     config: {
       apiKey: accumulated.apiKey,
-      workspaceId: accumulated.workspaceId,
+      ...(accumulated.workspaceId !== undefined ? { workspaceId: accumulated.workspaceId } : {}),
       ...(accumulated.baseUrl !== undefined ? { baseUrl: accumulated.baseUrl } : {}),
     },
+    ...(accumulated.workspaceId !== undefined ? { workspaceId: accumulated.workspaceId } : {}),
     sources,
   };
 }
@@ -217,7 +263,7 @@ async function readGlobalJsonConfig(runtimeEnvironment: RuntimeEnvironment): Pro
   return readJsonConfig(configPath, "global:~/.nams/config.json");
 }
 
-function invalidJsonResult(errorSource: JsonConfigSource, sources: NamsConfigSources = defaultSources()): NamsConfigLoadResult {
+function invalidJsonResult(errorSource: JsonConfigSource, sources: NamsConfigSources = defaultSources()): NamsConnectionConfigLoadResult {
   return {
     ok: false,
     reason: "invalid-json",
@@ -235,7 +281,7 @@ function defaultSources(): NamsConfigSources {
 }
 
 function applyJsonConfig(
-  accumulated: Partial<NamsRuntimeConfig>,
+  accumulated: Partial<NamsConnectionConfig>,
   sources: NamsConfigSources,
   config: JsonConfig,
   source: JsonConfigSource,
@@ -255,7 +301,7 @@ function applyJsonConfig(
 }
 
 function applyDiscoveredConfig(
-  accumulated: Partial<NamsRuntimeConfig>,
+  accumulated: Partial<NamsConnectionConfig>,
   sources: NamsConfigSources,
   config: DiscoveredNamsConfig,
 ): void {
@@ -286,7 +332,7 @@ function applyDiscoveredConfig(
 }
 
 function applyEnvironmentOverrides(
-  accumulated: Partial<NamsRuntimeConfig>,
+  accumulated: Partial<NamsConnectionConfig>,
   sources: NamsConfigSources,
   runtimeEnvironment: RuntimeEnvironment,
 ): void {

@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { configDiagnosticPayload, loadNamsConfig } from "../src/runtime/config.js";
+import { configDiagnosticPayload, loadNamsConfig, loadNamsConnectionConfig } from "../src/runtime/config.js";
 
 interface ConfigFixture {
   fixtureDir: string;
@@ -314,6 +314,58 @@ test("missing workspaceId returns structured non-ok result", async () => {
       sources: {
         apiKey: "global:~/.nams/config.json",
         workspaceId: "missing",
+        baseUrl: "default",
+      },
+    });
+  });
+});
+
+test("loads NAMS connection config without requiring workspaceId", async () => {
+  await withFixture(async ({ homeDir, projectDir }) => {
+    useRuntimeEnv(homeDir, {
+      NAMS_API_KEY: "env-key",
+      NAMS_BASE_URL: "https://env.example.test",
+    });
+
+    const result = await loadNamsConnectionConfig(projectDir);
+
+    assert.deepEqual(result, {
+      ok: true,
+      config: {
+        apiKey: "env-key",
+        baseUrl: "https://env.example.test",
+      },
+      sources: {
+        apiKey: "env:NAMS_API_KEY",
+        workspaceId: "missing",
+        baseUrl: "env:NAMS_BASE_URL",
+      },
+    });
+    assert.equal(result.ok ? result.config.workspaceId : undefined, undefined);
+    assert.equal(result.ok ? result.workspaceId : undefined, undefined);
+  });
+});
+
+test("connection config preserves configured workspaceId when present", async () => {
+  await withFixture(async ({ homeDir, projectDir }) => {
+    await writeProjectConfig(projectDir, {
+      apiKey: "project-key",
+      workspaceId: "project-workspace",
+    });
+    useRuntimeEnv(homeDir);
+
+    const result = await loadNamsConnectionConfig(projectDir);
+
+    assert.deepEqual(result, {
+      ok: true,
+      config: {
+        apiKey: "project-key",
+        workspaceId: "project-workspace",
+      },
+      workspaceId: "project-workspace",
+      sources: {
+        apiKey: "project:.nams/config.json",
+        workspaceId: "project:.nams/config.json",
         baseUrl: "default",
       },
     });
