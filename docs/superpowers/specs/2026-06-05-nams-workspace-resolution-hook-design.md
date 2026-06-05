@@ -22,8 +22,12 @@ Runtime workspace resolution is allowed only when hook ordering is deterministic
 - `docs/nams-openapi.json`
 - NAMS endpoint: `GET /v1/users/me/workspaces`
 - Claude hooks docs: `https://code.claude.com/docs/en/hooks`
+- Claude plugin docs: `https://code.claude.com/docs/en/plugins-reference`
 - Codex hooks docs: `https://developers.openai.com/codex/hooks`
+- Codex plugin docs: `https://developers.openai.com/codex/plugins`
+- Codex plugin build docs: `https://developers.openai.com/codex/plugins/build`
 - Gemini hooks docs: `https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/reference.md`
+- Gemini extension docs: `https://google-gemini.github.io/gemini-cli/docs/extensions/`
 - OpenCode plugin docs: `https://opencode.ai/docs/plugins`
 
 ## Goals
@@ -49,8 +53,8 @@ Runtime workspace resolution is allowed only when hook ordering is deterministic
 
 | Harness | Hook ordering | Blocking or prompt behavior | Workspace hook strategy | `workspaceId` install config |
 | --- | --- | --- | --- | --- |
-| Gemini | Deterministic when hook group uses `sequential: true` | Supports stopping or denying a `BeforeAgent` turn with visible output | Separate workspace command before memory command in one sequential hook group | Optional for this path |
-| OpenCode | Plugins are documented as loaded from all sources with hooks run in sequence | Single-workspace runtime resolution is safe; multi-workspace blocking remains gated on a verified prompt or block mechanism | Workspace phase runs before memory phase inside the NAMS OpenCode plugin shim | Optional only for verified noninteractive-safe cases; otherwise required |
+| Gemini | Deterministic when hook group uses `sequential: true` | Supports denying a `BeforeAgent` turn with visible output | Separate workspace command before memory command in one sequential hook group | Optional for this verified runtime path; still allowed as an explicit override |
+| OpenCode | Plugin hooks are documented as running in sequence, but source load order is broader than NAMS | Single-workspace runtime resolution is safe; no documented blocking workspace picker is verified for multi-workspace selection | Workspace phase runs before memory phase inside the NAMS OpenCode plugin shim | Optional only for single-workspace auto-resolution; required for multi-workspace users until a blocking picker is verified |
 | Claude | Matching hooks can run in parallel; a blocking result does not prevent sibling hooks from starting | `UserPromptSubmit` can block, but not deterministically before memory side effects | No separate runtime sibling hook; use install-time or config-time selection | Required |
 | Codex | Multiple matching command hooks for the same event are launched concurrently | `UserPromptSubmit` can block, but not deterministically before memory side effects | No separate runtime sibling hook; use install-time or config-time selection | Required |
 
@@ -107,6 +111,17 @@ Gemini can use a separate workspace hook command because the hook group can be m
 
 The workspace command must finish before the memory command starts. If the workspace command blocks or stops the turn, Gemini should not run the memory command in that sequential group. This assumption must be verified in tests or manual harness smoke testing before making `NAMS_WORKSPACE_ID` optional in released Gemini extension metadata.
 
+For multi-workspace users, the workspace hook should prefer Gemini's structured hook output over stderr-only blocking:
+
+```json
+{
+  "decision": "deny",
+  "reason": "NAMS workspace selection required. Configure one workspace before memory starts:\n1. Engineering (owner, active) - 11111111-1111-1111-1111-111111111111\n2. Research (member, active) - 22222222-2222-2222-2222-222222222222"
+}
+```
+
+The command should exit `0` and print only JSON to stdout. `decision: "deny"` blocks the `BeforeAgent` turn and discards the submitted prompt from history, which is preferable for a setup prompt. `continue: false` is less suitable here because Gemini records the submitted prompt in history. Exit code `2` is also a block mechanism, but it depends on stderr text and is less explicit for tests.
+
 ### OpenCode
 
 OpenCode uses a JavaScript plugin shim rather than command hooks JSON. The NAMS plugin should keep ordering explicit inside the shim:
@@ -116,6 +131,8 @@ OpenCode uses a JavaScript plugin shim rather than command hooks JSON. The NAMS 
 3. If workspace resolution blocks, returns a user-visible prompt, or fails closed for configuration, do not invoke memory persistence for that turn.
 
 OpenCode docs say plugins are loaded from all sources and all hooks run in sequence. Even so, the safest NAMS-owned behavior is to keep the workspace and memory phases in the same plugin shim so ordering does not depend on other user plugins or source load order.
+
+The OpenCode plugin API exposes TUI events such as `tui.prompt.append`, `tui.command.execute`, and `tui.toast.show`, and an `installation.updated` event. The reviewed docs do not describe a hook result that blocks the first user message while presenting a selectable list. Therefore OpenCode runtime behavior should remain conservative: auto-resolve exactly one workspace before memory, but treat multiple workspaces as a configuration-required state until an actual blocking selection path is verified in the harness.
 
 ### Claude And Codex
 
@@ -188,7 +205,22 @@ Harnesses that cannot guarantee ordered hook execution should resolve workspace 
 4. If multiple workspaces exist, show numbered choices and write the selected workspace ID.
 5. If workspace listing fails, leave `workspaceId` unset and show a sanitized setup error.
 
-Claude and Codex plugin metadata should continue to mark workspace ID as required until that setup flow exists for their plugin path. Gemini can mark workspace ID optional only when the sequential workspace hook is shipped and verified. OpenCode optionality depends on the verified OpenCode plugin path shipped with the runtime.
+The portable implementation path is a NAMS-owned configure command under the workspace command surface, not a platform install script:
+
+```bash
+nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope <project|user>
+```
+
+This keeps workspace selection inside the workspace concern and avoids coupling memory hooks to platform installation mechanics. The command can write the same config targets the runtime already reads, such as project `.nams/config.json` or a user-level NAMS config file, and may additionally print platform-specific follow-up instructions when a harness stores plugin options elsewhere.
+
+Platform installation research:
+
+- Gemini extensions support static extension settings and `gemini extensions config`, so `workspaceId` can be exposed as an optional manual setting. The docs do not describe an arbitrary dynamic install script that can call NAMS and persist the selected workspace during install.
+- Claude plugins support manifest `userConfig` and plugin hooks. The `Setup` hook is a Claude Code lifecycle hook for `--init-only`, `--init`, or `--maintenance` flows, not a general plugin installation hook. Claude should keep `NAMS_WORKSPACE_ID` required until a NAMS configure command or documented manual config path exists.
+- Codex plugin installation supports marketplace policy and authentication prompts for external apps or first use, and plugins can bundle hooks. The docs do not expose an arbitrary plugin install script hook suitable for a NAMS workspace picker. Codex should keep `workspaceId` required until a NAMS configure command or documented manual config path exists.
+- OpenCode local plugins are loaded directly and npm plugins are installed by OpenCode at startup. The documented `installation.updated` event is a runtime event, not a portable pre-hook configuration phase. Do not rely on npm package lifecycle scripts for workspace selection.
+
+Claude and Codex plugin metadata should continue to mark workspace ID as required until that setup flow exists for their plugin path. Gemini can mark workspace ID optional only when the sequential workspace hook is shipped and verified. OpenCode optionality is limited to the verified single-workspace auto-resolution path shipped with the runtime.
 
 ## Diagnostics And Logging
 
@@ -240,22 +272,24 @@ Required platform tests:
 
 - Gemini template uses a `sequential: true` `BeforeAgent` group with workspace command before memory command.
 - Gemini can auto-resolve a single workspace and then create a conversation with `X-Workspace-Id`.
-- Gemini multi-workspace handling blocks or stops before conversation creation.
+- Gemini multi-workspace handling returns `decision: "deny"` with a visible workspace list before conversation creation.
 - Claude plugin metadata keeps `NAMS_WORKSPACE_ID` required.
 - Codex plugin metadata or docs keep `workspaceId` required until install-time selection exists.
 - OpenCode plugin shim performs workspace phase before memory phase for first user message.
+- OpenCode multi-workspace handling skips memory and reports configuration required until a blocking picker is verified.
 
 Required docs tests or checks:
 
 - `README.md` explains that workspace ID may be optional only on supported harness paths.
 - `INSTALL.md` documents install-time workspace selection for Claude and Codex.
 - `INSTALL.md` documents runtime auto-resolution for Gemini and any verified OpenCode path.
+- `INSTALL.md` explains that platform plugin install scripts are not the portable workspace-selection mechanism.
 
-## Open Questions For Implementation Planning
+## Resolved Review Questions
 
-- What exact Gemini output shape is most reliable for stopping a multi-workspace first prompt while showing workspace choices?
-- Which OpenCode API should display a multi-workspace selection prompt, if any, and should OpenCode optional workspace config wait until that is verified?
-- Where should the future install-time configure command live, given there is no current `install.mjs` in this branch?
+- Gemini multi-workspace blocking should use stdout JSON with `decision: "deny"` and a sanitized `reason` listing workspace choices. This blocks the first turn and avoids saving the setup prompt in history.
+- OpenCode does not yet have a verified blocking picker API for this use case. Keep multi-workspace OpenCode users on install-time or config-time selection until a concrete prompt or block mechanism is tested.
+- There is no portable platform install script hook across Gemini, Claude, Codex, and OpenCode. Future install-time selection should live in `nams-hooks workspaces configure ...`, with platform metadata documenting whether `workspaceId` is required, optional, or optional only for single-workspace auto-resolution.
 
 ## Approval Record
 
