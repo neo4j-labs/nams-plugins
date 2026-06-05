@@ -65,7 +65,8 @@ The table intentionally distinguishes "can block" from "can order side effects."
 Add a new workspace-oriented command surface:
 
 ```bash
-nams-hooks workspaces <gemini|claude|codex|opencode> --event <BeforeAgent|InstallConfigure>
+nams-hooks workspaces gemini --event BeforeAgent
+nams-hooks workspaces codex --event InstallConfigure
 ```
 
 This command is a hook command, not an agent-facing slash command. It should follow the same gateway principles as `nams-hooks run`:
@@ -81,10 +82,37 @@ This command is a hook command, not an agent-facing slash command. It should fol
 A human-facing configure wrapper may dispatch `InstallConfigure`:
 
 ```bash
-nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope <project|user>
+nams-hooks workspaces configure codex --scope project
+nams-hooks workspaces configure gemini --scope user
 ```
 
 Future command work, such as `/nams:workspaces use <uuid>`, should add a separate explicit CLI surface rather than overloading the memory command.
+
+## Adapter Boundaries
+
+The existing generic `PlatformAdapter` concept should become explicit memory terminology during implementation:
+
+```ts
+interface MemoryPlatformAdapter {
+  startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult>;
+  beforeAgent?(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult>;
+  afterAgent?(invocation: HookInvocation<"AfterAgent">): Promise<HookResult>;
+  afterTool?(invocation: HookInvocation<"AfterTool">): Promise<HookResult>;
+}
+```
+
+`MemoryPlatformAdapter` owns agent-memory behavior only: session initialization, conversation creation, recall, message persistence, and tool metadata. It is the adapter behind `nams-hooks run gemini --event BeforeAgent` and the other memory hook events.
+
+Workspace behavior is a separate adapter concept:
+
+```ts
+interface WorkspacePlatformAdapter {
+  beforeAgent?(invocation: WorkspaceHookInvocation<"BeforeAgent">): Promise<HookResult>;
+  installConfigure?(invocation: WorkspaceHookInvocation<"InstallConfigure">): Promise<HookResult>;
+}
+```
+
+`WorkspacePlatformAdapter` owns workspace discovery, auto-selection, blocking setup output, and config-time selection. It is the adapter behind commands such as `nams-hooks workspaces gemini --event BeforeAgent`. Keeping these contracts separate avoids coupling future NAMS workspace infrastructure to the agent-memory implementation, which may later move toward a more generic Neo4j memory library.
 
 ## Hook Template Shape
 
@@ -189,12 +217,19 @@ This amends the earlier `2026-06-03` workspace ID design, which intentionally av
 
 ## Generated Client Design
 
-Generated client output should expose two client classes:
+Generated client output should expose two client classes. They may be emitted from the same generated TypeScript source file for now, but their runtime responsibilities, endpoint tables, and tests should remain distinct:
 
-- `NamsWorkspaceClient`, for workspace-neutral operations such as `listMyWorkspaces`. It sends bearer auth and does not send `X-Workspace-Id`.
-- `NamsClient`, for workspace-scoped memory operations. It keeps requiring an effective `workspaceId` and sends `X-Workspace-Id` as today.
+- `NamsClient`, for workspace-scoped agent-memory operations such as conversations, messages, reasoning steps, tool calls, and entity search. It keeps requiring an effective `workspaceId` and sends `X-Workspace-Id` as today.
+- `NamsWorkspaceClient`, for NAMS infrastructure workspace operations. In this design it exposes only `listMyWorkspaces` for `GET /v1/users/me/workspaces`. It sends bearer auth and does not send `X-Workspace-Id`.
 
 Keeping two classes preserves the current memory-client invariant: code that can construct `NamsClient` has already resolved the workspace.
+
+The OpenAPI operations currently known to not require `X-Workspace-Id` are:
+
+- `GET /v1/users/me/workspaces`, used by this design to list workspaces for the authenticated user.
+- `POST /v1/workspaces`, which also does not require `X-Workspace-Id` but is out of scope for this change.
+
+The generator should therefore maintain an explicit workspace-infrastructure endpoint allowlist. New infrastructure operations can be added later only when intentionally designed; they should not leak into `NamsClient`, and memory operations should not leak into `NamsWorkspaceClient`.
 
 The generator must validate `GET /v1/users/me/workspaces` against `docs/nams-openapi.json` at build time and generate static TypeScript types for:
 
@@ -219,11 +254,12 @@ The design should model setup as a generic NAMS workspace lifecycle event with p
 type WorkspaceHookEvent = "BeforeAgent" | "InstallConfigure";
 
 interface WorkspacePlatformAdapter {
-  runWorkspaceHook(invocation: WorkspaceInvocation): Promise<WorkspaceHookResult>;
+  beforeAgent?(invocation: WorkspaceHookInvocation<"BeforeAgent">): Promise<HookResult>;
+  installConfigure?(invocation: WorkspaceHookInvocation<"InstallConfigure">): Promise<HookResult>;
 }
 ```
 
-This keeps workspace selection inside the workspace concern without pretending all harnesses expose the same installation primitive. `InstallConfigure` can be triggered by a NAMS installer, a `nams-hooks workspaces configure ...` command, a platform setup hook, a plugin-enable prompt, or a platform-specific first-run event. Each platform adapter owns how that lifecycle maps to the harness. The generic contract is only the outcome: choose zero or one effective workspace ID, persist it to a runtime-readable config target when appropriate, and never create memory conversations during setup.
+This keeps workspace selection inside the workspace concern without pretending all harnesses expose the same installation primitive. `InstallConfigure` can be triggered by a NAMS installer, a command such as `nams-hooks workspaces configure codex --scope project`, a platform setup hook, a plugin-enable prompt, or a platform-specific first-run event. Each platform adapter owns how that lifecycle maps to the harness. The generic contract is only the outcome: choose zero or one effective workspace ID, persist it to a runtime-readable config target when the setup path calls for durable config, and never create memory conversations during setup.
 
 Platform installation research:
 
@@ -264,11 +300,14 @@ Workspace resolution failures should not crash the harness.
 
 Required generated client tests:
 
+- Memory-client tests stay in the existing agent-memory generated client suite and cover `NamsClient` plus `NAMS_CLIENT_ENDPOINTS`.
+- Workspace-client tests live in a separate generated workspace client suite and cover `NamsWorkspaceClient` plus `NAMS_WORKSPACE_CLIENT_ENDPOINTS`.
 - `listMyWorkspaces` calls `GET /v1/users/me/workspaces`.
 - `listMyWorkspaces` sends `Authorization` and `Accept`.
 - `listMyWorkspaces` does not send `X-Workspace-Id`.
 - Request logs for `listMyWorkspaces` omit `Authorization`.
 - Endpoint metadata generated from the pinned OpenAPI spec includes the workspace listing endpoint.
+- The workspace endpoint table contains only the intentional workspace-infrastructure allowlist for this change: `GET /v1/users/me/workspaces`.
 
 Required runtime tests:
 

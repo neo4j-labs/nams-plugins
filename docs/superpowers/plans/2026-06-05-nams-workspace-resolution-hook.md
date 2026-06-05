@@ -4,7 +4,7 @@
 
 **Goal:** Resolve NAMS workspace IDs before conversation creation, auto-selecting single-workspace accounts for ordered harnesses while keeping memory persistence deterministic.
 
-**Architecture:** Add a workspace-specific command and runtime resolver beside the existing memory hook flow. Generate a workspace-neutral `NamsWorkspaceClient` for `GET /v1/users/me/workspaces`, persist single-workspace selections in session state, and have Gemini/OpenCode run workspace resolution before memory creation. Claude and Codex keep config-time workspace selection for this implementation because their first-prompt hooks are not ordered enough to split workspace and memory side effects.
+**Architecture:** Add a workspace-specific command and runtime resolver beside the existing memory hook flow. Keep the generated `NamsClient` as the workspace-scoped agent-memory client, add a separate generated `NamsWorkspaceClient` for NAMS infrastructure operations such as `GET /v1/users/me/workspaces`, persist single-workspace selections in session state, and have Gemini/OpenCode run workspace resolution before memory creation. Claude and Codex keep config-time workspace selection for this implementation because their first-prompt hooks are not ordered enough to split workspace and memory side effects.
 
 **Tech Stack:** TypeScript, Node built-ins only at runtime, generated OpenAPI client, Node `node:test`, existing `fetch-mock` test support, Gemini/Claude/Codex hook JSON templates, OpenCode JavaScript plugin shim.
 
@@ -19,11 +19,11 @@
 
 ## File Structure
 
-- `scripts/generate-nams-client.mjs`: add endpoint metadata for `GET /v1/users/me/workspaces`, generate both workspace-neutral and workspace-scoped client classes, and keep runtime OpenAPI-free.
-- `src/generated/nams-client.ts`: generated output only. Do not hand-edit except through the generator.
-- `src/interfaces.ts`: add workspace hook event types, invocation/result interfaces, and adapter interface without changing memory hook event inference.
+- `scripts/generate-nams-client.mjs`: add endpoint metadata for `GET /v1/users/me/workspaces`, generate both the workspace-scoped `NamsClient` and the workspace-infrastructure `NamsWorkspaceClient`, and keep runtime OpenAPI-free.
+- `src/generated/nams-client.ts`: generated output only. It may contain both generated client classes, but `NamsClient` and `NamsWorkspaceClient` must expose separate endpoint tables and constructor invariants. Do not hand-edit except through the generator.
+- `src/interfaces.ts`: rename the existing memory hook adapter contract to `MemoryPlatformAdapter`, then add workspace hook event types, invocation/result interfaces, and `WorkspacePlatformAdapter` without changing memory hook event inference.
 - `src/cli.ts`: parse workspace hook commands such as `nams-hooks workspaces gemini --event BeforeAgent` and configure commands such as `nams-hooks workspaces configure codex --scope project --workspace-id 11111111-1111-1111-1111-111111111111`.
-- `src/platforms/index.ts`: expose a static workspace adapter registry beside the existing memory adapter registry.
+- `src/platforms/index.ts`: expose a static workspace adapter registry beside the renamed memory adapter registry.
 - `src/platforms/gemini/workspaces.ts`: Gemini-specific workspace hook output, including `decision: "deny"` for multi-workspace blocking.
 - `src/platforms/opencode/workspaces.ts`: OpenCode workspace phase result for the plugin shim, single-workspace auto-resolution, and multi-workspace configuration-required output.
 - `src/platforms/claude/workspaces.ts`: config-time `InstallConfigure` behavior and non-runtime first-prompt behavior.
@@ -47,6 +47,13 @@
 Use these names consistently across tasks:
 
 ```ts
+export interface MemoryPlatformAdapter {
+  startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult>;
+  beforeAgent?(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult>;
+  afterAgent?(invocation: HookInvocation<"AfterAgent">): Promise<HookResult>;
+  afterTool?(invocation: HookInvocation<"AfterTool">): Promise<HookResult>;
+}
+
 export type WorkspaceHookEvent = "BeforeAgent" | "InstallConfigure";
 
 export type WorkspaceSource =
@@ -72,6 +79,8 @@ export interface WorkspaceHookResult {
 }
 ```
 
+`MemoryPlatformAdapter` owns agent-memory operations and backs commands such as `nams-hooks run gemini --event BeforeAgent`. `WorkspacePlatformAdapter` owns workspace discovery/configuration and backs commands such as `nams-hooks workspaces gemini --event BeforeAgent`. Do not use a generic `PlatformAdapter` name after this plan is implemented.
+
 Workspace list response shape from the pinned OpenAPI spec:
 
 ```ts
@@ -90,17 +99,135 @@ export interface WorkspaceSummary {
 
 ---
 
-### Task 1: Generate Workspace-Neutral NAMS Client
+### Task 0: Rename Existing Platform Adapter Contract To MemoryPlatformAdapter
+
+**Files:**
+- Modify: `src/interfaces.ts`
+- Modify: `src/platforms/index.ts`
+- Modify: `src/platforms/gemini/index.ts`
+- Modify: `src/platforms/claude/index.ts`
+- Modify: `src/platforms/codex/index.ts`
+- Modify: `src/platforms/opencode/index.ts`
+- Modify: `src/cli.ts`
+- Modify: `test/architecture.test.ts`
+
+- [ ] **Step 1: Add failing architecture assertions for explicit memory adapter naming**
+
+In `test/architecture.test.ts`, add assertions to the existing platform adapter tests:
+
+```ts
+test("memory platform adapter contract is named explicitly", async () => {
+  const interfaceContent = await readFile("src/interfaces.ts", "utf8");
+  const registryContent = await readFile("src/platforms/index.ts", "utf8");
+
+  assert.match(interfaceContent, /\bexport interface MemoryPlatformAdapter\b/);
+  assert.doesNotMatch(interfaceContent, /\bexport interface PlatformAdapter\b/);
+  assert.match(registryContent, /\bgetMemoryPlatformAdapter\b/);
+  assert.doesNotMatch(registryContent, /\bgetPlatformAdapter\b/);
+});
+```
+
+- [ ] **Step 2: Run tests to verify failure**
+
+Run:
+
+```bash
+node --import=tsx --test test/architecture.test.ts
+```
+
+Expected: fail because the current contract is still named `PlatformAdapter`.
+
+- [ ] **Step 3: Rename shared memory adapter types**
+
+In `src/interfaces.ts`, rename:
+
+```ts
+export interface PlatformAdapter {
+```
+
+to:
+
+```ts
+export interface MemoryPlatformAdapter {
+```
+
+Keep the existing `HookInvocation`, `HookEvent`, and method names unchanged. This rename is intentionally narrow: it changes the memory adapter contract name, not the event model or platform payload parsing.
+
+- [ ] **Step 4: Rename registry and imports**
+
+In `src/platforms/index.ts`, rename:
+
+```ts
+import type { Platform, PlatformAdapter } from "../interfaces.js";
+const adapters: Record<Platform, PlatformAdapter> = {
+export function getPlatformAdapter(platform: Platform): PlatformAdapter {
+```
+
+to:
+
+```ts
+import type { MemoryPlatformAdapter, Platform } from "../interfaces.js";
+const memoryAdapters: Record<Platform, MemoryPlatformAdapter> = {
+export function getMemoryPlatformAdapter(platform: Platform): MemoryPlatformAdapter {
+```
+
+Update `src/cli.ts` to import and call `getMemoryPlatformAdapter`.
+
+In each existing platform memory adapter file, update imports and class declarations:
+
+```ts
+import type { HookInvocation, HookResult, MemoryPlatformAdapter } from "../../interfaces.js";
+
+export class GeminiAdapter implements MemoryPlatformAdapter {
+```
+
+Repeat for Claude, Codex, and OpenCode.
+
+- [ ] **Step 5: Update architecture tests that reference the old name**
+
+In `test/architecture.test.ts`, update old `PlatformAdapter` references to `MemoryPlatformAdapter`, including the test that currently rejects `PlatformAdapterOptions`.
+
+Keep the existing architecture intent:
+
+- Only `src/platforms/index.ts` imports all concrete memory adapters.
+- Platform memory adapters do not accept test-only runtime dependencies.
+- Memory platform adapters still declare `startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult>`.
+
+- [ ] **Step 6: Verify and commit**
+
+Run:
+
+```bash
+rg -n "\bPlatformAdapter\b|getPlatformAdapter" src test
+node --import=tsx --test test/architecture.test.ts
+npm run build
+```
+
+Expected: the search returns no old generic memory adapter names, architecture tests pass, and TypeScript compiles.
+
+Commit:
+
+```bash
+git add src/interfaces.ts src/platforms/index.ts src/platforms/gemini/index.ts src/platforms/claude/index.ts src/platforms/codex/index.ts src/platforms/opencode/index.ts src/cli.ts test/architecture.test.ts
+git commit -m "refactor: name memory platform adapter explicitly" -m "Co-authored-by: Codex <codex@openai.com>"
+```
+
+---
+
+### Task 1: Generate Separate Workspace-Infrastructure NAMS Client
 
 **Files:**
 - Modify: `scripts/generate-nams-client.mjs`
 - Generated: `src/generated/nams-client.ts`
 - Modify: `test/nams-client-generator.test.ts`
+- Create: `test/nams-workspace-client-generator.test.ts`
 - Modify: `test/support/nams-fetch-mock.ts`
 
-- [ ] **Step 1: Add failing generator endpoint and client tests**
+- [ ] **Step 1: Add failing workspace generator endpoint and client tests**
 
-In `test/nams-client-generator.test.ts`, add a separate expected workspace endpoint list near `expectedEndpoints`:
+Keep `test/nams-client-generator.test.ts` focused on the workspace-scoped `NamsClient` and `NAMS_CLIENT_ENDPOINTS`.
+
+Create `test/nams-workspace-client-generator.test.ts` for the workspace-infrastructure client tests. Use local copies of the small generated-client import helpers from `test/nams-client-generator.test.ts`, then add:
 
 ```ts
 const expectedWorkspaceEndpoints: ExpectedEndpoint[] = [
@@ -115,7 +242,7 @@ const expectedWorkspaceEndpoints: ExpectedEndpoint[] = [
 ];
 ```
 
-Add this test after `generated NAMS client endpoint table matches the pinned OpenAPI spec`:
+Add:
 
 ```ts
 test("generated workspace client endpoint table matches the pinned OpenAPI spec", async () => {
@@ -132,7 +259,7 @@ test("generated workspace client endpoint table matches the pinned OpenAPI spec"
 });
 ```
 
-Add this generated-client behavior test after `generated NAMS client sends bearer JSON requests`:
+Add:
 
 ```ts
 test("generated workspace client lists workspaces without X-Workspace-Id", async () => {
@@ -167,7 +294,7 @@ test("generated workspace client lists workspaces without X-Workspace-Id", async
 });
 ```
 
-Add this request-log test after `generated NAMS client reports request and response details`:
+Add:
 
 ```ts
 test("generated workspace client request logs omit Authorization and workspace header", async () => {
@@ -197,12 +324,26 @@ test("generated workspace client request logs omit Authorization and workspace h
 });
 ```
 
+Add an allowlist test so future NAMS workspace infrastructure operations do not silently join the workspace client:
+
+```ts
+test("generated workspace client contains only intentional workspace infrastructure endpoints", async () => {
+  const { NAMS_WORKSPACE_CLIENT_ENDPOINTS } = await importGeneratedClient();
+
+  assert.deepEqual(NAMS_WORKSPACE_CLIENT_ENDPOINTS.map((endpoint) => endpoint.path), [
+    "/v1/users/me/workspaces",
+  ]);
+});
+```
+
+Do not add these workspace client tests to `test/nams-client-generator.test.ts`. That suite remains the agent-memory operations client suite.
+
 - [ ] **Step 2: Run tests to verify failure**
 
 Run:
 
 ```bash
-npm run build && node --import=tsx --test test/nams-client-generator.test.ts
+npm run build && node --import=tsx --test test/nams-workspace-client-generator.test.ts
 ```
 
 Expected: fail because `NAMS_WORKSPACE_CLIENT_ENDPOINTS` and `NamsWorkspaceClient` do not exist.
@@ -274,7 +415,7 @@ const workspaceScopedEndpoints = [
   },
 ];
 
-const workspaceNeutralEndpoints = [
+const workspaceInfrastructureEndpoints = [
   {
     methodName: "listMyWorkspaces",
     httpMethod: "GET",
@@ -284,22 +425,24 @@ const workspaceNeutralEndpoints = [
 ];
 ```
 
+This is an explicit workspace-infrastructure allowlist. `GET /v1/users/me/workspaces` and `POST /v1/workspaces` are the OpenAPI operations that do not require `X-Workspace-Id`; `POST /v1/workspaces` is out of scope for this implementation and must not be generated yet.
+
 Replace the existing `resolvedEndpoints` calculation with:
 
 ```js
 const resolvedWorkspaceScopedEndpoints = workspaceScopedEndpoints.map((endpoint) => resolveEndpoint(spec, endpoint));
-const resolvedWorkspaceNeutralEndpoints = workspaceNeutralEndpoints.map((endpoint) => resolveEndpoint(spec, endpoint));
+const resolvedWorkspaceInfrastructureEndpoints = workspaceInfrastructureEndpoints.map((endpoint) => resolveEndpoint(spec, endpoint));
 const referencedDefinitions = collectReferencedDefinitions(
-  [...resolvedWorkspaceNeutralEndpoints, ...resolvedWorkspaceScopedEndpoints],
+  [...resolvedWorkspaceInfrastructureEndpoints, ...resolvedWorkspaceScopedEndpoints],
   definitions,
 );
-const source = renderClient(resolvedWorkspaceScopedEndpoints, resolvedWorkspaceNeutralEndpoints, referencedDefinitions, definitions);
+const source = renderClient(resolvedWorkspaceScopedEndpoints, resolvedWorkspaceInfrastructureEndpoints, referencedDefinitions, definitions);
 ```
 
 Change `renderClient` signature:
 
 ```js
-function renderClient(workspaceScoped, workspaceNeutral, definitionNames, allDefinitions) {
+function renderClient(workspaceScoped, workspaceInfrastructure, definitionNames, allDefinitions) {
 ```
 
 Inside `renderClient`, emit:
@@ -320,7 +463,7 @@ Emit both endpoint tables:
 ```js
 lines.push(
   "export const NAMS_WORKSPACE_CLIENT_ENDPOINTS = [",
-  ...workspaceNeutral.map(
+  ...workspaceInfrastructure.map(
     (endpoint) =>
       `  { methodName: "${endpoint.methodName}", httpMethod: "${endpoint.httpMethod}", path: "${endpoint.path}" },`,
   ),
@@ -436,6 +579,13 @@ async function emitRequestEvent(
 
 Use `requestNams` from both generated classes.
 
+Keep the generated classes semantically separate:
+
+- `NamsClient` keeps the existing constructor invariant that `workspaceId` is required and sends `X-Workspace-Id` for every generated memory operation.
+- `NamsWorkspaceClient` accepts no `workspaceId`, strips any `X-Workspace-Id` from default headers, and exposes only `listMyWorkspaces` in this change.
+- `NAMS_CLIENT_ENDPOINTS` lists only workspace-scoped agent-memory operations.
+- `NAMS_WORKSPACE_CLIENT_ENDPOINTS` lists only the workspace-infrastructure allowlist.
+
 - [ ] **Step 4: Add fetch mock helper**
 
 In `test/support/nams-fetch-mock.ts`, add to `NamsFetchMock`:
@@ -458,15 +608,15 @@ Run:
 
 ```bash
 npm run openapi:generate
-npm run build && node --import=tsx --test test/nams-client-generator.test.ts
+npm run build && node --import=tsx --test test/nams-client-generator.test.ts test/nams-workspace-client-generator.test.ts
 ```
 
-Expected: generated file includes `NamsWorkspaceClient`, `WorkspaceListResponse`, `WorkspaceSummary`, and all generator tests pass.
+Expected: generated file includes `NamsClient`, `NamsWorkspaceClient`, `WorkspaceListResponse`, `WorkspaceSummary`, and all memory-client plus workspace-client generator tests pass.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add scripts/generate-nams-client.mjs src/generated/nams-client.ts test/nams-client-generator.test.ts test/support/nams-fetch-mock.ts
+git add scripts/generate-nams-client.mjs src/generated/nams-client.ts test/nams-client-generator.test.ts test/nams-workspace-client-generator.test.ts test/support/nams-fetch-mock.ts
 git commit -m "feat: generate workspace listing client" -m "Co-authored-by: Codex <codex@openai.com>"
 ```
 
@@ -764,7 +914,7 @@ Commit:
 
 ```bash
 git add src/runtime/config.ts src/runtime/session-state.ts test/runtime-config.test.ts test/session-state.test.ts
-git commit -m "feat: support workspace-neutral config state" -m "Co-authored-by: Codex <codex@openai.com>"
+git commit -m "feat: support workspace-optional config state" -m "Co-authored-by: Codex <codex@openai.com>"
 ```
 
 ---
@@ -2250,7 +2400,7 @@ Expected:
 Run:
 
 ```bash
-rg -n "workspaces gemini --event BeforeAgent|workspaces configure|NAMS_WORKSPACE_ID|listMyWorkspaces" src templates dist README.md INSTALL.md
+rg -n "workspaces gemini --event BeforeAgent|workspaces configure|NAMS_WORKSPACE_ID|listMyWorkspaces|NamsWorkspaceClient|NamsClient|MemoryPlatformAdapter|WorkspacePlatformAdapter" src templates dist README.md INSTALL.md test
 ```
 
 Expected:
@@ -2258,7 +2408,9 @@ Expected:
 - Gemini template and `dist/` include workspace command before memory command.
 - OpenCode template and `dist/` include workspace phase before memory phase.
 - Claude/Codex templates do not add sibling workspace first-prompt hooks.
-- Generated client includes `listMyWorkspaces`.
+- Generated `NamsClient` remains workspace-scoped and generated `NamsWorkspaceClient` includes `listMyWorkspaces`.
+- Workspace client generator coverage lives in `test/nams-workspace-client-generator.test.ts`, separate from the agent-memory `test/nams-client-generator.test.ts` suite.
+- `MemoryPlatformAdapter` and `WorkspacePlatformAdapter` are separate contracts.
 - Docs mention configure and platform optionality.
 
 - [ ] **Step 3: Verify no runtime dependencies were added**
@@ -2287,6 +2439,8 @@ Expected: no output. If there is output, inspect it with `git diff` and either c
 
 - Spec coverage: generated workspace client, separate workspace command, session workspace state, Gemini sequential hooks, OpenCode ordered shim, Claude/Codex no sibling hooks, diagnostics, docs, and tests are covered.
 - Plan hygiene scan: no unresolved task markers or unspecified implementation steps remain.
-- Type consistency: `WorkspaceHookEvent`, `InstallConfigure`, `SessionWorkspaceState`, `NamsWorkspaceClient`, `WorkspaceListResponse`, and `WorkspaceSummary` are named consistently across tasks.
+- Type consistency: `MemoryPlatformAdapter`, `WorkspacePlatformAdapter`, `WorkspaceHookEvent`, `InstallConfigure`, `SessionWorkspaceState`, `NamsClient`, `NamsWorkspaceClient`, `WorkspaceListResponse`, and `WorkspaceSummary` are named consistently across tasks.
+- Client boundary check: `NamsClient` remains the agent-memory operations client; `NamsWorkspaceClient` is the NAMS infrastructure client and only includes `GET /v1/users/me/workspaces` in this change.
+- Test boundary check: workspace client generator tests remain separate from the agent-memory generated client suite.
 - Runtime dependency check: plan uses Node built-ins only for runtime additions.
 - Safety check: no task logs API keys, bearer tokens, raw config contents, or arbitrary exception text.
