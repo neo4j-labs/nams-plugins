@@ -35,7 +35,7 @@ function invocation(projectDir: string): HookInvocation<"BeforeAgent"> {
 test("configured workspace skips workspace listing", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-workspace-resolution-"));
   try {
-    const nams = createNamsFetchMock().all({ error: "unexpected workspace listing" }, 500);
+    const nams = createNamsFetchMock().workspaces({ error: "unexpected workspace listing" }, 500);
     useEnv(projectDir, {
       NAMS_API_KEY: "key",
       NAMS_WORKSPACE_ID: "configured-workspace",
