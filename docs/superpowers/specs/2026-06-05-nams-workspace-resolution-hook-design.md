@@ -65,7 +65,7 @@ The table intentionally distinguishes "can block" from "can order side effects."
 Add a new workspace-oriented command surface:
 
 ```bash
-nams-hooks workspaces <gemini|claude|codex|opencode> --event BeforeAgent
+nams-hooks workspaces <gemini|claude|codex|opencode> --event <BeforeAgent|InstallConfigure>
 ```
 
 This command is a hook command, not an agent-facing slash command. It should follow the same gateway principles as `nams-hooks run`:
@@ -76,7 +76,15 @@ This command is a hook command, not an agent-facing slash command. It should fol
 - Dispatch through static platform/workspace behavior.
 - Do not infer event names from raw payload fields.
 
-`BeforeAgent` is the first required event because workspace resolution must happen before conversation creation. Future command work, such as `/nams:workspaces use <uuid>`, should add a separate explicit CLI surface rather than overloading the memory command.
+`BeforeAgent` is the first required runtime event because workspace resolution must happen before conversation creation. `InstallConfigure` is a NAMS lifecycle event, not necessarily a native harness hook event. It gives the workspace adapter a common entrypoint for install-time or config-time workspace selection while still allowing each platform adapter to use platform-specific install, enable, setup, config, or first-run mechanics.
+
+A human-facing configure wrapper may dispatch `InstallConfigure`:
+
+```bash
+nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope <project|user>
+```
+
+Future command work, such as `/nams:workspaces use <uuid>`, should add a separate explicit CLI surface rather than overloading the memory command.
 
 ## Hook Template Shape
 
@@ -195,7 +203,7 @@ The generator must validate `GET /v1/users/me/workspaces` against `docs/nams-ope
 
 Runtime code must not inspect OpenAPI or discover endpoints.
 
-## Install-Time Selection
+## Install-Time Selection And Setup Lifecycle
 
 Harnesses that cannot guarantee ordered hook execution should resolve workspace ID before hooks run. This setup flow can be implemented as a future installer or configure command, but the required behavior is:
 
@@ -205,20 +213,24 @@ Harnesses that cannot guarantee ordered hook execution should resolve workspace 
 4. If multiple workspaces exist, show numbered choices and write the selected workspace ID.
 5. If workspace listing fails, leave `workspaceId` unset and show a sanitized setup error.
 
-The portable implementation path is a NAMS-owned configure command under the workspace command surface, not a platform install script:
+The design should model setup as a generic NAMS workspace lifecycle event with platform-specific implementations:
 
-```bash
-nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope <project|user>
+```ts
+type WorkspaceHookEvent = "BeforeAgent" | "InstallConfigure";
+
+interface WorkspacePlatformAdapter {
+  runWorkspaceHook(invocation: WorkspaceInvocation): Promise<WorkspaceHookResult>;
+}
 ```
 
-This keeps workspace selection inside the workspace concern and avoids coupling memory hooks to platform installation mechanics. The command can write the same config targets the runtime already reads, such as project `.nams/config.json` or a user-level NAMS config file, and may additionally print platform-specific follow-up instructions when a harness stores plugin options elsewhere.
+This keeps workspace selection inside the workspace concern without pretending all harnesses expose the same installation primitive. `InstallConfigure` can be triggered by a NAMS installer, a `nams-hooks workspaces configure ...` command, a platform setup hook, a plugin-enable prompt, or a platform-specific first-run event. Each platform adapter owns how that lifecycle maps to the harness. The generic contract is only the outcome: choose zero or one effective workspace ID, persist it to a runtime-readable config target when appropriate, and never create memory conversations during setup.
 
 Platform installation research:
 
-- Gemini extensions support static extension settings and `gemini extensions config`, so `workspaceId` can be exposed as an optional manual setting. The docs do not describe an arbitrary dynamic install script that can call NAMS and persist the selected workspace during install.
-- Claude plugins support manifest `userConfig` and plugin hooks. The `Setup` hook is a Claude Code lifecycle hook for `--init-only`, `--init`, or `--maintenance` flows, not a general plugin installation hook. Claude should keep `NAMS_WORKSPACE_ID` required until a NAMS configure command or documented manual config path exists.
-- Codex plugin installation supports marketplace policy and authentication prompts for external apps or first use, and plugins can bundle hooks. The docs do not expose an arbitrary plugin install script hook suitable for a NAMS workspace picker. Codex should keep `workspaceId` required until a NAMS configure command or documented manual config path exists.
-- OpenCode local plugins are loaded directly and npm plugins are installed by OpenCode at startup. The documented `installation.updated` event is a runtime event, not a portable pre-hook configuration phase. Do not rely on npm package lifecycle scripts for workspace selection.
+- Gemini extensions support static extension settings that are collected during installation or later with `gemini extensions config`. Settings declare environment variable names, can be marked sensitive, and are allowlisted into the extension environment. Gemini also supports hooks from `hooks/hooks.json`. The documented settings prompt is static, so it can ask for `NAMS_WORKSPACE_ID`, but it cannot itself call NAMS to populate choices. Gemini's platform strategy should use runtime `BeforeAgent` auto-resolution for single-workspace users and optionally use `InstallConfigure` from a wrapper/config command to write extension settings or `.nams/config.json` for multi-workspace users.
+- Claude plugins support manifest `userConfig` values prompted when the plugin is enabled. These values are available as `${user_config.KEY}` substitutions and as `CLAUDE_PLUGIN_OPTION_<KEY>` environment variables. Claude plugins can also ship hooks, including `Setup`; however, `Setup` fires only for explicit `--init-only`, `--init` in print mode, or `--maintenance` in print mode, cannot block, and does not run on normal startup. Claude's platform strategy should treat `userConfig` as the native manual workspace ID surface and may use `InstallConfigure` through a NAMS setup command or explicitly triggered setup flow, but should not rely on a sibling first-prompt runtime workspace hook.
+- Codex plugins can be installed from marketplaces, can declare install/authentication policy, can bundle lifecycle hooks, and can use plugin data directories. Codex may prompt for external app or MCP authentication during install or first use, but the docs do not expose a plugin-provided arbitrary install script or dynamic config form for a NAMS workspace picker. Plugin-bundled hooks are non-managed hooks that require user trust and, for matching command hooks on the same event, are launched concurrently with other matching hooks. Codex's platform strategy should keep workspace ID required in metadata/docs until `InstallConfigure` is implemented through a NAMS-controlled configure flow or a verified Codex-specific setup surface.
+- OpenCode loads local plugins directly and installs npm plugin packages with Bun at startup. Plugin hooks run in documented source order, and plugins can subscribe to `installation.updated`, TUI, shell, tool, message, and session events. The docs do not describe a blocking install-time configuration prompt or a first-message selection UI for this use case. OpenCode's platform strategy can use ordered in-plugin runtime phases for single-workspace auto-resolution, and may later map `InstallConfigure` to `installation.updated`, `tui.prompt.append`, or another verified OpenCode flow if it can block or clearly guide the user before memory starts.
 
 Claude and Codex plugin metadata should continue to mark workspace ID as required until that setup flow exists for their plugin path. Gemini can mark workspace ID optional only when the sequential workspace hook is shipped and verified. OpenCode optionality is limited to the verified single-workspace auto-resolution path shipped with the runtime.
 
@@ -260,6 +272,7 @@ Required generated client tests:
 
 Required runtime tests:
 
+- `InstallConfigure` dispatches through the workspace platform adapter without creating a memory service.
 - Configured workspace skips workspace listing.
 - Missing workspace with a single returned workspace stores session workspace and allows memory to proceed.
 - Missing workspace with multiple returned workspaces returns the correct platform-specific blocking output for an ordered harness.
@@ -283,13 +296,13 @@ Required docs tests or checks:
 - `README.md` explains that workspace ID may be optional only on supported harness paths.
 - `INSTALL.md` documents install-time workspace selection for Claude and Codex.
 - `INSTALL.md` documents runtime auto-resolution for Gemini and any verified OpenCode path.
-- `INSTALL.md` explains that platform plugin install scripts are not the portable workspace-selection mechanism.
+- `INSTALL.md` documents the platform-specific setup strategy for Gemini settings, Claude `userConfig`, Codex configure flow, and OpenCode single-workspace runtime setup.
 
 ## Resolved Review Questions
 
 - Gemini multi-workspace blocking should use stdout JSON with `decision: "deny"` and a sanitized `reason` listing workspace choices. This blocks the first turn and avoids saving the setup prompt in history.
 - OpenCode does not yet have a verified blocking picker API for this use case. Keep multi-workspace OpenCode users on install-time or config-time selection until a concrete prompt or block mechanism is tested.
-- There is no portable platform install script hook across Gemini, Claude, Codex, and OpenCode. Future install-time selection should live in `nams-hooks workspaces configure ...`, with platform metadata documenting whether `workspaceId` is required, optional, or optional only for single-workspace auto-resolution.
+- There is no single portable platform install script hook across Gemini, Claude, Codex, and OpenCode. That is not a design blocker. NAMS should expose a generic `InstallConfigure` workspace lifecycle event and let the platform strategy map it to each harness: Gemini static settings or wrapper configure command, Claude `userConfig` or explicit setup/configure command, Codex NAMS-controlled configure flow, and OpenCode single-workspace runtime resolution until a blocking install/config UI is verified.
 
 ## Approval Record
 
