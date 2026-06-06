@@ -46,6 +46,10 @@ function importsConcreteAdapter(file: SourceFile): boolean {
     "src/platforms/claude/index.ts",
     "src/platforms/codex/index.ts",
     "src/platforms/opencode/index.ts",
+    "src/platforms/gemini/workspaces.ts",
+    "src/platforms/claude/workspaces.ts",
+    "src/platforms/codex/workspaces.ts",
+    "src/platforms/opencode/workspaces.ts",
   ]);
 
   return importedSourcePaths(file.path, file.content).some((importedPath) => concreteAdapters.has(importedPath));
@@ -128,6 +132,13 @@ test("memory platform adapter contract is named explicitly", async () => {
   assert.doesNotMatch(interfaceContent, /\bexport interface PlatformAdapter\b/);
   assert.match(registryContent, /\bgetMemoryPlatformAdapter\b/);
   assert.doesNotMatch(registryContent, /\bgetPlatformAdapter\b/);
+});
+
+test("workspace adapter registry is static", async () => {
+  const content = await readFile("src/platforms/index.ts", "utf8");
+
+  assert.match(content, /\bgetWorkspacePlatformAdapter\b/);
+  assert.equal(/\bimport\(|readdir|dynamic\b/.test(content), false);
 });
 
 test("platform session-start contract names local session initialization", async () => {

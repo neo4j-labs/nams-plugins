@@ -4,50 +4,64 @@ import process from "node:process";
 import {
   isHookEvent,
   isPlatform,
+  isWorkspaceHookEvent,
   type HookEvent,
   type HookInvocation,
   type HookResult,
   type MemoryPlatformAdapter,
   type Platform,
+  type WorkspaceHookEvent,
+  type WorkspaceHookInvocation,
+  type WorkspaceHookResult,
+  type WorkspacePlatformAdapter,
 } from "./interfaces.js";
-import { getMemoryPlatformAdapter } from "./platforms/index.js";
+import { getMemoryPlatformAdapter, getWorkspacePlatformAdapter } from "./platforms/index.js";
 import { readJsonPayload } from "./runtime/stdin.js";
 
-interface RunArgs {
-  platform: Platform;
-  event: HookEvent;
-}
+type CliArgs =
+  | { command: "run"; platform: Platform; event: HookEvent }
+  | { command: "workspaces"; platform: Platform; event: WorkspaceHookEvent };
 
 async function main(argv: string[]): Promise<number> {
-  const args = parseRunArgs(argv);
+  const args = parseArgs(argv);
   if (args === null) {
-    process.stderr.write(
-      "Usage: nams-hooks run <gemini|claude|codex|opencode> --event <SessionStart|BeforeAgent|AfterAgent|AfterTool>\n",
-    );
+    process.stderr.write(usage());
     return 1;
   }
 
   const rawPayload = await readJsonPayload();
-  const adapter = getMemoryPlatformAdapter(args.platform);
-  const result = await routeEvent(adapter, {
-    platform: args.platform,
-    event: args.event,
-    rawPayload,
-    processCwd: process.cwd(),
-  });
+  const result =
+    args.command === "run"
+      ? await routeEvent(getMemoryPlatformAdapter(args.platform), {
+          platform: args.platform,
+          event: args.event,
+          rawPayload,
+          processCwd: process.cwd(),
+        })
+      : await routeWorkspaceEvent(getWorkspacePlatformAdapter(args.platform), {
+          platform: args.platform,
+          event: args.event,
+          rawPayload,
+          processCwd: process.cwd(),
+        });
   process.stdout.write(`${JSON.stringify(result.stdout)}\n`);
   return 0;
 }
 
-function parseRunArgs(argv: string[]): RunArgs | null {
+function parseArgs(argv: string[]): CliArgs | null {
   const [command, platformArg, eventFlag, eventArg] = argv;
-  if (command !== "run" || eventFlag !== "--event") {
-    return null;
+  if (command === "run" && eventFlag === "--event" && isPlatform(platformArg) && isHookEvent(eventArg)) {
+    return { command: "run", platform: platformArg, event: eventArg };
   }
-  if (!isPlatform(platformArg) || !isHookEvent(eventArg)) {
-    return null;
+  if (
+    command === "workspaces" &&
+    eventFlag === "--event" &&
+    isPlatform(platformArg) &&
+    isWorkspaceHookEvent(eventArg)
+  ) {
+    return { command: "workspaces", platform: platformArg, event: eventArg };
   }
-  return { platform: platformArg, event: eventArg };
+  return null;
 }
 
 async function routeEvent(
@@ -66,8 +80,28 @@ async function routeEvent(
   }
 }
 
+async function routeWorkspaceEvent(
+  adapter: WorkspacePlatformAdapter,
+  invocation: WorkspaceHookInvocation,
+): Promise<WorkspaceHookResult> {
+  switch (invocation.event) {
+    case "BeforeAgent":
+      return adapter.beforeAgent?.({ ...invocation, event: "BeforeAgent" }) ?? allowHook();
+    case "InstallConfigure":
+      return adapter.installConfigure?.({ ...invocation, event: "InstallConfigure" }) ?? allowHook();
+  }
+}
+
 function allowHook(): HookResult {
   return { stdout: { continue: true, suppressOutput: true } };
+}
+
+function usage(): string {
+  return [
+    "Usage: nams-hooks run <gemini|claude|codex|opencode> --event <SessionStart|BeforeAgent|AfterAgent|AfterTool>",
+    "       nams-hooks workspaces <gemini|claude|codex|opencode> --event <BeforeAgent|InstallConfigure>",
+    "",
+  ].join("\n");
 }
 
 main(process.argv.slice(2))
