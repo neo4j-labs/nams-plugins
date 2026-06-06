@@ -8,7 +8,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const cliPath = path.join(repoRoot, ".build", "tsc", "cli.js");
+const cliPath = path.join(repoRoot, "src", "cli.ts");
 
 interface CliResult {
   code: number | null;
@@ -25,12 +25,11 @@ interface RecordedRequest {
 function runCli(
   args: string[],
   payload: Record<string, unknown>,
-  cwd: string,
   env: Record<string, string | undefined>,
 ): Promise<CliResult> {
   return new Promise<CliResult>((resolve, reject) => {
-    const child = spawn(process.execPath, [cliPath, ...args], {
-      cwd,
+    const child = spawn(process.execPath, ["--import=tsx", cliPath, ...args], {
+      cwd: repoRoot,
       env,
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -118,7 +117,6 @@ test("workspaces gemini BeforeAgent lists workspaces without workspace header", 
           cwd: projectDir,
           prompt: "hello",
         },
-        projectDir,
         runtimeEnv(path.join(projectDir, "home"), baseUrl),
       );
 
@@ -144,7 +142,6 @@ test("workspaces rejects unsupported workspace events with usage", async () => {
     const result = await runCli(
       ["workspaces", "gemini", "--event", "AfterAgent"],
       { session_id: "session-1", cwd: projectDir },
-      projectDir,
       runtimeEnv(path.join(projectDir, "home"), "http://127.0.0.1:9"),
     );
 
