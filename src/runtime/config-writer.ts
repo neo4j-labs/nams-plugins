@@ -36,7 +36,7 @@ export async function writeNamsJsonConfig(input: WriteNamsJsonConfigInput): Prom
 
 async function rejectConfigPathSymlinks(configPath: string): Promise<void> {
   await rejectSymlink(path.dirname(configPath));
-  await rejectSymlink(configPath);
+  await rejectUnsafeConfigFile(configPath);
 }
 
 async function rejectSymlink(configPath: string): Promise<void> {
@@ -44,6 +44,23 @@ async function rejectSymlink(configPath: string): Promise<void> {
     const file = await lstat(configPath);
     if (file.isSymbolicLink()) {
       throw new Error("NAMS config path must not be a symbolic link");
+    }
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+}
+
+async function rejectUnsafeConfigFile(configPath: string): Promise<void> {
+  try {
+    const file = await lstat(configPath);
+    if (file.isSymbolicLink()) {
+      throw new Error("NAMS config path must not be a symbolic link");
+    }
+    if (!file.isFile() || file.nlink > 1) {
+      throw new Error("NAMS config path is unsafe; existing config must be a regular file without hard links");
     }
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {

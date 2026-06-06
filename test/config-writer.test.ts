@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { chmod, link, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -108,5 +108,33 @@ test("rejects symlinked project config directory without changing target directo
   } finally {
     await rm(projectDir, { recursive: true, force: true });
     await rm(targetDir, { recursive: true, force: true });
+  }
+});
+
+test("rejects hard-linked project config path without changing target", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-config-writer-"));
+  try {
+    const configDir = path.join(projectDir, ".nams");
+    const configPath = path.join(configDir, "config.json");
+    const targetPath = path.join(projectDir, "target-config.json");
+    const targetContent = `${JSON.stringify({ apiKey: "hard-linked-target" }, null, 2)}\n`;
+    await mkdir(configDir, { recursive: true });
+    await writeFile(targetPath, targetContent, { mode: 0o644 });
+    await chmod(targetPath, 0o644);
+    await link(targetPath, configPath);
+
+    await assert.rejects(
+      writeNamsJsonConfig({
+        projectDirectory: projectDir,
+        scope: "project",
+        workspaceId: "workspace-1",
+      }),
+      /hard link|unsafe config path/,
+    );
+
+    assert.equal(await readFile(targetPath, "utf8"), targetContent);
+    assert.equal((await stat(targetPath)).mode & 0o777, 0o644);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
   }
 });
