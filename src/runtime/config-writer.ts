@@ -16,10 +16,9 @@ export interface WriteNamsJsonConfigResult {
 }
 
 export async function writeNamsJsonConfig(input: WriteNamsJsonConfigInput): Promise<WriteNamsJsonConfigResult> {
-  const configPath = configPathForScope(input.scope, input.projectDirectory);
-  await rejectConfigPathSymlinks(configPath);
+  const { path: configPath } = await assertNamsJsonConfigPathSafe(input);
   const existing = await readExistingConfig(configPath);
-  await rejectConfigPathSymlinks(configPath);
+  await assertNamsJsonConfigPathSafe(input);
   await writePrivateFile(
     configPath,
     `${JSON.stringify(
@@ -34,9 +33,13 @@ export async function writeNamsJsonConfig(input: WriteNamsJsonConfigInput): Prom
   return { path: configPath };
 }
 
-async function rejectConfigPathSymlinks(configPath: string): Promise<void> {
+export async function assertNamsJsonConfigPathSafe(
+  input: Pick<WriteNamsJsonConfigInput, "scope" | "projectDirectory">,
+): Promise<WriteNamsJsonConfigResult> {
+  const configPath = configPathForScope(input.scope, input.projectDirectory);
   await rejectSymlink(path.dirname(configPath));
   await rejectUnsafeConfigFile(configPath);
+  return { path: configPath };
 }
 
 async function rejectSymlink(configPath: string): Promise<void> {
