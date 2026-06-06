@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -26,10 +26,11 @@ function runCli(
   args: string[],
   payload: Record<string, unknown>,
   env: Record<string, string | undefined>,
+  cwd = repoRoot,
 ): Promise<CliResult> {
   return new Promise<CliResult>((resolve, reject) => {
     const child = spawn(process.execPath, [cliPath, ...args], {
-      cwd: repoRoot,
+      cwd,
       env,
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -53,6 +54,10 @@ function runCli(
 
 async function withWorkspaceServer<T>(
   handler: (baseUrl: string, requests: RecordedRequest[]) => Promise<T>,
+  responseBody: Record<string, unknown> = {
+    workspaces: [{ id: "workspace-1", name: "Engineering", role: "owner", status: "active" }],
+  },
+  responseStatus = 200,
 ): Promise<T> {
   const requests: RecordedRequest[] = [];
   const server = createServer((request: IncomingMessage, response: ServerResponse) => {
@@ -62,12 +67,8 @@ async function withWorkspaceServer<T>(
       headers: request.headers,
     });
     if (request.method === "GET" && request.url === "/v1/users/me/workspaces") {
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end(
-        JSON.stringify({
-          workspaces: [{ id: "workspace-1", name: "Engineering", role: "owner", status: "active" }],
-        }),
-      );
+      response.writeHead(responseStatus, { "content-type": "application/json" });
+      response.end(JSON.stringify(responseBody));
       return;
     }
     response.writeHead(404, { "content-type": "application/json" });
@@ -148,6 +149,66 @@ test("workspaces rejects unsupported workspace events with usage", async () => {
     assert.equal(result.code, 1);
     assert.match(result.stderr, /Usage:/);
     assert.match(result.stderr, /workspaces <gemini\|claude\|codex\|opencode> --event <BeforeAgent\|InstallConfigure>/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("workspaces configure codex writes project config for explicit workspace", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-"));
+  try {
+    await withWorkspaceServer(
+      async (baseUrl) => {
+        const result = await runCli(
+          ["workspaces", "configure", "codex", "--scope", "project", "--workspace-id", "workspace-2"],
+          {},
+          runtimeEnv(path.join(projectDir, "home"), baseUrl),
+          projectDir,
+        );
+
+        assert.equal(result.code, 0, result.stderr);
+        assert.match(result.stdout, /workspace-2/);
+        assert.equal(result.stderr, "");
+        assert.deepEqual(JSON.parse(await readFile(path.join(projectDir, ".nams", "config.json"), "utf8")), {
+          workspaceId: "workspace-2",
+        });
+      },
+      {
+        workspaces: [
+          { id: "workspace-1", name: "Engineering", role: "owner", status: "active" },
+          { id: "workspace-2", name: "Research", role: "member", status: "active" },
+        ],
+      },
+    );
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("workspaces configure failure reports sanitized stderr and writes no config", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-"));
+  try {
+    await withWorkspaceServer(
+      async (baseUrl) => {
+        const result = await runCli(
+          ["workspaces", "configure", "codex", "--scope", "project", "--workspace-id", "workspace-2"],
+          {},
+          runtimeEnv(path.join(projectDir, "home"), baseUrl),
+          projectDir,
+        );
+
+        assert.equal(result.code, 2);
+        assert.equal(result.stdout, "");
+        assert.match(result.stderr, /NAMS workspace request failed/);
+        assert.doesNotMatch(result.stderr, /backend exploded/);
+        assert.doesNotMatch(result.stderr, /test-api-key/);
+        await assert.rejects(readFile(path.join(projectDir, ".nams", "config.json"), "utf8"), {
+          code: "ENOENT",
+        });
+      },
+      { error: "backend exploded", apiKey: "test-api-key" },
+      500,
+    );
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }

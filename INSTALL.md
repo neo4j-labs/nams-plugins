@@ -8,7 +8,7 @@ For local development, generated artifact testing, and `./dist` workflows, see
 
 - Node.js 20 or newer
 - A NAMS API key
-- A NAMS workspace ID
+- A NAMS workspace ID, unless your harness path supports auto-resolution
 - The agent platform CLI you want to use:
   - Claude Code
   - Codex
@@ -16,7 +16,7 @@ For local development, generated artifact testing, and `./dist` workflows, see
 
 ## Runtime Configuration
 
-Runtime configuration is JSON-first: `~/.nams/config.json`, optional project `.nams/config.json`, optional platform discovery such as Claude plugin user configuration, then final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. `apiKey` and `workspaceId` are required for NAMS requests. Runtime state and logs are user-local under `~/.nams/state/<platform>/` and `~/.nams/logs/<platform>/`.
+Runtime configuration is JSON-first: `~/.nams/config.json`, optional project `.nams/config.json`, optional platform discovery such as Claude plugin user configuration, then final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. `apiKey` is required for NAMS requests. `workspaceId` is required unless the harness path supports workspace auto-resolution before memory starts. Runtime state and logs are user-local under per-platform directories in `~/.nams/state/` and `~/.nams/logs/`.
 
 The portable configuration path is a user-local config file:
 
@@ -47,6 +47,27 @@ Environment variables are final overrides:
 
 The runtime does not read `.env` files. Keep project `.nams/config.json` local
 and gitignored, especially if it contains an API key.
+
+### Workspace Selection
+
+Gemini CLI and OpenCode can auto-select a workspace before memory starts when
+your NAMS account has exactly one valid workspace. Claude Code and Codex require
+a configured workspace ID before memory requests run.
+
+To configure a specific project workspace for Codex, run:
+
+```bash
+nams-hooks workspaces configure codex --scope project --workspace-id 11111111-1111-1111-1111-111111111111
+```
+
+Replace `codex` with `gemini`, `opencode`, or `claude` to configure a different
+platform path. Use `--scope user` to write `~/.nams/config.json` instead of the
+project `.nams/config.json`.
+
+If you omit `--workspace-id`, the configure command writes the workspace
+automatically only when NAMS returns a single valid workspace. When NAMS returns
+multiple valid workspaces, the command prints the available choices and exits
+without changing config.
 
 ## Claude Code
 

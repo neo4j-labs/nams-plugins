@@ -1,0 +1,56 @@
+import assert from "node:assert/strict";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { test } from "node:test";
+
+import { writeNamsJsonConfig } from "../src/runtime/config-writer.js";
+
+test("writes project .nams/config.json with private file mode", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-config-writer-"));
+  try {
+    const result = await writeNamsJsonConfig({
+      projectDirectory: projectDir,
+      scope: "project",
+      workspaceId: "workspace-1",
+    });
+
+    const configPath = path.join(projectDir, ".nams", "config.json");
+    assert.equal(result.path, configPath);
+    assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), {
+      workspaceId: "workspace-1",
+    });
+    assert.equal((await stat(configPath)).mode & 0o777, 0o600);
+    assert.equal((await stat(path.dirname(configPath))).mode & 0o777, 0o700);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("preserves existing config keys when writing workspaceId", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-config-writer-"));
+  try {
+    const configDir = path.join(projectDir, ".nams");
+    const configPath = path.join(configDir, "config.json");
+    await mkdir(configDir, { recursive: true });
+    await writeFile(
+      configPath,
+      `${JSON.stringify({ apiKey: "existing-key", baseUrl: "https://nams.example" }, null, 2)}\n`,
+      { mode: 0o600 },
+    );
+
+    await writeNamsJsonConfig({
+      projectDirectory: projectDir,
+      scope: "project",
+      workspaceId: "workspace-1",
+    });
+
+    assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), {
+      apiKey: "existing-key",
+      baseUrl: "https://nams.example",
+      workspaceId: "workspace-1",
+    });
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});

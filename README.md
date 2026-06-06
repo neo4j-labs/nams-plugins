@@ -44,7 +44,7 @@ installation. For Gemini, Codex, OpenCode, and full setup details, see
 
 ### Runtime Configuration And Storage
 
-Runtime configuration is JSON-first: `~/.nams/config.json`, optional project `.nams/config.json`, optional platform discovery such as Claude plugin user configuration, then final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. `apiKey` and `workspaceId` are required for NAMS requests. Runtime state and logs are user-local under `~/.nams/state/<platform>/` and `~/.nams/logs/<platform>/`.
+Runtime configuration is JSON-first: `~/.nams/config.json`, optional project `.nams/config.json`, optional platform discovery such as Claude plugin user configuration, then final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. `apiKey` is required for NAMS requests. `workspaceId` is required unless the harness path supports workspace auto-resolution before memory starts. Runtime state and logs are user-local under per-platform directories in `~/.nams/state/` and `~/.nams/logs/`.
 
 Codex plugin installs use the same JSON and `NAMS_*` environment configuration path; Codex does not currently define NAMS credentials through plugin install prompts.
 
@@ -69,7 +69,7 @@ For local development and generated marketplace testing, see [DEVELOPMENT.md](DE
 ### Prerequisites
 
 - Node.js (v20+)
-- A NAMS API key and workspace ID
+- A NAMS API key and, unless your harness path supports auto-resolution, a workspace ID
 
 ### Build and Test
 

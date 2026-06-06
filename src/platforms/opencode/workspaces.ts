@@ -1,6 +1,7 @@
 import type { WorkspaceHookInvocation, WorkspaceHookResult, WorkspacePlatformAdapter } from "../../interfaces.js";
 import { appendRawPlatformLog } from "../../runtime/logging.js";
 import { createInitialSessionState, loadSessionState, saveSessionState } from "../../runtime/session-state.js";
+import { configureWorkspaceSelection } from "../../runtime/workspace-configuration.js";
 import { resolveWorkspaceForMemory } from "../../runtime/workspace-resolution.js";
 import { parseOpenCodePayload } from "./payload.js";
 
@@ -27,6 +28,10 @@ export class OpenCodeWorkspaceAdapter implements WorkspacePlatformAdapter {
     });
     await saveSessionState(invocation.platform, state.sessionKey, state);
     return result.status === "ready" ? memoryReadyOutput() : result.output;
+  }
+
+  async installConfigure(invocation: WorkspaceHookInvocation<"InstallConfigure">): Promise<WorkspaceHookResult> {
+    return configureWorkspaceSelection(invocation);
   }
 }
 

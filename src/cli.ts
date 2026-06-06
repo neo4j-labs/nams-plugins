@@ -20,13 +20,27 @@ import { readJsonPayload } from "./runtime/stdin.js";
 
 type CliArgs =
   | { command: "run"; platform: Platform; event: HookEvent }
-  | { command: "workspaces"; platform: Platform; event: WorkspaceHookEvent };
+  | { command: "workspaces"; platform: Platform; event: WorkspaceHookEvent }
+  | { command: "workspace-configure"; platform: Platform; scope: "project" | "user"; workspaceId?: string };
 
 async function main(argv: string[]): Promise<number> {
   const args = parseArgs(argv);
   if (args === null) {
     process.stderr.write(usage());
     return 1;
+  }
+
+  if (args.command === "workspace-configure") {
+    const result = await routeWorkspaceEvent(getWorkspacePlatformAdapter(args.platform), {
+      platform: args.platform,
+      event: "InstallConfigure",
+      rawPayload: {
+        scope: args.scope,
+        ...(args.workspaceId !== undefined ? { workspaceId: args.workspaceId } : {}),
+      },
+      processCwd: process.cwd(),
+    });
+    return writeWorkspaceConfigureResult(result);
   }
 
   const rawPayload = await readJsonPayload();
@@ -50,6 +64,21 @@ async function main(argv: string[]): Promise<number> {
 
 function parseArgs(argv: string[]): CliArgs | null {
   const [command, platformArg, eventFlag, eventArg] = argv;
+  if (command === "workspaces" && platformArg === "configure") {
+    const platform = argv[2];
+    const scopeFlagIndex = argv.indexOf("--scope");
+    const workspaceFlagIndex = argv.indexOf("--workspace-id");
+    const scope = scopeFlagIndex >= 0 ? argv[scopeFlagIndex + 1] : undefined;
+    const workspaceId = workspaceFlagIndex >= 0 ? argv[workspaceFlagIndex + 1] : undefined;
+    if (isPlatform(platform) && (scope === "project" || scope === "user")) {
+      return {
+        command: "workspace-configure",
+        platform,
+        scope,
+        ...(workspaceId !== undefined && workspaceId.trim() !== "" ? { workspaceId } : {}),
+      };
+    }
+  }
   if (command === "run" && eventFlag === "--event" && isPlatform(platformArg) && isHookEvent(eventArg)) {
     return { command: "run", platform: platformArg, event: eventArg };
   }
@@ -96,10 +125,19 @@ function allowHook(): HookResult {
   return { stdout: { continue: true, suppressOutput: true } };
 }
 
+function writeWorkspaceConfigureResult(result: WorkspaceHookResult): number {
+  const exitCode = typeof result.stdout.exitCode === "number" ? result.stdout.exitCode : 0;
+  const message = typeof result.stdout.message === "string" ? result.stdout.message : JSON.stringify(result.stdout);
+  const stream = exitCode === 0 ? process.stdout : process.stderr;
+  stream.write(`${message}\n`);
+  return exitCode;
+}
+
 function usage(): string {
   return [
     "Usage: nams-hooks run <gemini|claude|codex|opencode> --event <SessionStart|BeforeAgent|AfterAgent|AfterTool>",
     "       nams-hooks workspaces <gemini|claude|codex|opencode> --event <BeforeAgent|InstallConfigure>",
+    "       nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope <project|user> [--workspace-id ID]",
     "",
   ].join("\n");
 }
