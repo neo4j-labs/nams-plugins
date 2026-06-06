@@ -1,8 +1,6 @@
 import type { HookInvocation, HookResult, MemoryPlatformAdapter } from "../../interfaces.js";
-import { loadNamsConfig } from "../../runtime/config.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
 import {
-  appendNamsConfigDiagnostic,
   appendNamsFailureDiagnostic,
   appendRawPlatformLog,
 } from "../../runtime/logging.js";
@@ -17,6 +15,7 @@ import {
   saveSessionState,
   type SessionState,
 } from "../../runtime/session-state.js";
+import { loadEffectiveNamsConfigForMemory } from "../../runtime/workspace-resolution.js";
 import { parseGeminiPayload } from "./payload.js";
 import { readGeminiTranscript, type GeminiTranscriptEntry } from "./transcript.js";
 
@@ -54,13 +53,11 @@ export class GeminiAdapter implements MemoryPlatformAdapter {
       return allowOutput();
     }
 
-    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
-    await appendNamsConfigDiagnostic(invocation, state, configResult);
-    if (!configResult.ok) {
+    const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
+    if (config === undefined) {
       await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
-    const config = configResult.config;
 
     let additionalContext: string | undefined;
     try {
@@ -132,13 +129,11 @@ export class GeminiAdapter implements MemoryPlatformAdapter {
     }
     const conversationId = state.conversationId;
 
-    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
-    await appendNamsConfigDiagnostic(invocation, state, configResult);
-    if (!configResult.ok) {
+    const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
+    if (config === undefined) {
       await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
-    const config = configResult.config;
 
     try {
       const memory = createNamsMemoryService(config, invocation, state);
@@ -194,13 +189,11 @@ export class GeminiAdapter implements MemoryPlatformAdapter {
       return allowOutput();
     }
 
-    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
-    await appendNamsConfigDiagnostic(invocation, state, configResult);
-    if (!configResult.ok) {
+    const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
+    if (config === undefined) {
       await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
-    const config = configResult.config;
 
     try {
       const toolCallKeys = geminiToolCallDedupeKeys(

@@ -28,6 +28,33 @@ export interface ResolveWorkspaceInput {
   interaction: WorkspaceInteraction;
 }
 
+export async function loadEffectiveNamsConfigForMemory(
+  invocation: HookInvocation,
+  state: SessionState,
+  projectDirectory: string,
+): Promise<NamsRuntimeConfig | undefined> {
+  const connectionResult = await loadNamsConnectionConfig(projectDirectory);
+  await appendPlatformDiagnosticLog(invocation, state, configDiagnosticPayload(connectionResult));
+  if (!connectionResult.ok) {
+    return undefined;
+  }
+
+  const config = connectionResult.config;
+  if (config.workspaceId !== undefined) {
+    return runtimeConfig(config.apiKey, config.workspaceId, config.baseUrl);
+  }
+
+  if (state.workspace !== undefined) {
+    return runtimeConfig(config.apiKey, state.workspace.id, config.baseUrl);
+  }
+
+  await appendPlatformDiagnosticLog(invocation, state, {
+    message: "NAMS workspaceId missing",
+    configSources: connectionResult.sources,
+  });
+  return undefined;
+}
+
 export async function resolveWorkspaceForMemory(input: ResolveWorkspaceInput): Promise<WorkspaceResolutionResult> {
   const connectionResult = await loadNamsConnectionConfig(input.projectDirectory);
   if (!connectionResult.ok) {

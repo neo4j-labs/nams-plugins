@@ -1,14 +1,13 @@
 import type { HookInvocation, HookResult, MemoryPlatformAdapter } from "../../interfaces.js";
-import { loadNamsConfig } from "../../runtime/config.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
 import {
-  appendNamsConfigDiagnostic,
   appendNamsFailureDiagnostic,
   appendRawPlatformLog,
 } from "../../runtime/logging.js";
 import { combineMemoryContexts, createNamsMemoryService, serializeToolInput } from "../../runtime/memory-service.js";
 import { createInitialSessionState, loadSessionState, saveSessionState } from "../../runtime/session-state.js";
 import type { SessionState } from "../../runtime/session-state.js";
+import { loadEffectiveNamsConfigForMemory } from "../../runtime/workspace-resolution.js";
 import { parseOpenCodePayload, type OpenCodePayloadInfo } from "./payload.js";
 
 export class OpenCodeAdapter implements MemoryPlatformAdapter {
@@ -55,13 +54,11 @@ export class OpenCodeAdapter implements MemoryPlatformAdapter {
       return allowOutput();
     }
 
-    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
-    await appendNamsConfigDiagnostic(invocation, state, configResult);
-    if (!configResult.ok) {
+    const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
+    if (config === undefined) {
       await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
-    const config = configResult.config;
 
     try {
       const memory = createNamsMemoryService(config, invocation, state);
@@ -146,13 +143,11 @@ export class OpenCodeAdapter implements MemoryPlatformAdapter {
       return allowOutput();
     }
 
-    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
-    await appendNamsConfigDiagnostic(invocation, state, configResult);
-    if (!configResult.ok) {
+    const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
+    if (config === undefined) {
       await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
-    const config = configResult.config;
 
     try {
       const memory = createNamsMemoryService(config, invocation, state);
@@ -212,13 +207,11 @@ export class OpenCodeAdapter implements MemoryPlatformAdapter {
       return allowOutput();
     }
 
-    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
-    await appendNamsConfigDiagnostic(invocation, state, configResult);
-    if (!configResult.ok) {
+    const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
+    if (config === undefined) {
       await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
-    const config = configResult.config;
 
     try {
       const dedupeKey = opencodeToolCallDedupeKey(

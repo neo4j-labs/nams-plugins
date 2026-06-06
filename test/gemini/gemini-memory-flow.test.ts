@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { GeminiAdapter } from "../../src/platforms/gemini/index.js";
+import { GeminiWorkspaceAdapter } from "../../src/platforms/gemini/workspaces.js";
 import { loadSessionState } from "../../src/runtime/session-state.js";
 import { createNamsFetchMock } from "../support/nams-fetch-mock.js";
 import { namsHome, readSingleSessionLog as readRuntimeSingleSessionLog } from "../support/runtime-home.js";
@@ -357,40 +358,45 @@ test("Gemini BeforeAgent continues when NAMS_API_KEY is missing", async () => {
   }
 });
 
-test("Gemini BeforeAgent continues when NAMS_WORKSPACE_ID is missing", async () => {
+test("Gemini BeforeAgent uses auto-selected workspace when NAMS_WORKSPACE_ID is missing", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
-    const nams = createNamsFetchMock().all({ error: "unexpected NAMS call" }, 500);
+    const selectedWorkspaceId = "workspace-auto";
+    const prompt = "remember this";
+    const nams = createNamsFetchMock()
+      .workspaces({
+        workspaces: [{ id: selectedWorkspaceId, name: "Engineering", role: "owner", status: "active" }],
+      })
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message();
     testEnv(projectDir, {
       NAMS_API_KEY: "key",
       NAMS_BASE_URL: "https://memory.example.test",
     });
+    const workspaceAdapter = new GeminiWorkspaceAdapter();
     const adapter = new GeminiAdapter();
-
-    const result = await adapter.beforeAgent({
-      platform: "gemini",
-      event: "BeforeAgent",
+    const invocation = {
+      platform: "gemini" as const,
+      event: "BeforeAgent" as const,
       processCwd: projectDir,
       rawPayload: {
         session_id: "session-1",
         cwd: projectDir,
-        prompt: "remember this",
+        prompt,
       },
-    });
+    };
 
+    const workspaceResult = await workspaceAdapter.beforeAgent(invocation);
+    const result = await adapter.beforeAgent(invocation);
+
+    assert.deepEqual(workspaceResult.stdout, { continue: true, suppressOutput: true });
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
-    assert.equal(nams.calls().length, 0);
-
-    const { lines } = await readSingleSessionLog(projectDir);
-    const diagnostics = lines.filter(
-      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS workspaceId missing",
-    );
-    assert.equal(diagnostics.length, 1);
-    assert.deepEqual(diagnostics[0].payload.configSources, {
-      apiKey: "env:NAMS_API_KEY",
-      workspaceId: "missing",
-      baseUrl: "env:NAMS_BASE_URL",
-    });
+    assert.equal(nams.calls("listMyWorkspaces").length, 1);
+    assert.equal(nams.calls("createConversation").length, 1);
+    const createConversationHeaders = nams.calls("createConversation")[0].options.headers as Record<string, string>;
+    assert.equal(createConversationHeaders["x-workspace-id"], selectedWorkspaceId);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { OpenCodeAdapter } from "../../src/platforms/opencode/index.js";
+import { OpenCodeWorkspaceAdapter } from "../../src/platforms/opencode/workspaces.js";
 import { loadSessionState } from "../../src/runtime/session-state.js";
 import { createNamsFetchMock } from "../support/nams-fetch-mock.js";
 import { readSingleSessionLog as readRuntimeSingleSessionLog } from "../support/runtime-home.js";
@@ -121,6 +122,43 @@ test("OpenCode chat.message creates conversation, recalls memory, and stores use
       workspaceId: "env:NAMS_WORKSPACE_ID",
       baseUrl: "env:NAMS_BASE_URL",
     });
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("OpenCode chat.message uses auto-selected workspace when NAMS_WORKSPACE_ID is missing", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
+  try {
+    const selectedWorkspaceId = "workspace-auto";
+    const prompt = "Remember fixture tests.";
+    const nams = createNamsFetchMock()
+      .workspaces({
+        workspaces: [{ id: selectedWorkspaceId, name: "Engineering", role: "owner", status: "active" }],
+      })
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message();
+    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
+    const workspaceAdapter = new OpenCodeWorkspaceAdapter();
+    const adapter = new OpenCodeAdapter();
+    const invocation = {
+      platform: "opencode" as const,
+      event: "BeforeAgent" as const,
+      processCwd: projectDir,
+      rawPayload: chatMessagePayload(projectDir, "session-1", "user-1", prompt),
+    };
+
+    const workspaceResult = await workspaceAdapter.beforeAgent(invocation);
+    const result = await adapter.beforeAgent(invocation);
+
+    assert.deepEqual(workspaceResult.stdout, { continue: true, suppressOutput: true, namsMemoryReady: true });
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    assert.equal(nams.calls("listMyWorkspaces").length, 1);
+    assert.equal(nams.calls("createConversation").length, 1);
+    const createConversationHeaders = nams.calls("createConversation")[0].options.headers as Record<string, string>;
+    assert.equal(createConversationHeaders["x-workspace-id"], selectedWorkspaceId);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
