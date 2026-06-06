@@ -213,3 +213,53 @@ test("workspaces configure failure reports sanitized stderr and writes no config
     await rm(projectDir, { recursive: true, force: true });
   }
 });
+
+test("workspaces configure reports when no valid workspaces are returned", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-"));
+  try {
+    await withWorkspaceServer(
+      async (baseUrl) => {
+        const result = await runCli(
+          ["workspaces", "configure", "codex", "--scope", "project"],
+          {},
+          runtimeEnv(path.join(projectDir, "home"), baseUrl),
+          projectDir,
+        );
+
+        assert.equal(result.code, 2);
+        assert.equal(result.stdout, "");
+        assert.match(result.stderr, /No NAMS workspaces were returned/);
+        assert.doesNotMatch(result.stderr, /Re-run with --workspace-id/);
+      },
+      { workspaces: [] },
+    );
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("workspaces configure reports requested workspace ID not found", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-"));
+  try {
+    await withWorkspaceServer(
+      async (baseUrl) => {
+        const result = await runCli(
+          ["workspaces", "configure", "codex", "--scope", "project", "--workspace-id", "workspace-missing"],
+          {},
+          runtimeEnv(path.join(projectDir, "home"), baseUrl),
+          projectDir,
+        );
+
+        assert.equal(result.code, 2);
+        assert.equal(result.stdout, "");
+        assert.match(result.stderr, /Requested NAMS workspace ID was not found: workspace-missing/);
+        assert.match(result.stderr, /workspace-1/);
+      },
+      {
+        workspaces: [{ id: "workspace-1", name: "Engineering", role: "owner", status: "active" }],
+      },
+    );
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});

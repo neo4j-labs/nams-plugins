@@ -40,7 +40,7 @@ export async function configureWorkspaceSelection(
 
   const selectedWorkspace = selectWorkspace(workspaces, configureInput.workspaceId);
   if (selectedWorkspace === undefined) {
-    return configureOutput(2, workspaceSelectionMessage(workspaces));
+    return configureOutput(2, workspaceSelectionFailureMessage(workspaces, configureInput.workspaceId));
   }
 
   const result = await writeNamsJsonConfig({
@@ -84,16 +84,34 @@ function validWorkspaces(workspaces: WorkspaceSummary[] | undefined): Array<Work
   });
 }
 
-function workspaceSelectionMessage(workspaces: Array<WorkspaceSummary & { id: string }>): string {
+function workspaceSelectionFailureMessage(
+  workspaces: Array<WorkspaceSummary & { id: string }>,
+  workspaceId: string | undefined,
+): string {
+  if (workspaceId !== undefined) {
+    return [
+      `Requested NAMS workspace ID was not found: ${workspaceId}`,
+      ...(workspaces.length > 0 ? ["Available workspaces:", ...workspaceChoices(workspaces)] : []),
+    ].join("\n");
+  }
+
+  if (workspaces.length === 0) {
+    return "No NAMS workspaces were returned. Check that your NAMS account has access to at least one workspace.";
+  }
+
   return [
     "NAMS workspace selection required. Re-run with --workspace-id and one of these IDs:",
-    ...workspaces.map((workspace) => {
-      const name = workspace.name?.trim() || "(unnamed workspace)";
-      const role = workspace.role?.trim() || "unknown-role";
-      const status = workspace.status?.trim() || "unknown-status";
-      return `- ${name} (${role}, ${status}) - ${workspace.id}`;
-    }),
+    ...workspaceChoices(workspaces),
   ].join("\n");
+}
+
+function workspaceChoices(workspaces: Array<WorkspaceSummary & { id: string }>): string[] {
+  return workspaces.map((workspace) => {
+    const name = workspace.name?.trim() || "(unnamed workspace)";
+    const role = workspace.role?.trim() || "unknown-role";
+    const status = workspace.status?.trim() || "unknown-status";
+    return `- ${name} (${role}, ${status}) - ${workspace.id}`;
+  });
 }
 
 function configureOutput(exitCode: number, message: string): WorkspaceHookResult {

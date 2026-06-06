@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { lstat, readFile } from "node:fs/promises";
 import { writePrivateFile } from "./permissions.js";
 import { RuntimeEnvironment } from "./paths.js";
 
@@ -16,7 +16,9 @@ export interface WriteNamsJsonConfigResult {
 
 export async function writeNamsJsonConfig(input: WriteNamsJsonConfigInput): Promise<WriteNamsJsonConfigResult> {
   const configPath = configPathForScope(input.scope, input.projectDirectory);
+  await rejectSymlink(configPath);
   const existing = await readExistingConfig(configPath);
+  await rejectSymlink(configPath);
   await writePrivateFile(
     configPath,
     `${JSON.stringify(
@@ -29,6 +31,20 @@ export async function writeNamsJsonConfig(input: WriteNamsJsonConfigInput): Prom
     )}\n`,
   );
   return { path: configPath };
+}
+
+async function rejectSymlink(configPath: string): Promise<void> {
+  try {
+    const file = await lstat(configPath);
+    if (file.isSymbolicLink()) {
+      throw new Error("NAMS config path must not be a symbolic link");
+    }
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
 }
 
 function configPathForScope(scope: NamsConfigWriteScope, projectDirectory: string): string {
