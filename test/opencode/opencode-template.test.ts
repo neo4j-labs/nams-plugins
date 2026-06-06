@@ -16,7 +16,7 @@ interface TemplateFixture {
 }
 
 interface TemplateModule {
-  NamsHooks(context: Record<string, string>): Promise<Record<string, any>>;
+  NamsHooks(context: Record<string, any>): Promise<Record<string, any>>;
 }
 
 interface TemplateCall {
@@ -92,6 +92,44 @@ test("chat.message handler skips memory when workspace result is not ready", asy
     assert.equal(calls[0].payload.hook, "chat.message");
     assert.deepEqual(calls[0].payload.input, input);
     assert.deepEqual(calls[0].payload.output, output);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("chat.message handler logs workspace selection requirement and skips memory", async () => {
+  const reason = "NAMS workspace selection required. Configure one workspace before memory starts:\n1. Engineering - workspace-1";
+  const fixture = await createNamsHooksStub({
+    stdoutByCommand: {
+      workspaces: { namsWorkspaceSelectionRequired: true, reason },
+    },
+  });
+  try {
+    const logs: any[] = [];
+    const client = {
+      app: {
+        log: async (entry: Record<string, any>) => {
+          logs.push(entry);
+        },
+      },
+    };
+    const { NamsHooks } = await importTemplateWithCommand(fixture.commandPath);
+    const plugin = await NamsHooks({ client, directory: fixture.directory, project: "project-a", worktree: "worktree-a" });
+    const input = { message: { id: "message-1", parts: [{ type: "text", text: "hello" }] } };
+    const output = { ok: true };
+
+    const result = await plugin["chat.message"](input, output);
+
+    const calls = await readCalls(fixture.callsPath);
+    assert.equal(result, undefined);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].args, ["workspaces", "opencode", "--event", "BeforeAgent"]);
+    assert.equal(logs.length, 1);
+    assert.deepEqual(logs[0].body, {
+      service: "nams-hooks",
+      level: "warn",
+      message: reason,
+    });
   } finally {
     await fixture.cleanup();
   }

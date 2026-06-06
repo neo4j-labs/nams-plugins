@@ -139,7 +139,10 @@ export async function resolveWorkspaceForMemory(input: ResolveWorkspaceInput): P
       output: workspaceSelectionRequiredOutput(input.invocation.platform, workspaces),
     };
   }
-  return { status: "skip-memory", output: allowOutput() };
+  return {
+    status: "skip-memory",
+    output: workspaceSelectionRequiredOutput(input.invocation.platform, workspaces),
+  };
 }
 
 export function workspaceSelectionRequiredOutput(platform: Platform, workspaces: WorkspaceSummary[]): HookResult {
@@ -147,6 +150,16 @@ export function workspaceSelectionRequiredOutput(platform: Platform, workspaces:
     return {
       stdout: {
         decision: "deny",
+        reason: workspaceSelectionReason(workspaces),
+      },
+    };
+  }
+  if (platform === "opencode") {
+    return {
+      stdout: {
+        continue: true,
+        suppressOutput: true,
+        namsWorkspaceSelectionRequired: true,
         reason: workspaceSelectionReason(workspaces),
       },
     };

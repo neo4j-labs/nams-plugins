@@ -7,6 +7,7 @@ import type { HookInvocation } from "../src/interfaces.js";
 import { createInitialSessionState } from "../src/runtime/session-state.js";
 import { resolveWorkspaceForMemory } from "../src/runtime/workspace-resolution.js";
 import { createNamsFetchMock } from "./support/nams-fetch-mock.js";
+import { readSingleSessionLog } from "./support/runtime-home.js";
 
 function useEnv(projectDir: string, overrides: Record<string, string | undefined> = {}): void {
   for (const key of ["HOME", "USERPROFILE", "NAMS_API_KEY", "NAMS_WORKSPACE_ID", "NAMS_BASE_URL"]) {
@@ -100,6 +101,81 @@ test("single returned workspace stores session workspace and returns ready confi
   }
 });
 
+test("workspace request failure skips memory with fixed diagnostic", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-workspace-resolution-"));
+  try {
+    const nams = createNamsFetchMock().throws(new Error("network secret should stay local"));
+    useEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+    const state = createInitialSessionState({
+      platform: "gemini",
+      sessionId: "session-1",
+      projectDirectory: projectDir,
+    });
+
+    const result = await resolveWorkspaceForMemory({
+      invocation: invocation(projectDir),
+      state,
+      projectDirectory: projectDir,
+      interaction: "gemini-blocking",
+    });
+
+    assert.equal(result.status, "skip-memory");
+    assert.deepEqual(result.output.stdout, { continue: true, suppressOutput: true });
+    assert.equal(state.workspace, undefined);
+    assert.equal(nams.calls().length, 1);
+
+    const { lines } = await readSingleSessionLog(path.join(projectDir, "home"), "gemini");
+    const diagnostics = lines.filter(
+      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS workspace request failed",
+    );
+    assert.equal(diagnostics.length, 1);
+    assert.doesNotMatch(JSON.stringify(diagnostics), /network secret/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("empty workspace list skips memory with fixed diagnostic", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-workspace-resolution-"));
+  try {
+    const nams = createNamsFetchMock().workspaces({ workspaces: [] }).createConversation();
+    useEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+    const state = createInitialSessionState({
+      platform: "gemini",
+      sessionId: "session-1",
+      projectDirectory: projectDir,
+    });
+
+    const result = await resolveWorkspaceForMemory({
+      invocation: invocation(projectDir),
+      state,
+      projectDirectory: projectDir,
+      interaction: "gemini-blocking",
+    });
+
+    assert.equal(result.status, "skip-memory");
+    assert.deepEqual(result.output.stdout, { continue: true, suppressOutput: true });
+    assert.equal(state.workspace, undefined);
+    assert.equal(nams.calls("listMyWorkspaces").length, 1);
+    assert.equal(nams.calls("createConversation").length, 0);
+
+    const { lines } = await readSingleSessionLog(path.join(projectDir, "home"), "gemini");
+    assert.ok(
+      lines.some(
+        (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS workspace list empty",
+      ),
+    );
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("multiple workspaces return Gemini deny output before memory can continue", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-workspace-resolution-"));
   try {
@@ -132,6 +208,42 @@ test("multiple workspaces return Gemini deny output before memory can continue",
     assert.equal(result.output.stdout.decision, "deny");
     assert.match(String(result.output.stdout.reason), /NAMS workspace selection required/);
     assert.match(String(result.output.stdout.reason), /Engineering/);
+    assert.match(String(result.output.stdout.reason), /workspace-2/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("multiple workspaces return OpenCode configuration-required output without memory readiness", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-workspace-resolution-"));
+  try {
+    createNamsFetchMock().workspaces({
+      workspaces: [
+        { id: "workspace-1", name: "Engineering", role: "owner", status: "active" },
+        { id: "workspace-2", name: "Research", role: "member", status: "active" },
+      ],
+    });
+    useEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+    const state = createInitialSessionState({
+      platform: "opencode",
+      sessionId: "session-1",
+      projectDirectory: projectDir,
+    });
+
+    const result = await resolveWorkspaceForMemory({
+      invocation: { ...invocation(projectDir), platform: "opencode" },
+      state,
+      projectDirectory: projectDir,
+      interaction: "single-only",
+    });
+
+    assert.equal(result.status, "skip-memory");
+    assert.equal(result.output.stdout.namsMemoryReady, undefined);
+    assert.equal(result.output.stdout.namsWorkspaceSelectionRequired, true);
+    assert.match(String(result.output.stdout.reason), /NAMS workspace selection required/);
     assert.match(String(result.output.stdout.reason), /workspace-2/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });

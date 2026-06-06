@@ -112,7 +112,7 @@ export interface WorkspaceSummary {
 - Modify: `src/cli.ts`
 - Modify: `test/architecture.test.ts`
 
-- [ ] **Step 1: Add failing architecture assertions for explicit memory adapter naming**
+- [x] **Step 1: Add failing architecture assertions for explicit memory adapter naming**
 
 In `test/architecture.test.ts`, add assertions to the existing platform adapter tests:
 
@@ -128,7 +128,7 @@ test("memory platform adapter contract is named explicitly", async () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run:
 
@@ -138,7 +138,7 @@ node --import=tsx --test test/architecture.test.ts
 
 Expected: fail because the current contract is still named `PlatformAdapter`.
 
-- [ ] **Step 3: Rename shared memory adapter types**
+- [x] **Step 3: Rename shared memory adapter types**
 
 In `src/interfaces.ts`, rename:
 
@@ -154,7 +154,7 @@ export interface MemoryPlatformAdapter {
 
 Keep the existing `HookInvocation`, `HookEvent`, and method names unchanged. This rename is intentionally narrow: it changes the memory adapter contract name, not the event model or platform payload parsing.
 
-- [ ] **Step 4: Rename registry and imports**
+- [x] **Step 4: Rename registry and imports**
 
 In `src/platforms/index.ts`, rename:
 
@@ -184,7 +184,7 @@ export class GeminiAdapter implements MemoryPlatformAdapter {
 
 Repeat for Claude, Codex, and OpenCode.
 
-- [ ] **Step 5: Update architecture tests that reference the old name**
+- [x] **Step 5: Update architecture tests that reference the old name**
 
 In `test/architecture.test.ts`, update old `PlatformAdapter` references to `MemoryPlatformAdapter`, including the test that currently rejects `PlatformAdapterOptions`.
 
@@ -194,7 +194,7 @@ Keep the existing architecture intent:
 - Platform memory adapters do not accept test-only runtime dependencies.
 - Memory platform adapters still declare `startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult>`.
 
-- [ ] **Step 6: Verify and commit**
+- [x] **Step 6: Verify and commit**
 
 Run:
 
@@ -224,7 +224,7 @@ git commit -m "refactor: name memory platform adapter explicitly" -m "Co-authore
 - Create: `test/nams-workspace-client-generator.test.ts`
 - Modify: `test/support/nams-fetch-mock.ts`
 
-- [ ] **Step 1: Add failing workspace generator endpoint and client tests**
+- [x] **Step 1: Add failing workspace generator endpoint and client tests**
 
 Keep `test/nams-client-generator.test.ts` focused on the workspace-scoped `NamsClient` and `NAMS_CLIENT_ENDPOINTS`.
 
@@ -339,7 +339,7 @@ test("generated workspace client contains only intentional workspace infrastruct
 
 Do not add these workspace client tests to `test/nams-client-generator.test.ts`. That suite remains the agent-memory operations client suite.
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run:
 
@@ -349,7 +349,7 @@ npm run build && node --import=tsx --test test/nams-workspace-client-generator.t
 
 Expected: fail because `NAMS_WORKSPACE_CLIENT_ENDPOINTS` and `NamsWorkspaceClient` do not exist.
 
-- [ ] **Step 3: Update generator manifest and rendering**
+- [x] **Step 3: Update generator manifest and rendering**
 
 In `scripts/generate-nams-client.mjs`, split endpoint lists:
 
@@ -587,7 +587,7 @@ Keep the generated classes semantically separate:
 - `NAMS_CLIENT_ENDPOINTS` lists only workspace-scoped agent-memory operations.
 - `NAMS_WORKSPACE_CLIENT_ENDPOINTS` lists only the workspace-infrastructure allowlist.
 
-- [ ] **Step 4: Add fetch mock helper**
+- [x] **Step 4: Add fetch mock helper**
 
 In `test/support/nams-fetch-mock.ts`, add to `NamsFetchMock`:
 
@@ -603,7 +603,7 @@ workspaces(response = { workspaces: [] }, status = 200) {
 },
 ```
 
-- [ ] **Step 5: Generate client and verify**
+- [x] **Step 5: Generate client and verify**
 
 Run:
 
@@ -614,7 +614,7 @@ npm run build && node --import=tsx --test test/nams-client-generator.test.ts tes
 
 Expected: generated file includes `NamsClient`, `NamsWorkspaceClient`, `WorkspaceListResponse`, `WorkspaceSummary`, and all memory-client plus workspace-client generator tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/generate-nams-client.mjs src/generated/nams-client.ts test/nams-client-generator.test.ts test/nams-workspace-client-generator.test.ts test/support/nams-fetch-mock.ts
@@ -631,7 +631,7 @@ git commit -m "feat: generate workspace listing client" -m "Co-authored-by: Code
 - Modify: `test/runtime-config.test.ts`
 - Modify: `test/session-state.test.ts`
 
-- [ ] **Step 1: Add failing config tests for API-key-only load**
+- [x] **Step 1: Add failing config tests for API-key-only load**
 
 In `test/runtime-config.test.ts`, add:
 
@@ -698,7 +698,7 @@ test("connection config preserves configured workspaceId when present", async ()
 });
 ```
 
-- [ ] **Step 2: Add failing session-state workspace tests**
+- [x] **Step 2: Add failing session-state workspace tests**
 
 In `test/session-state.test.ts`, add after `initializes reasoning step id map for new session state`:
 
@@ -752,7 +752,7 @@ test("persists selected workspace in session state", async () => {
 });
 ```
 
-- [ ] **Step 3: Run tests to verify failure**
+- [x] **Step 3: Run tests to verify failure**
 
 Run:
 
@@ -762,7 +762,7 @@ node --import=tsx --test test/runtime-config.test.ts test/session-state.test.ts
 
 Expected: fail because `loadNamsConnectionConfig` and `SessionState.workspace` are missing.
 
-- [ ] **Step 4: Implement config connection loader**
+- [x] **Step 4: Implement config connection loader**
 
 In `src/runtime/config.ts`, add:
 
@@ -875,7 +875,7 @@ export async function loadNamsConnectionConfig(
 }
 ```
 
-- [ ] **Step 5: Implement session workspace state**
+- [x] **Step 5: Implement session workspace state**
 
 In `src/runtime/session-state.ts`, add:
 
@@ -900,7 +900,7 @@ workspace?: SessionWorkspaceState;
 
 No migration code is needed because missing `workspace` remains valid JSON state.
 
-- [ ] **Step 6: Verify and commit**
+- [x] **Step 6: Verify and commit**
 
 Run:
 
@@ -928,7 +928,7 @@ git commit -m "feat: support workspace-optional config state" -m "Co-authored-by
 - Modify: `test/support/nams-fetch-mock.ts`
 - Create: `test/workspace-resolution.test.ts`
 
-- [ ] **Step 1: Add failing workspace resolution tests**
+- [x] **Step 1: Add failing workspace resolution tests**
 
 Create `test/workspace-resolution.test.ts`:
 
@@ -1052,7 +1052,7 @@ test("multiple workspaces return Gemini deny output before memory can continue",
 });
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run:
 
@@ -1062,7 +1062,7 @@ node --import=tsx --test test/workspace-resolution.test.ts
 
 Expected: fail because `src/runtime/workspace-resolution.ts` does not exist.
 
-- [ ] **Step 3: Implement workspace diagnostics**
+- [x] **Step 3: Implement workspace diagnostics**
 
 In `src/runtime/logging.ts`, add:
 
@@ -1088,7 +1088,7 @@ export const workspaceDiagnosticMessages = {
 } as const;
 ```
 
-- [ ] **Step 4: Implement workspace-resolution runtime**
+- [x] **Step 4: Implement workspace-resolution runtime**
 
 Create `src/runtime/workspace-resolution.ts`:
 
@@ -1266,7 +1266,7 @@ function allowOutput(): HookResult {
 }
 ```
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run:
 
@@ -1299,7 +1299,7 @@ git commit -m "feat: resolve NAMS workspace before memory" -m "Co-authored-by: C
 - Modify: `test/architecture.test.ts`
 - Create: `test/cli-workspaces.test.ts`
 
-- [ ] **Step 1: Add failing CLI tests**
+- [x] **Step 1: Add failing CLI tests**
 
 Create `test/cli-workspaces.test.ts`:
 
@@ -1402,7 +1402,7 @@ test("rejects unsupported workspace command event", async () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run:
 
@@ -1412,7 +1412,7 @@ node --import=tsx --test test/cli-workspaces.test.ts
 
 Expected: fail because `workspaces` command is not parsed.
 
-- [ ] **Step 3: Add workspace interfaces**
+- [x] **Step 3: Add workspace interfaces**
 
 In `src/interfaces.ts`, add:
 
@@ -1437,7 +1437,7 @@ export function isWorkspaceHookEvent(value: string | undefined): value is Worksp
 }
 ```
 
-- [ ] **Step 4: Add workspace platform adapter files**
+- [x] **Step 4: Add workspace platform adapter files**
 
 Create `src/platforms/gemini/workspaces.ts`:
 
@@ -1555,7 +1555,7 @@ export class CodexWorkspaceAdapter implements WorkspacePlatformAdapter {
 }
 ```
 
-- [ ] **Step 5: Add static workspace registry**
+- [x] **Step 5: Add static workspace registry**
 
 In `src/platforms/index.ts`, add imports and registry:
 
@@ -1578,7 +1578,7 @@ export function getWorkspacePlatformAdapter(platform: Platform): WorkspacePlatfo
 }
 ```
 
-- [ ] **Step 6: Update CLI parser**
+- [x] **Step 6: Update CLI parser**
 
 In `src/cli.ts`, replace the single `RunArgs` parser with a command union:
 
@@ -1642,7 +1642,7 @@ async function routeWorkspaceEvent(
 }
 ```
 
-- [ ] **Step 7: Update architecture tests**
+- [x] **Step 7: Update architecture tests**
 
 In `test/architecture.test.ts`, add workspace adapter files to the allowed registry import rule:
 
@@ -1670,7 +1670,7 @@ test("workspace adapter registry is static", async () => {
 });
 ```
 
-- [ ] **Step 8: Verify and commit**
+- [x] **Step 8: Verify and commit**
 
 Run:
 
@@ -1699,7 +1699,7 @@ git commit -m "feat: add workspace hook command gateway" -m "Co-authored-by: Cod
 - Modify: `test/gemini/gemini-memory-flow.test.ts`
 - Modify: `test/opencode/opencode-memory-flow.test.ts`
 
-- [ ] **Step 1: Add failing Gemini and OpenCode memory flow tests**
+- [x] **Step 1: Add failing Gemini and OpenCode memory flow tests**
 
 In `test/gemini/gemini-memory-flow.test.ts`, replace the current test named `Gemini BeforeAgent continues when NAMS_WORKSPACE_ID is missing` with:
 
@@ -1816,7 +1816,7 @@ Add import:
 import { OpenCodeWorkspaceAdapter } from "../../src/platforms/opencode/workspaces.js";
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run:
 
@@ -1826,7 +1826,7 @@ node --import=tsx --test test/gemini/gemini-memory-flow.test.ts test/opencode/op
 
 Expected: fail because memory adapters still call `loadNamsConfig` and ignore `state.workspace`.
 
-- [ ] **Step 3: Add effective memory config helper**
+- [x] **Step 3: Add effective memory config helper**
 
 In `src/runtime/workspace-resolution.ts`, add:
 
@@ -1867,7 +1867,7 @@ export async function loadEffectiveNamsConfigForMemory(
 }
 ```
 
-- [ ] **Step 4: Update Gemini memory adapter**
+- [x] **Step 4: Update Gemini memory adapter**
 
 In `src/platforms/gemini/index.ts`, import:
 
@@ -1899,7 +1899,7 @@ if (config === undefined) {
 
 Remove unused `loadNamsConfig` and `appendNamsConfigDiagnostic` imports after the replacements.
 
-- [ ] **Step 5: Update OpenCode memory adapter**
+- [x] **Step 5: Update OpenCode memory adapter**
 
 In `src/platforms/opencode/index.ts`, import:
 
@@ -1909,7 +1909,7 @@ import { loadEffectiveNamsConfigForMemory } from "../../runtime/workspace-resolu
 
 Replace each `loadNamsConfig` block with the same `loadEffectiveNamsConfigForMemory` block used for Gemini. Remove unused imports.
 
-- [ ] **Step 6: Verify and commit**
+- [x] **Step 6: Verify and commit**
 
 Run:
 
@@ -1941,7 +1941,7 @@ git commit -m "feat: use resolved workspace in memory hooks" -m "Co-authored-by:
 - Modify: `test/claude-template.test.js`
 - Modify: `test/codex-template.test.ts`
 
-- [ ] **Step 1: Add failing template tests**
+- [x] **Step 1: Add failing template tests**
 
 In `test/gemini-template.test.ts`, add:
 
@@ -2075,7 +2075,7 @@ test("Codex templates keep first-prompt hooks memory-only", async () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run:
 
@@ -2085,7 +2085,7 @@ node --import=tsx --test test/gemini-template.test.ts test/opencode/opencode-tem
 
 Expected: fail because templates have not been updated.
 
-- [ ] **Step 3: Update Gemini hook template**
+- [x] **Step 3: Update Gemini hook template**
 
 In `templates/gemini/hooks/hooks.json`, replace the `BeforeAgent` group with:
 
@@ -2118,7 +2118,7 @@ In `templates/gemini/gemini-extension.json`, change workspace setting descriptio
 "description": "Optional workspace ID for Neo4j Agent Memory Service. If omitted, nams-hooks auto-selects a single available workspace before memory starts."
 ```
 
-- [ ] **Step 4: Update OpenCode plugin shim**
+- [x] **Step 4: Update OpenCode plugin shim**
 
 In `templates/opencode/plugins/nams-hooks.js`, add:
 
@@ -2168,7 +2168,7 @@ async function invokeNams(commandName, event, payload) {
     });
 ```
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run:
 
@@ -2204,7 +2204,7 @@ git commit -m "feat: package ordered workspace hooks" -m "Co-authored-by: Codex 
 - Modify: `README.md`
 - Modify: `INSTALL.md`
 
-- [ ] **Step 1: Add failing config writer tests**
+- [x] **Step 1: Add failing config writer tests**
 
 Create `test/config-writer.test.ts`:
 
@@ -2264,7 +2264,7 @@ test("preserves existing NAMS config keys when writing workspaceId", async () =>
 });
 ```
 
-- [ ] **Step 2: Add failing configure command tests**
+- [x] **Step 2: Add failing configure command tests**
 
 In `test/cli-workspaces.test.ts`, add:
 
@@ -2355,7 +2355,7 @@ Add `readFile` to the existing `node:fs/promises` import:
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 ```
 
-- [ ] **Step 3: Run tests to verify failure**
+- [x] **Step 3: Run tests to verify failure**
 
 Run:
 
@@ -2365,7 +2365,7 @@ node --import=tsx --test test/config-writer.test.ts test/cli-workspaces.test.ts
 
 Expected: fail because config writer, shared workspace configuration, adapter-backed configure handling, and configure command routing are missing.
 
-- [ ] **Step 4: Implement config writer**
+- [x] **Step 4: Implement config writer**
 
 Create `src/runtime/config-writer.ts`:
 
@@ -2425,7 +2425,7 @@ async function readExistingConfig(configPath: string): Promise<Record<string, un
 }
 ```
 
-- [ ] **Step 5: Implement shared workspace configuration runtime**
+- [x] **Step 5: Implement shared workspace configuration runtime**
 
 Create `src/runtime/workspace-configuration.ts`:
 
@@ -2522,7 +2522,7 @@ function configureOutput(exitCode: number, message: string): WorkspaceHookResult
 }
 ```
 
-- [ ] **Step 6: Route configure command through workspace adapters**
+- [x] **Step 6: Route configure command through workspace adapters**
 
 In `src/cli.ts`, add a CLI args variant:
 
@@ -2598,7 +2598,7 @@ async installConfigure(invocation: WorkspaceHookInvocation<"InstallConfigure">):
 
 For Claude and Codex, replace the earlier message-only `installConfigure` implementation with this shared configuration call, and add `WorkspaceHookInvocation` to their type imports.
 
-- [ ] **Step 7: Update README and INSTALL**
+- [x] **Step 7: Update README and INSTALL**
 
 In `README.md`, replace the runtime configuration paragraph with text that says:
 
@@ -2622,7 +2622,7 @@ nams-hooks workspaces configure codex --scope project --workspace-id 11111111-11
 Replace `codex` with the target harness name when configuring another platform, and replace the sample UUID with the workspace ID from your NAMS workspace list. For user-level defaults, use `--scope user`. If `--workspace-id` is omitted and your account has exactly one workspace, the command writes that workspace automatically. If your account has multiple workspaces, the command prints the available choices and exits without writing until you pass one ID explicitly.
 ````
 
-- [ ] **Step 8: Verify and commit**
+- [x] **Step 8: Verify and commit**
 
 Run:
 
@@ -2648,7 +2648,7 @@ git commit -m "feat: configure NAMS workspace selection" -m "Co-authored-by: Cod
 **Files:**
 - Verify only unless tests reveal missed docs or generated artifacts.
 
-- [ ] **Step 1: Run full verification**
+- [x] **Step 1: Run full verification**
 
 Run:
 
@@ -2665,7 +2665,7 @@ Expected:
 - All tests pass.
 - Distribution build and dist checks pass.
 
-- [ ] **Step 2: Inspect generated package for workspace hooks**
+- [x] **Step 2: Inspect generated package for workspace hooks**
 
 Run:
 
@@ -2683,7 +2683,7 @@ Expected:
 - `MemoryPlatformAdapter` and `WorkspacePlatformAdapter` are separate contracts.
 - Docs mention configure and platform optionality.
 
-- [ ] **Step 3: Verify no runtime dependencies were added**
+- [x] **Step 3: Verify no runtime dependencies were added**
 
 Run:
 
@@ -2693,7 +2693,7 @@ node -e "const pkg=require('./package.json'); if (pkg.dependencies) { console.er
 
 Expected: exits `0`.
 
-- [ ] **Step 4: Confirm final worktree state**
+- [x] **Step 4: Confirm final worktree state**
 
 Run:
 

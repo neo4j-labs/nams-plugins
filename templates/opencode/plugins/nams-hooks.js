@@ -32,6 +32,10 @@ export const NamsHooks = async ({ client, directory, project, worktree }) => {
 
     "chat.message": async (input, output) => {
       const workspaceResult = await runWorkspace("BeforeAgent", { hook: "chat.message", input, output });
+      if (workspaceResult?.namsWorkspaceSelectionRequired === true) {
+        await logDiagnostic(client, workspaceResult.reason ?? "NAMS workspace selection required");
+        return;
+      }
       if (workspaceResult?.namsMemoryReady !== true) {
         return;
       }
