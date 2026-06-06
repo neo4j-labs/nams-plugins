@@ -8,7 +8,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const cliPath = path.join(repoRoot, "src", "cli.ts");
+const cliPath = path.join(repoRoot, ".build", "tsc", "cli.js");
 
 interface CliResult {
   code: number | null;
@@ -28,7 +28,7 @@ function runCli(
   env: Record<string, string | undefined>,
 ): Promise<CliResult> {
   return new Promise<CliResult>((resolve, reject) => {
-    const child = spawn(process.execPath, ["--import=tsx", cliPath, ...args], {
+    const child = spawn(process.execPath, [cliPath, ...args], {
       cwd: repoRoot,
       env,
       stdio: ["pipe", "pipe", "pipe"],
