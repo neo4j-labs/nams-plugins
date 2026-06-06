@@ -263,3 +263,33 @@ test("workspaces configure reports requested workspace ID not found", async () =
     await rm(projectDir, { recursive: true, force: true });
   }
 });
+
+test("workspaces configure requires selection when multiple valid workspaces are returned", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-"));
+  try {
+    await withWorkspaceServer(
+      async (baseUrl) => {
+        const result = await runCli(
+          ["workspaces", "configure", "codex", "--scope", "project"],
+          {},
+          runtimeEnv(path.join(projectDir, "home"), baseUrl),
+          projectDir,
+        );
+
+        assert.equal(result.code, 2);
+        assert.equal(result.stdout, "");
+        assert.match(result.stderr, /NAMS workspace selection required/);
+        assert.match(result.stderr, /workspace-1/);
+        assert.match(result.stderr, /workspace-2/);
+      },
+      {
+        workspaces: [
+          { id: "workspace-1", name: "Engineering", role: "owner", status: "active" },
+          { id: "workspace-2", name: "Research", role: "member", status: "active" },
+        ],
+      },
+    );
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});

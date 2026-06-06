@@ -81,3 +81,32 @@ test("rejects symlinked project config path without changing target", async () =
     await rm(projectDir, { recursive: true, force: true });
   }
 });
+
+test("rejects symlinked project config directory without changing target directory", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-config-writer-"));
+  const targetDir = await mkdtemp(path.join(tmpdir(), "nams-config-target-"));
+  try {
+    const configDir = path.join(projectDir, ".nams");
+    await writeFile(path.join(targetDir, "keep.txt"), "keep\n");
+    await chmod(targetDir, 0o755);
+    await symlink(targetDir, configDir);
+
+    await assert.rejects(
+      writeNamsJsonConfig({
+        projectDirectory: projectDir,
+        scope: "project",
+        workspaceId: "workspace-1",
+      }),
+      /symbolic link/,
+    );
+
+    assert.equal(await readFile(path.join(targetDir, "keep.txt"), "utf8"), "keep\n");
+    assert.equal((await stat(targetDir)).mode & 0o777, 0o755);
+    await assert.rejects(readFile(path.join(targetDir, "config.json"), "utf8"), {
+      code: "ENOENT",
+    });
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+    await rm(targetDir, { recursive: true, force: true });
+  }
+});
