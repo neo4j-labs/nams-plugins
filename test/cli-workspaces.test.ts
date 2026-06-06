@@ -107,6 +107,18 @@ function runtimeEnv(homeDir: string, baseUrl: string): NodeJS.ProcessEnv {
   };
 }
 
+function runtimeEnvWithoutHome(baseUrl: string): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  delete env.HOME;
+  delete env.USERPROFILE;
+  delete env.NAMS_WORKSPACE_ID;
+  return {
+    ...env,
+    NAMS_API_KEY: "test-api-key",
+    NAMS_BASE_URL: baseUrl,
+  };
+}
+
 test("workspaces gemini BeforeAgent lists workspaces without workspace header", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-"));
   try {
@@ -274,6 +286,27 @@ test("workspaces configure user scope rejects unsafe project config before loadi
       assert.match(result.stderr, /hard link|unsafe config path/);
       assert.equal(await readFile(targetPath, "utf8"), targetContent);
       assert.equal((await stat(targetPath)).mode & 0o777, 0o644);
+      assert.equal(requests.length, 0);
+    });
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("workspaces configure user scope requires home before listing workspaces", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-"));
+  try {
+    await withWorkspaceServer(async (baseUrl, requests) => {
+      const result = await runCli(
+        ["workspaces", "configure", "codex", "--scope", "user", "--workspace-id", "workspace-1"],
+        {},
+        runtimeEnvWithoutHome(baseUrl),
+        projectDir,
+      );
+
+      assert.notEqual(result.code, 0);
+      assert.equal(result.stdout, "");
+      assert.match(result.stderr, /HOME|USERPROFILE|home/i);
       assert.equal(requests.length, 0);
     });
   } finally {

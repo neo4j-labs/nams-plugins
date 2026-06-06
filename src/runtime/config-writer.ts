@@ -42,9 +42,12 @@ export async function assertNamsJsonConfigPathSafe(
   return { path: configPath };
 }
 
-export async function assertNamsJsonConfigInputsSafe(projectDirectory: string): Promise<void> {
+export async function assertNamsJsonConfigInputsSafe(
+  projectDirectory: string,
+  destinationScope: NamsConfigWriteScope,
+): Promise<void> {
   await assertNamsJsonConfigPathSafe({ projectDirectory, scope: "project" });
-  if (RuntimeEnvironment.fromProcess().globalConfigPath() !== undefined) {
+  if (destinationScope === "user" || RuntimeEnvironment.fromProcess().globalConfigPath() !== undefined) {
     await assertNamsJsonConfigPathSafe({ projectDirectory, scope: "user" });
   }
 }

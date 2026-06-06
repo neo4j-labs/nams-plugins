@@ -21,7 +21,10 @@ export async function configureWorkspaceSelection(
   }
 
   const projectDirectory = invocation.processCwd;
-  await assertNamsJsonConfigInputsSafe(projectDirectory);
+  const preflightResult = await preflightConfigurePaths(projectDirectory, configureInput.scope);
+  if (preflightResult !== undefined) {
+    return preflightResult;
+  }
   const connectionResult = await loadNamsConnectionConfig(projectDirectory);
   if (!connectionResult.ok) {
     return configureOutput(1, String(configDiagnosticPayload(connectionResult).message));
@@ -58,6 +61,19 @@ export async function configureWorkspaceSelection(
     0,
     `NAMS workspace configured for ${invocation.platform}: ${selectedWorkspace.id}\nUpdated ${result.path}`,
   );
+}
+
+async function preflightConfigurePaths(
+  projectDirectory: string,
+  scope: NamsConfigWriteScope,
+): Promise<WorkspaceHookResult | undefined> {
+  try {
+    await assertNamsJsonConfigInputsSafe(projectDirectory, scope);
+    return undefined;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "NAMS config path is unavailable";
+    return configureOutput(1, message);
+  }
 }
 
 function parseConfigureInput(rawPayload: Record<string, unknown>): ConfigureInput | undefined {
