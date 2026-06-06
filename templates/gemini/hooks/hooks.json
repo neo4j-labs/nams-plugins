@@ -16,10 +16,17 @@
     "BeforeAgent": [
       {
         "matcher": "*",
+        "sequential": true,
         "hooks": [
           {
             "type": "command",
-            "name": "nams-before-agent",
+            "name": "nams-workspace-before-agent",
+            "description": "Resolve the NAMS workspace before Gemini CLI memory starts.",
+            "command": "node \"${extensionPath}/bin/cli.js\" workspaces gemini --event BeforeAgent"
+          },
+          {
+            "type": "command",
+            "name": "nams-memory-before-agent",
             "description": "Route Gemini CLI before-agent payload to the NAMS hook runtime.",
             "command": "node \"${extensionPath}/bin/cli.js\" run gemini --event BeforeAgent"
           }

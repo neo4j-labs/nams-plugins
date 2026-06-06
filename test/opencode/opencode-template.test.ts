@@ -24,6 +24,10 @@ interface TemplateCall {
   payload: Record<string, any>;
 }
 
+interface StubOptions {
+  stdoutByCommand?: Record<string, unknown>;
+}
+
 test("opencode plugin template exposes NAMS hook handlers", async () => {
   const source = await readFile(templatePath, "utf8");
 
@@ -36,8 +40,43 @@ test("opencode plugin template exposes NAMS hook handlers", async () => {
   assert.match(source, /nams-hooks/);
 });
 
-test("chat.message handler sends real two-argument input and output to nams-hooks", async () => {
-  const fixture = await createNamsHooksStub();
+test("chat.message handler runs workspace resolution before memory when workspace is ready", async () => {
+  const fixture = await createNamsHooksStub({
+    stdoutByCommand: {
+      workspaces: { namsMemoryReady: true },
+    },
+  });
+  try {
+    const { NamsHooks } = await importTemplateWithCommand(fixture.commandPath);
+    const plugin = await NamsHooks({ directory: fixture.directory, project: "project-a", worktree: "worktree-a" });
+    const input = { message: { id: "message-1", parts: [{ type: "text", text: "hello" }] } };
+    const output = { ok: true };
+
+    const result = await plugin["chat.message"](input, output);
+
+    const calls = await readCalls(fixture.callsPath);
+    assert.equal(result, undefined);
+    assert.equal(calls.length, 2);
+    assert.deepEqual(calls.map((call) => call.args), [
+      ["workspaces", "opencode", "--event", "BeforeAgent"],
+      ["run", "opencode", "--event", "BeforeAgent"],
+    ]);
+    for (const call of calls) {
+      assert.equal(call.payload.hook, "chat.message");
+      assert.deepEqual(call.payload.input, input);
+      assert.deepEqual(call.payload.output, output);
+    }
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("chat.message handler skips memory when workspace result is not ready", async () => {
+  const fixture = await createNamsHooksStub({
+    stdoutByCommand: {
+      workspaces: { continue: true },
+    },
+  });
   try {
     const { NamsHooks } = await importTemplateWithCommand(fixture.commandPath);
     const plugin = await NamsHooks({ directory: fixture.directory, project: "project-a", worktree: "worktree-a" });
@@ -49,7 +88,7 @@ test("chat.message handler sends real two-argument input and output to nams-hook
     const calls = await readCalls(fixture.callsPath);
     assert.equal(result, undefined);
     assert.equal(calls.length, 1);
-    assert.deepEqual(calls[0].args, ["run", "opencode", "--event", "BeforeAgent"]);
+    assert.deepEqual(calls[0].args, ["workspaces", "opencode", "--event", "BeforeAgent"]);
     assert.equal(calls[0].payload.hook, "chat.message");
     assert.deepEqual(calls[0].payload.input, input);
     assert.deepEqual(calls[0].payload.output, output);
@@ -146,25 +185,36 @@ test("tool.execute.after handler sends tool payload to AfterTool", async () => {
   }
 });
 
-async function createNamsHooksStub(): Promise<TemplateFixture> {
+async function createNamsHooksStub(options: StubOptions = {}): Promise<TemplateFixture> {
   const directory = await mkdtemp(path.join(os.tmpdir(), "nams-opencode-template-"));
   const commandPath = path.join(directory, "nams-hooks-stub.js");
   const callsPath = path.join(directory, "calls.jsonl");
+  const stdoutByCommand = options.stdoutByCommand ?? {};
   await writeFile(
     commandPath,
     `#!/usr/bin/env node
 import { appendFileSync } from "node:fs";
 
 const callsPath = ${JSON.stringify(callsPath)};
+const stdoutByCommand = ${JSON.stringify(stdoutByCommand)};
 let stdin = "";
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => {
   stdin += chunk;
 });
 process.stdin.on("end", () => {
+  const args = process.argv.slice(2);
+  const commandName = args[0];
   const payload = JSON.parse(stdin);
-  appendFileSync(callsPath, JSON.stringify({ args: process.argv.slice(2), payload }) + "\\n");
-  if (payload.hook === "experimental.chat.system.transform") {
+  appendFileSync(callsPath, JSON.stringify({ args, payload }) + "\\n");
+  if (Object.hasOwn(stdoutByCommand, commandName)) {
+    const output = stdoutByCommand[commandName];
+    if (output !== undefined) {
+      process.stdout.write(JSON.stringify(output));
+    }
+    return;
+  }
+  if (commandName === "run" && payload.hook === "experimental.chat.system.transform") {
     process.stdout.write(JSON.stringify({ hookSpecificOutput: { additionalContext: "remember this" } }));
   }
 });

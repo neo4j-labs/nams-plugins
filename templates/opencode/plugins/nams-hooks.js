@@ -3,9 +3,18 @@ import { spawn } from "node:child_process";
 const command = process.env.NAMS_HOOKS_COMMAND ?? "nams-hooks";
 
 export const NamsHooks = async ({ client, directory, project, worktree }) => {
+  async function runWorkspace(event, payload) {
+    try {
+      return await invokeNams("workspaces", event, { directory, project, worktree, ...payload });
+    } catch {
+      await logDiagnostic(client, `NAMS OpenCode workspace hook ${event} failed`);
+      return undefined;
+    }
+  }
+
   async function run(event, payload) {
     try {
-      return await invokeNams(event, { directory, project, worktree, ...payload });
+      return await invokeNams("run", event, { directory, project, worktree, ...payload });
     } catch {
       await logDiagnostic(client, `NAMS OpenCode hook ${event} failed`);
       return undefined;
@@ -22,6 +31,10 @@ export const NamsHooks = async ({ client, directory, project, worktree }) => {
     },
 
     "chat.message": async (input, output) => {
+      const workspaceResult = await runWorkspace("BeforeAgent", { hook: "chat.message", input, output });
+      if (workspaceResult?.namsMemoryReady !== true) {
+        return;
+      }
       await run("BeforeAgent", { hook: "chat.message", input, output });
     },
 
@@ -49,9 +62,9 @@ export const NamsHooks = async ({ client, directory, project, worktree }) => {
 
 export default NamsHooks;
 
-async function invokeNams(event, payload) {
+async function invokeNams(commandName, event, payload) {
   return await new Promise((resolve, reject) => {
-    const child = spawn(command, ["run", "opencode", "--event", event], {
+    const child = spawn(command, [commandName, "opencode", "--event", event], {
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
