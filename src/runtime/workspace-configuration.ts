@@ -2,7 +2,7 @@ import { NamsWorkspaceClient, type WorkspaceSummary } from "../generated/nams-cl
 import type { WorkspaceHookInvocation, WorkspaceHookResult } from "../interfaces.js";
 import { configDiagnosticPayload, loadNamsConnectionConfig } from "./config.js";
 import {
-  assertNamsJsonConfigPathSafe,
+  assertNamsJsonConfigInputsSafe,
   writeNamsJsonConfig,
   type NamsConfigWriteScope,
 } from "./config-writer.js";
@@ -21,10 +21,7 @@ export async function configureWorkspaceSelection(
   }
 
   const projectDirectory = invocation.processCwd;
-  await assertNamsJsonConfigPathSafe({
-    projectDirectory,
-    scope: configureInput.scope,
-  });
+  await assertNamsJsonConfigInputsSafe(projectDirectory);
   const connectionResult = await loadNamsConnectionConfig(projectDirectory);
   if (!connectionResult.ok) {
     return configureOutput(1, String(configDiagnosticPayload(connectionResult).message));

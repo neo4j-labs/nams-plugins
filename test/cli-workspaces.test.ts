@@ -249,6 +249,38 @@ test("workspaces configure rejects hard-linked project config before loading con
   }
 });
 
+test("workspaces configure user scope rejects unsafe project config before loading config", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-"));
+  try {
+    const configDir = path.join(projectDir, ".nams");
+    const configPath = path.join(configDir, "config.json");
+    const targetPath = path.join(projectDir, "target-config.json");
+    const targetContent = `${JSON.stringify({ baseUrl: "https://project.example" }, null, 2)}\n`;
+    await mkdir(configDir, { recursive: true });
+    await writeFile(targetPath, targetContent, { mode: 0o644 });
+    await chmod(targetPath, 0o644);
+    await link(targetPath, configPath);
+
+    await withWorkspaceServer(async (baseUrl, requests) => {
+      const result = await runCli(
+        ["workspaces", "configure", "codex", "--scope", "user", "--workspace-id", "workspace-1"],
+        {},
+        runtimeEnv(path.join(projectDir, "home"), baseUrl),
+        projectDir,
+      );
+
+      assert.notEqual(result.code, 0);
+      assert.equal(result.stdout, "");
+      assert.match(result.stderr, /hard link|unsafe config path/);
+      assert.equal(await readFile(targetPath, "utf8"), targetContent);
+      assert.equal((await stat(targetPath)).mode & 0o777, 0o644);
+      assert.equal(requests.length, 0);
+    });
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("workspaces configure failure reports sanitized stderr and writes no config", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-"));
   try {

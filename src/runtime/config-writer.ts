@@ -42,6 +42,13 @@ export async function assertNamsJsonConfigPathSafe(
   return { path: configPath };
 }
 
+export async function assertNamsJsonConfigInputsSafe(projectDirectory: string): Promise<void> {
+  await assertNamsJsonConfigPathSafe({ projectDirectory, scope: "project" });
+  if (RuntimeEnvironment.fromProcess().globalConfigPath() !== undefined) {
+    await assertNamsJsonConfigPathSafe({ projectDirectory, scope: "user" });
+  }
+}
+
 async function rejectSymlink(configPath: string): Promise<void> {
   try {
     const file = await lstat(configPath);
