@@ -58,7 +58,7 @@ test("Claude plugin manifest template declares user config without standard hook
     type: "string",
     title: "NAMS base URL",
     description: "Neo4j Agent Memory Service API base URL.",
-    required: true,
+    default: "https://memory.neo4jlabs.com",
   });
 });
 

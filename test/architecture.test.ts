@@ -120,9 +120,15 @@ test("generated client does not import project runtime modules", async () => {
   await assertNoGeneratedImportsFrom("scripts");
 });
 
-test("runtime source does not hardcode production NAMS service URL", async () => {
+test("runtime and generated-client source do not hardcode production NAMS service URL", async () => {
   const forbiddenHost = ["memory", "neo4jlabs", "com"].join(".");
-  const files = await readProjectFiles(["src", "scripts", "templates"]);
+  const files = [
+    ...(await readProjectFiles(["src"])),
+    {
+      path: "scripts/generate-nams-client.mjs",
+      content: await readFile("scripts/generate-nams-client.mjs", "utf8"),
+    },
+  ];
   const violations = files
     .filter((file) => file.content.includes(forbiddenHost))
     .map((file) => file.path);

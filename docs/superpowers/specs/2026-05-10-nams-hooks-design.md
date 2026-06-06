@@ -232,7 +232,7 @@ Gemini hook templates live under `templates/gemini/` on `devel`. The release art
 node "${extensionPath}/bin/cli.js" run gemini --event SessionStart
 ```
 
-Claude Code users can add the generated release tree as a plugin marketplace and install the `nams-hooks` plugin. Claude loads the plugin's standard `hooks/hooks.json` automatically, so `.claude-plugin/plugin.json` must not point its `hooks` field at that file. The plugin manifest declares user configuration for a required sensitive `NAMS_API_KEY`, a required non-sensitive `NAMS_WORKSPACE_ID`, and a required non-sensitive `NAMS_BASE_URL`. Plugin hooks call the bundled compiled runtime through `${CLAUDE_PLUGIN_ROOT}/bin/cli.js`, so Claude plugin installs do not require a global `nams-hooks` executable:
+Claude Code users can add the generated release tree as a plugin marketplace and install the `nams-hooks` plugin. Claude loads the plugin's standard `hooks/hooks.json` automatically, so `.claude-plugin/plugin.json` must not point its `hooks` field at that file. The plugin manifest declares user configuration for a required sensitive `NAMS_API_KEY`, a required non-sensitive `NAMS_WORKSPACE_ID`, and a non-sensitive `NAMS_BASE_URL` with the standard service URL as its configuration default. Plugin hooks call the bundled compiled runtime through `${CLAUDE_PLUGIN_ROOT}/bin/cli.js`, so Claude plugin installs do not require a global `nams-hooks` executable:
 
 ```bash
 claude plugin marketplace add kubamarchwicki/nams-hooks@latest
@@ -280,7 +280,7 @@ Supported JSON keys:
 
 - `apiKey`: NAMS workspace API key, sent as `Authorization: Bearer <key>`.
 - `workspaceId`: NAMS workspace identifier for memory requests.
-- `baseUrl`: required NAMS base URL. The runtime and generated client must not hardcode a production service URL.
+- `baseUrl`: NAMS base URL, defaulting to `https://memory.neo4jlabs.com` when provided by standard configuration examples or platform configuration templates. The runtime and generated client must not hardcode a production service URL.
 
 Example:
 
@@ -288,7 +288,7 @@ Example:
 {
   "apiKey": "nams-api-key",
   "workspaceId": "5e5c0535-8d85-491c-b92c-33be13659998",
-  "baseUrl": "https://your-nams-service.example.com"
+  "baseUrl": "https://memory.neo4jlabs.com"
 }
 ```
 
@@ -301,7 +301,7 @@ Claude plugin discovery sources:
 
 - `CLAUDE_PLUGIN_OPTION_NAMS_API_KEY`: fills `apiKey` from the Claude plugin's required sensitive `NAMS_API_KEY` setting.
 - `CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID`: fills `workspaceId` from the Claude plugin's required non-sensitive `NAMS_WORKSPACE_ID` setting.
-- `CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL`: fills `baseUrl` from the Claude plugin's required `NAMS_BASE_URL` setting.
+- `CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL`: fills `baseUrl` from the Claude plugin's optional `NAMS_BASE_URL` setting, whose plugin default is `https://memory.neo4jlabs.com`.
 
 Supported final environment overrides:
 
