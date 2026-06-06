@@ -277,7 +277,7 @@ test("does not read project dotenv config files", async () => {
       sources: {
         apiKey: "missing",
         workspaceId: "missing",
-        baseUrl: "default",
+        baseUrl: "missing",
       },
     });
   });
@@ -294,7 +294,7 @@ test("missing apiKey returns structured non-ok result", async () => {
       sources: {
         apiKey: "missing",
         workspaceId: "missing",
-        baseUrl: "default",
+        baseUrl: "missing",
       },
     });
   });
@@ -304,6 +304,7 @@ test("missing workspaceId returns structured non-ok result", async () => {
   await withFixture(async ({ homeDir, projectDir }) => {
     await writeGlobalConfig(homeDir, {
       apiKey: "global-key",
+      baseUrl: "https://global.example.test",
     });
     useRuntimeEnv(homeDir);
     const result = await loadNamsConfig(projectDir);
@@ -314,7 +315,48 @@ test("missing workspaceId returns structured non-ok result", async () => {
       sources: {
         apiKey: "global:~/.nams/config.json",
         workspaceId: "missing",
-        baseUrl: "default",
+        baseUrl: "global:~/.nams/config.json",
+      },
+    });
+  });
+});
+
+test("missing baseUrl returns structured non-ok result", async () => {
+  await withFixture(async ({ homeDir, projectDir }) => {
+    await writeGlobalConfig(homeDir, {
+      apiKey: "global-key",
+      workspaceId: "global-workspace",
+    });
+    useRuntimeEnv(homeDir);
+    const result = await loadNamsConfig(projectDir);
+
+    assert.deepEqual(result, {
+      ok: false,
+      reason: "missing-base-url",
+      sources: {
+        apiKey: "global:~/.nams/config.json",
+        workspaceId: "global:~/.nams/config.json",
+        baseUrl: "missing",
+      },
+    });
+  });
+});
+
+test("connection config requires baseUrl from configuration", async () => {
+  await withFixture(async ({ homeDir, projectDir }) => {
+    useRuntimeEnv(homeDir, {
+      NAMS_API_KEY: "env-key",
+    });
+
+    const result = await loadNamsConnectionConfig(projectDir);
+
+    assert.deepEqual(result, {
+      ok: false,
+      reason: "missing-base-url",
+      sources: {
+        apiKey: "env:NAMS_API_KEY",
+        workspaceId: "missing",
+        baseUrl: "missing",
       },
     });
   });
@@ -351,6 +393,7 @@ test("connection config preserves configured workspaceId when present", async ()
     await writeProjectConfig(projectDir, {
       apiKey: "project-key",
       workspaceId: "project-workspace",
+      baseUrl: "https://project.example.test",
     });
     useRuntimeEnv(homeDir);
 
@@ -361,12 +404,13 @@ test("connection config preserves configured workspaceId when present", async ()
       config: {
         apiKey: "project-key",
         workspaceId: "project-workspace",
+        baseUrl: "https://project.example.test",
       },
       workspaceId: "project-workspace",
       sources: {
         apiKey: "project:.nams/config.json",
         workspaceId: "project:.nams/config.json",
-        baseUrl: "default",
+        baseUrl: "project:.nams/config.json",
       },
     });
   });
@@ -385,7 +429,7 @@ test("invalid JSON returns structured non-ok result without raw file content", a
     assert.deepEqual(result.sources, {
       apiKey: "missing",
       workspaceId: "missing",
-      baseUrl: "default",
+      baseUrl: "missing",
     });
     assert.doesNotMatch(JSON.stringify(result), /secret-key/);
   });
@@ -429,7 +473,7 @@ test("unreadable global config path returns structured non-ok result", async () 
     assert.deepEqual(result.sources, {
       apiKey: "missing",
       workspaceId: "missing",
-      baseUrl: "default",
+      baseUrl: "missing",
     });
     assert.doesNotMatch(JSON.stringify(result), /env-secret-key|EISDIR|illegal operation|is a directory/i);
   });
@@ -478,7 +522,7 @@ test("configDiagnosticPayload includes sources but not secret values", async () 
       sources: {
         apiKey: "missing",
         workspaceId: "missing",
-        baseUrl: "default",
+        baseUrl: "missing",
       },
     } as const;
 
@@ -495,7 +539,7 @@ test("configDiagnosticPayload includes sources but not secret values", async () 
       configSources: {
         apiKey: "missing",
         workspaceId: "missing",
-        baseUrl: "default",
+        baseUrl: "missing",
       },
     });
     assert.deepEqual(configDiagnosticPayload(invalid), {
@@ -503,7 +547,7 @@ test("configDiagnosticPayload includes sources but not secret values", async () 
       configSources: {
         apiKey: "missing",
         workspaceId: "missing",
-        baseUrl: "default",
+        baseUrl: "missing",
       },
       errorSource: "global:~/.nams/config.json",
     });

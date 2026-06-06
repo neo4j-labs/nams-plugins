@@ -88,7 +88,7 @@ export async function resolveWorkspaceForMemory(input: ResolveWorkspaceInput): P
 
   const client = new NamsWorkspaceClient({
     apiKey: config.apiKey,
-    ...(config.baseUrl !== undefined ? { baseUrl: config.baseUrl } : {}),
+    baseUrl: config.baseUrl,
     defaultHeaders: namsProvenanceHeaders(input.invocation),
     onRequest: (event) => appendNamsRequestLog(input.invocation, input.state, event),
   });
@@ -167,11 +167,11 @@ export function workspaceSelectionRequiredOutput(platform: Platform, workspaces:
   return allowOutput();
 }
 
-function runtimeConfig(apiKey: string, workspaceId: string, baseUrl?: string): NamsRuntimeConfig {
+function runtimeConfig(apiKey: string, workspaceId: string, baseUrl: string): NamsRuntimeConfig {
   return {
     apiKey,
     workspaceId,
-    ...(baseUrl !== undefined ? { baseUrl } : {}),
+    baseUrl,
   };
 }
 

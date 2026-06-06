@@ -8,6 +8,7 @@ For local development, generated artifact testing, and `./dist` workflows, see
 
 - Node.js 20 or newer
 - A NAMS API key
+- A NAMS base URL
 - A NAMS workspace ID, unless your harness path supports auto-resolution
 - The agent platform CLI you want to use:
   - Claude Code
@@ -16,7 +17,7 @@ For local development, generated artifact testing, and `./dist` workflows, see
 
 ## Runtime Configuration
 
-Runtime configuration is JSON-first: `~/.nams/config.json`, optional project `.nams/config.json`, optional platform discovery such as Claude plugin user configuration, then final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. `apiKey` is required for NAMS requests. `workspaceId` is required unless the harness path supports workspace auto-resolution before memory starts. Runtime state and logs are user-local under per-platform directories in `~/.nams/state/` and `~/.nams/logs/`.
+Runtime configuration is JSON-first: `~/.nams/config.json`, optional project `.nams/config.json`, optional platform discovery such as Claude plugin user configuration, then final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. `apiKey` and `baseUrl` are required for NAMS requests. `workspaceId` is required unless the harness path supports workspace auto-resolution before memory starts. Runtime state and logs are user-local under per-platform directories in `~/.nams/state/` and `~/.nams/logs/`.
 
 The portable configuration path is a user-local config file:
 
@@ -24,11 +25,12 @@ The portable configuration path is a user-local config file:
 {
   "apiKey": "nams-api-key",
   "workspaceId": "5e5c0535-8d85-491c-b92c-33be13659998",
-  "baseUrl": "https://memory.neo4jlabs.com"
+  "baseUrl": "https://your-nams-service.example.com"
 }
 ```
 
-`baseUrl` is optional and defaults to `https://memory.neo4jlabs.com`.
+`baseUrl` has no built-in default; set it through JSON config, platform user
+configuration, or `NAMS_BASE_URL`.
 
 Projects can override any key with `<project>/.nams/config.json`. A common setup
 is a global API key plus project-specific workspace IDs:
@@ -92,7 +94,7 @@ Claude prompts for:
 
 - `NAMS_API_KEY`: required, sensitive, stored by Claude Code in secure storage.
 - `NAMS_WORKSPACE_ID`: required, non-sensitive.
-- `NAMS_BASE_URL`: optional, defaults to `https://memory.neo4jlabs.com`.
+- `NAMS_BASE_URL`: required, non-sensitive.
 
 Claude exposes those values to hook subprocesses as
 `CLAUDE_PLUGIN_OPTION_NAMS_API_KEY`, `CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID`,
@@ -138,8 +140,7 @@ The Gemini extension declares these settings:
 
 - `NAMS_API_KEY`: required for NAMS requests and marked sensitive.
 - `NAMS_WORKSPACE_ID`: required for NAMS requests.
-- `NAMS_BASE_URL`: optional, defaults to `https://memory.neo4jlabs.com` when not
-  set.
+- `NAMS_BASE_URL`: required for NAMS requests.
 
 You can provide those values through Gemini extension settings, through
 `~/.nams/config.json`, through project `.nams/config.json`, or through the

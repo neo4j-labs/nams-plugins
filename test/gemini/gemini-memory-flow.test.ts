@@ -350,7 +350,7 @@ test("Gemini BeforeAgent continues when NAMS_API_KEY is missing", async () => {
     assert.deepEqual(diagnostics[0].payload.configSources, {
       apiKey: "missing",
       workspaceId: "missing",
-      baseUrl: "default",
+      baseUrl: "missing",
     });
     assert.doesNotMatch(log, /Bearer|key/);
   } finally {
@@ -430,7 +430,7 @@ test("Gemini BeforeAgent logs invalid config diagnostics without raw JSON conten
         configSources: {
           apiKey: "missing",
           workspaceId: "missing",
-          baseUrl: "default",
+          baseUrl: "missing",
         },
         errorSource: "project:.nams/config.json",
       },
@@ -552,7 +552,7 @@ test("Gemini session log keeps hook events together and includes user prompt fie
     assert.deepEqual(diagnostics[0].payload.configSources, {
       apiKey: "missing",
       workspaceId: "missing",
-      baseUrl: "default",
+      baseUrl: "missing",
     });
     assert.match(log, /"prompt":"raw prompt text"/);
     assert.match(log, /"hook_event_name":"BeforeAgent"/);

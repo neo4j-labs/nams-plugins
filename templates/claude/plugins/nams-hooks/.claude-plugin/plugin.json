@@ -32,7 +32,7 @@
       "type": "string",
       "title": "NAMS base URL",
       "description": "Neo4j Agent Memory Service API base URL.",
-      "default": "https://memory.neo4jlabs.com"
+      "required": true
     }
   }
 }

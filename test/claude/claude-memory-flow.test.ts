@@ -299,7 +299,7 @@ test("continues when Claude NAMS apiKey is missing and logs sanitized config dia
     assert.deepEqual(diagnostics[0].payload.configSources, {
       apiKey: "missing",
       workspaceId: "missing",
-      baseUrl: "default",
+      baseUrl: "missing",
     });
     assert.doesNotMatch(log, /Authorization|Bearer|secret|NAMS_API_KEY/);
   } finally {
@@ -343,7 +343,7 @@ test("continues when Claude project config cannot be read and logs sanitized con
       configSources: {
         apiKey: "missing",
         workspaceId: "missing",
-        baseUrl: "default",
+        baseUrl: "missing",
       },
       errorSource: "project:.nams/config.json",
     });

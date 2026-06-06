@@ -55,6 +55,18 @@ test("generated NAMS workspace client endpoint table matches the pinned OpenAPI 
   }
 });
 
+test("generated NAMS workspace client requires an explicit base URL", async () => {
+  const { NamsWorkspaceClient } = await importGeneratedClient();
+
+  assert.throws(
+    () =>
+      new NamsWorkspaceClient({
+        apiKey: "test-key",
+      } as ConstructorParameters<typeof NamsWorkspaceClient>[0]),
+    /requires a baseUrl/,
+  );
+});
+
 test("generated NAMS workspace client lists workspaces without a workspace header", async () => {
   const { NamsWorkspaceClient } = await importGeneratedClient();
   const requests: CapturedRequest[] = [];

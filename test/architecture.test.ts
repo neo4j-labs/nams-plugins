@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { test } from "node:test";
 import { projectFiles } from "archunit";
@@ -11,6 +11,32 @@ interface ArchRule {
 interface SourceFile {
   path: string;
   content: string;
+}
+
+async function readProjectFiles(folders: string[]): Promise<SourceFile[]> {
+  const files: SourceFile[] = [];
+  for (const folder of folders) {
+    await walk(folder);
+  }
+  return files;
+
+  async function walk(currentPath: string): Promise<void> {
+    const entries = await readdir(currentPath, { withFileTypes: true });
+    for (const entry of entries) {
+      const entryPath = path.join(currentPath, entry.name);
+      if (entry.isDirectory()) {
+        await walk(entryPath);
+        continue;
+      }
+      if (!/\.(?:ts|js|mjs|json)$/.test(entry.name)) {
+        continue;
+      }
+      files.push({
+        path: entryPath,
+        content: await readFile(entryPath, "utf8"),
+      });
+    }
+  }
 }
 
 async function assertNoViolations(rule: ArchRule): Promise<void> {
@@ -92,6 +118,16 @@ test("generated client does not import project runtime modules", async () => {
 
   await assertNoGeneratedImportsFrom("docs");
   await assertNoGeneratedImportsFrom("scripts");
+});
+
+test("runtime source does not hardcode production NAMS service URL", async () => {
+  const forbiddenHost = ["memory", "neo4jlabs", "com"].join(".");
+  const files = await readProjectFiles(["src", "scripts", "templates"]);
+  const violations = files
+    .filter((file) => file.content.includes(forbiddenHost))
+    .map((file) => file.path);
+
+  assert.deepEqual(violations, []);
 });
 
 test("only the platform registry imports all concrete adapters", async () => {

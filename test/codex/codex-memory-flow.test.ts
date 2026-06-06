@@ -261,7 +261,7 @@ test("missing Codex NAMS_API_KEY returns allow output and minimal diagnostic log
     assert.deepEqual(diagnostics[0].payload.configSources, {
       apiKey: "missing",
       workspaceId: "missing",
-      baseUrl: "default",
+      baseUrl: "missing",
     });
     assert.doesNotMatch(log, /Bearer|key/);
   } finally {
@@ -298,7 +298,7 @@ test("Codex beforeAgent logs invalid config diagnostics without raw JSON content
         configSources: {
           apiKey: "missing",
           workspaceId: "missing",
-          baseUrl: "default",
+          baseUrl: "missing",
         },
         errorSource: "project:.nams/config.json",
       },
@@ -1056,7 +1056,7 @@ test("Codex afterAgent missing config and failed NAMS calls allow and log minima
     assert.deepEqual(missingConfigDiagnostics[0].payload.configSources, {
       apiKey: "missing",
       workspaceId: "missing",
-      baseUrl: "default",
+      baseUrl: "missing",
     });
     assert.doesNotMatch(missingConfigLog, /Authorization|Bearer|key/);
 
@@ -1354,7 +1354,7 @@ test("Codex afterTool missing config and failed NAMS calls allow and log minimal
     assert.deepEqual(missingConfigDiagnostics[0].payload.configSources, {
       apiKey: "missing",
       workspaceId: "missing",
-      baseUrl: "default",
+      baseUrl: "missing",
     });
     assert.doesNotMatch(missingConfigLog, /Authorization|Bearer|test-api-key/);
 

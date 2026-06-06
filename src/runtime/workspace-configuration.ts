@@ -32,7 +32,7 @@ export async function configureWorkspaceSelection(
 
   const client = new NamsWorkspaceClient({
     apiKey: connectionResult.config.apiKey,
-    ...(connectionResult.config.baseUrl !== undefined ? { baseUrl: connectionResult.config.baseUrl } : {}),
+    baseUrl: connectionResult.config.baseUrl,
   });
 
   let workspaces: Array<WorkspaceSummary & { id: string }>;

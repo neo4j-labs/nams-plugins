@@ -4,7 +4,7 @@ export type JsonValue = string | number | boolean | null | JsonValue[] | { [key:
 export type HttpMethod = "GET" | "POST";
 
 export interface NamsClientOptions {
-  baseUrl?: string;
+  baseUrl: string;
   apiKey: string;
   workspaceId: string;
   defaultHeaders?: Record<string, string>;
@@ -13,7 +13,7 @@ export interface NamsClientOptions {
 }
 
 export interface NamsWorkspaceClientOptions {
-  baseUrl?: string;
+  baseUrl: string;
   apiKey: string;
   defaultHeaders?: Record<string, string>;
   fetch?: typeof fetch;
@@ -235,7 +235,10 @@ export class NamsClient {
   private readonly onRequest?: (event: NamsRequestEvent) => void | Promise<void>;
 
   constructor(options: NamsClientOptions) {
-    this.baseUrl = (options.baseUrl ?? "https://memory.neo4jlabs.com").replace(/\/+$/, "");
+    if (options.baseUrl === undefined || options.baseUrl.trim() === "") {
+      throw new Error("NamsClient requires a baseUrl");
+    }
+    this.baseUrl = options.baseUrl.replace(/\/+$/, "");
     this.apiKey = options.apiKey;
     this.workspaceId = options.workspaceId;
     if (this.workspaceId === undefined || this.workspaceId === "") {
@@ -312,7 +315,10 @@ export class NamsWorkspaceClient {
   private readonly onRequest?: (event: NamsRequestEvent) => void | Promise<void>;
 
   constructor(options: NamsWorkspaceClientOptions) {
-    this.baseUrl = (options.baseUrl ?? "https://memory.neo4jlabs.com").replace(/\/+$/, "");
+    if (options.baseUrl === undefined || options.baseUrl.trim() === "") {
+      throw new Error("NamsWorkspaceClient requires a baseUrl");
+    }
+    this.baseUrl = options.baseUrl.replace(/\/+$/, "");
     this.apiKey = options.apiKey;
     this.defaultHeaders = options.defaultHeaders ?? {};
     this.fetchImpl = options.fetch ?? globalThis.fetch;

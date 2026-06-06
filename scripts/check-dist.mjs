@@ -161,11 +161,11 @@ function assertClaudePluginUserConfig(plugin) {
   }
 
   const baseUrl = plugin.userConfig?.NAMS_BASE_URL;
-  if (baseUrl?.type !== "string" || baseUrl.title !== "NAMS base URL" || baseUrl.default !== "https://memory.neo4jlabs.com") {
-    throw new Error("Claude plugin manifest must expose optional NAMS_BASE_URL with the default NAMS endpoint.");
+  if (baseUrl?.type !== "string" || baseUrl.title !== "NAMS base URL" || baseUrl.required !== true) {
+    throw new Error("Claude plugin manifest must require a configured NAMS_BASE_URL userConfig value.");
   }
-  if (baseUrl.sensitive === true || baseUrl.required === true) {
-    throw new Error("Claude plugin NAMS_BASE_URL must be optional and non-sensitive.");
+  if (baseUrl.sensitive === true || Object.hasOwn(baseUrl, "default")) {
+    throw new Error("Claude plugin NAMS_BASE_URL must be non-sensitive and must not define a default.");
   }
 }
 

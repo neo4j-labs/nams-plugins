@@ -38,13 +38,13 @@ claude plugin marketplace add kubamarchwicki/nams-hooks@latest
 claude plugin install nams-hooks@neo4j-nams-hooks
 ```
 
-The Claude plugin prompts for the required NAMS API key and workspace ID during
-installation. For Gemini, Codex, OpenCode, and full setup details, see
+The Claude plugin prompts for the required NAMS API key, workspace ID, and base
+URL during installation. For Gemini, Codex, OpenCode, and full setup details, see
 [INSTALL.md](INSTALL.md).
 
 ### Runtime Configuration And Storage
 
-Runtime configuration is JSON-first: `~/.nams/config.json`, optional project `.nams/config.json`, optional platform discovery such as Claude plugin user configuration, then final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. `apiKey` is required for NAMS requests. `workspaceId` is required unless the harness path supports workspace auto-resolution before memory starts. Runtime state and logs are user-local under per-platform directories in `~/.nams/state/` and `~/.nams/logs/`.
+Runtime configuration is JSON-first: `~/.nams/config.json`, optional project `.nams/config.json`, optional platform discovery such as Claude plugin user configuration, then final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. `apiKey` and `baseUrl` are required for NAMS requests. `workspaceId` is required unless the harness path supports workspace auto-resolution before memory starts. Runtime state and logs are user-local under per-platform directories in `~/.nams/state/` and `~/.nams/logs/`.
 
 Codex plugin installs use the same JSON and `NAMS_*` environment configuration path; Codex does not currently define NAMS credentials through plugin install prompts.
 
@@ -69,7 +69,7 @@ For local development and generated marketplace testing, see [DEVELOPMENT.md](DE
 ### Prerequisites
 
 - Node.js (v20+)
-- A NAMS API key and, unless your harness path supports auto-resolution, a workspace ID
+- A NAMS API key, NAMS base URL, and, unless your harness path supports auto-resolution, a workspace ID
 
 ### Build and Test
 

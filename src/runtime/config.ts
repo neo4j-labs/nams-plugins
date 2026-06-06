@@ -5,13 +5,13 @@ import { RuntimeEnvironment } from "./paths.js";
 export interface NamsRuntimeConfig {
   apiKey: string;
   workspaceId: string;
-  baseUrl?: string;
+  baseUrl: string;
 }
 
 export interface NamsConnectionConfig {
   apiKey: string;
   workspaceId?: string;
-  baseUrl?: string;
+  baseUrl: string;
 }
 
 type JsonConfigSource = "global:~/.nams/config.json" | "project:.nams/config.json";
@@ -31,7 +31,7 @@ export type WorkspaceIdSource =
   | "env:NAMS_WORKSPACE_ID";
 
 export type BaseUrlSource =
-  | "default"
+  | "missing"
   | JsonConfigSource
   | PlatformConfigSource
   | "env:NAMS_BASE_URL";
@@ -73,6 +73,11 @@ export type NamsConfigLoadResult =
     }
   | {
       ok: false;
+      reason: "missing-base-url";
+      sources: NamsConfigSources;
+    }
+  | {
+      ok: false;
       reason: "invalid-json";
       errorSource: "global:~/.nams/config.json" | "project:.nams/config.json";
       sources: NamsConfigSources;
@@ -88,6 +93,11 @@ export type NamsConnectionConfigLoadResult =
   | {
       ok: false;
       reason: "missing-api-key";
+      sources: NamsConfigSources;
+    }
+  | {
+      ok: false;
+      reason: "missing-base-url";
       sources: NamsConfigSources;
     }
   | {
@@ -114,6 +124,12 @@ export function configDiagnosticPayload(result: NamsConfigLoadResult | NamsConne
   if (result.reason === "missing-workspace-id") {
     return {
       message: "NAMS workspaceId missing",
+      configSources: result.sources,
+    };
+  }
+  if (result.reason === "missing-base-url") {
+    return {
+      message: "NAMS baseUrl missing",
       configSources: result.sources,
     };
   }
@@ -144,7 +160,7 @@ export async function loadNamsConfig(
     config: {
       apiKey: connectionResult.config.apiKey,
       workspaceId: connectionResult.config.workspaceId,
-      ...(connectionResult.config.baseUrl !== undefined ? { baseUrl: connectionResult.config.baseUrl } : {}),
+      baseUrl: connectionResult.config.baseUrl,
     },
     sources: connectionResult.sources,
   };
@@ -159,7 +175,7 @@ export async function loadNamsConnectionConfig(
   const sources: NamsConfigSources = {
     apiKey: "missing",
     workspaceId: "missing",
-    baseUrl: "default",
+    baseUrl: "missing",
   };
 
   const globalResult = await readGlobalJsonConfig(runtimeEnvironment);
@@ -189,13 +205,20 @@ export async function loadNamsConnectionConfig(
       sources,
     };
   }
+  if (accumulated.baseUrl === undefined) {
+    return {
+      ok: false,
+      reason: "missing-base-url",
+      sources,
+    };
+  }
 
   return {
     ok: true,
     config: {
       apiKey: accumulated.apiKey,
       ...(accumulated.workspaceId !== undefined ? { workspaceId: accumulated.workspaceId } : {}),
-      ...(accumulated.baseUrl !== undefined ? { baseUrl: accumulated.baseUrl } : {}),
+      baseUrl: accumulated.baseUrl,
     },
     ...(accumulated.workspaceId !== undefined ? { workspaceId: accumulated.workspaceId } : {}),
     sources,
@@ -276,7 +299,7 @@ function defaultSources(): NamsConfigSources {
   return {
     apiKey: "missing",
     workspaceId: "missing",
-    baseUrl: "default",
+    baseUrl: "missing",
   };
 }
 

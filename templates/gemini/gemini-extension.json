@@ -17,7 +17,7 @@
     },
     {
       "name": "NAMS Base URL",
-      "description": "Neo4j Agent Memory Service base URL.",
+      "description": "Required Neo4j Agent Memory Service base URL.",
       "envVar": "NAMS_BASE_URL",
       "sensitive": false
     }
