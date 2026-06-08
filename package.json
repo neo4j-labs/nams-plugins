@@ -17,11 +17,11 @@
     "openapi:generate": "node scripts/generate-nams-client.mjs",
     "build": "rm -rf .build/tsc && tsc -p tsconfig.json --outDir .build/tsc",
     "test:typecheck": "tsc -p tsconfig.test.json",
-    "test": "npm run build && node --import=tsx --test test/*.test.ts test/**/*.test.ts",
-    "check": "npm run openapi:generate && npm run build && npm run test:typecheck && npm test",
+    "test": "npm run build && node --import=tsx --test --test-concurrency=1 test/*.test.ts test/**/*.test.ts",
+    "check": "npm run openapi:generate && npm test && npm run test:typecheck",
     "dist": "rm -rf .build && rm -rf dist/ && tsc -p tsconfig.json --outDir .build/tsc && node scripts/build-dist.mjs",
     "dist:check": "node scripts/check-dist.mjs",
-    "package:check": "npm run check && npm run dist && npm run dist:check"
+    "package:check": "npm run dist && npm run dist:check"
   },
   "engines": {
     "node": ">=20"

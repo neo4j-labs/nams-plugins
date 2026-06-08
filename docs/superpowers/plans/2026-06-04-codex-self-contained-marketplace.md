@@ -124,7 +124,7 @@ const pluginRoot = "${PLUGIN_ROOT}";
 test("Codex repo marketplace template exposes nams-hooks as available", async () => {
   const template = JSON.parse(await readFile(marketplacePath, "utf8"));
 
-  assert.equal(template.name, "neo4j-nams-hooks");
+  assert.equal(template.name, "nams-plugins");
   assert.equal(template.metadata.description, "Neo4j Agent Memory Service hooks for Codex.");
   assert.equal(template.metadata.version, "__PACKAGE_VERSION__");
 
@@ -144,7 +144,7 @@ test("Codex repo marketplace template exposes nams-hooks as available", async ()
   assert.equal(plugin.description, "Persistent Neo4j Agent Memory Service hooks for Codex.");
   assert.equal(plugin.version, "__PACKAGE_VERSION__");
   assert.equal(plugin.author.name, "Neo4j Labs");
-  assert.equal(plugin.repository, "https://github.com/neo4j-labs/nams-hooks");
+  assert.equal(plugin.repository, "https://github.com/neo4j-labs/nams-plugins");
   assert.equal(plugin.license, "__PACKAGE_LICENSE__");
   assert.deepEqual(plugin.keywords, ["memory", "context", "persistence", "neo4j", "nams"]);
   assert.equal(plugin.category, "Productivity");
@@ -157,7 +157,7 @@ test("Codex plugin manifest template declares metadata without credential prompt
   assert.equal(template.version, "__PACKAGE_VERSION__");
   assert.equal(template.description, "Persistent Neo4j Agent Memory Service hooks for Codex.");
   assert.equal(template.author.name, "Neo4j Labs");
-  assert.equal(template.repository, "https://github.com/neo4j-labs/nams-hooks");
+  assert.equal(template.repository, "https://github.com/neo4j-labs/nams-plugins");
   assert.equal(template.license, "__PACKAGE_LICENSE__");
   assert.deepEqual(template.keywords, ["memory", "context", "persistence", "neo4j", "nams"]);
   assert.equal(Object.hasOwn(template, "userConfig"), false);
@@ -219,7 +219,7 @@ Create `templates/codex/.agents/plugins/marketplace.json`:
 
 ```json
 {
-  "name": "neo4j-nams-hooks",
+  "name": "nams-plugins",
   "metadata": {
     "description": "Neo4j Agent Memory Service hooks for Codex.",
     "version": "__PACKAGE_VERSION__"
@@ -243,7 +243,7 @@ Create `templates/codex/.agents/plugins/marketplace.json`:
       "author": {
         "name": "Neo4j Labs"
       },
-      "repository": "https://github.com/neo4j-labs/nams-hooks",
+      "repository": "https://github.com/neo4j-labs/nams-plugins",
       "license": "__PACKAGE_LICENSE__",
       "keywords": [
         "memory",
@@ -270,7 +270,7 @@ Create `templates/codex/plugins/codex-nams-hooks/.codex-plugin/plugin.json`:
   "author": {
     "name": "Neo4j Labs"
   },
-  "repository": "https://github.com/neo4j-labs/nams-hooks",
+  "repository": "https://github.com/neo4j-labs/nams-plugins",
   "license": "__PACKAGE_LICENSE__",
   "keywords": [
     "memory",
@@ -406,8 +406,8 @@ async function verifyCodexPluginFiles() {
   const plugin = JSON.parse(await readFile(codexPluginManifestPath, "utf8"));
   const hooks = JSON.parse(await readFile(codexPluginHooksPath, "utf8"));
 
-  if (marketplace.name !== "neo4j-nams-hooks") {
-    throw new Error("dist/.agents/plugins/marketplace.json must name the marketplace neo4j-nams-hooks.");
+  if (marketplace.name !== "nams-plugins") {
+    throw new Error("dist/.agents/plugins/marketplace.json must name the marketplace nams-plugins.");
   }
 
   const marketplacePlugin = marketplace.plugins?.[0];
@@ -643,14 +643,14 @@ codex plugin marketplace add ./dist
 codex plugin marketplace list
 ```
 
-Restart Codex, open the plugin directory with `/plugins`, select the `neo4j-nams-hooks` marketplace, and install `NAMS Hooks`. Then use `/hooks` to review and trust the plugin-bundled hooks when Codex asks for hook review.
+Restart Codex, open the plugin directory with `/plugins`, select the `nams-plugins` marketplace, and install `NAMS Hooks`. Then use `/hooks` to review and trust the plugin-bundled hooks when Codex asks for hook review.
 
 The generated Codex marketplace lives at `dist/.agents/plugins/marketplace.json`. Its plugin source is `dist/plugins/codex-nams-hooks/`, with standard hook configuration at `hooks/hooks.json` and the compiled CLI at `bin/cli.js`.
 
 For a published generated release branch, add the repository marketplace instead of the local `./dist` directory:
 
 ```bash
-codex plugin marketplace add kubamarchwicki/nams-hooks@latest
+codex plugin marketplace add neo4j-labs/nams-plugins@latest
 ```
 
 Restart Codex, open `/plugins`, select the repository marketplace, and install `NAMS Hooks`.
@@ -664,9 +664,9 @@ Codex loads project hook settings from `.codex/hooks.json`. Hook execution is co
 Install the package so `nams-hooks` is on `PATH`, then copy the Codex hook template into the target project:
 
 ```bash
-npm install -g @neo4j-labs/nams-hooks
+npm install -g @neo4j-labs/nams-plugins
 mkdir -p .codex
-cp "$(npm root -g)/@neo4j-labs/nams-hooks/templates/codex/hooks.json" .codex/hooks.json
+cp "$(npm root -g)/@neo4j-labs/nams-plugins/templates/codex/hooks.json" .codex/hooks.json
 ```
 
 If `.codex/hooks.json` already exists, merge the `hooks` entries from `templates/codex/hooks.json` instead of replacing the file.
@@ -746,13 +746,13 @@ In `docs/superpowers/specs/2026-05-10-nams-hooks-design.md`, replace the paragra
 Codex users can add the generated release tree as a repo marketplace and install the available `nams-hooks` plugin. The Codex marketplace lives at `.agents/plugins/marketplace.json` and points to `./plugins/codex-nams-hooks`. The plugin bundles its own compiled `bin/cli.js` and standard `hooks/hooks.json`, with hook commands using `${PLUGIN_ROOT}/bin/cli.js`, so Codex marketplace installs do not require a global `nams-hooks` executable. Codex marketplace policy uses `authentication: "ON_USE"` as marketplace auth timing metadata, but plugin installs do not define NAMS credential values or prompts through plugin metadata; they use the existing `.nams/config.json` and `NAMS_*` environment configuration model:
 
 ```bash
-codex plugin marketplace add kubamarchwicki/nams-hooks@latest
+codex plugin marketplace add neo4j-labs/nams-plugins@latest
 ```
 
 OpenCode distribution uses the released CLI package and project-level plugin. Codex and Claude Code can still use project-level settings fallbacks when plugin marketplace installs are not desired:
 
 ```bash
-npm install -g @neo4j-labs/nams-hooks
+npm install -g @neo4j-labs/nams-plugins
 nams-hooks install --harness codex,claude,opencode
 ```
 ````
@@ -849,7 +849,7 @@ Expected output:
 
 ```json
 {
-  "name": "neo4j-nams-hooks",
+  "name": "nams-plugins",
   "plugin": "nams-hooks",
   "source": {
     "source": "local",

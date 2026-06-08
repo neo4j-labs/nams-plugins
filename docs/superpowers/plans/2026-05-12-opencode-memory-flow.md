@@ -1239,7 +1239,7 @@ Add:
 OpenCode loads project plugins from `.opencode/plugins/`.
 
 ```bash
-npm install -g @neo4j-labs/nams-hooks
+npm install -g @neo4j-labs/nams-plugins
 mkdir -p .opencode/plugins
 cp templates/opencode/plugins/nams-hooks.js .opencode/plugins/nams-hooks.js
 ```
