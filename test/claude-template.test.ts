@@ -64,11 +64,11 @@ test("Claude plugin manifest template declares user config without standard hook
   });
 });
 
-function commandFor(template, eventName) {
+function commandFor(template: any, eventName: string): string | undefined {
   return template.hooks[eventName]?.[0]?.hooks?.[0]?.command;
 }
 
-function pluginCommandFor(template, eventName) {
+function pluginCommandFor(template: any, eventName: string): Array<string | undefined> {
   const handler = template.hooks[eventName]?.[0]?.hooks?.[0];
   return [handler?.command, ...(handler?.args ?? [])];
 }
