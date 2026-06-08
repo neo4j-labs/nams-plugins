@@ -53,9 +53,13 @@ and gitignored, especially if it contains an API key.
 
 ### Workspace Selection
 
+NAMS supports workspace keys and admin keys. Both key scopes can list available
+workspaces through NAMS. Workspace keys return exactly one workspace from that
+list; admin keys may return multiple workspaces.
+
 Gemini CLI and OpenCode can auto-select a workspace before memory starts when
-your NAMS account has exactly one valid workspace. Claude Code and Codex require
-a configured workspace ID before memory requests run.
+NAMS returns exactly one valid workspace. Claude Code and Codex require a
+configured workspace ID before memory requests run.
 
 To configure a specific project workspace for Codex, run:
 
@@ -68,9 +72,10 @@ platform path. Use `--scope user` to write `~/.nams/config.json` instead of the
 project `.nams/config.json`.
 
 If you omit `--workspace-id`, the configure command writes the workspace
-automatically only when NAMS returns a single valid workspace. When NAMS returns
-multiple valid workspaces, the command prints the available choices and exits
-without changing config.
+automatically only when NAMS returns a single valid workspace. This is the
+normal path for workspace keys. When NAMS returns multiple valid workspaces,
+which is common for admin keys, the command prints the available choices and
+exits without changing config until you pass one ID explicitly.
 
 ## Claude Code
 
@@ -141,7 +146,9 @@ gemini extensions install https://github.com/kubamarchwicki/nams-hooks --ref lat
 The Gemini extension declares these settings:
 
 - `NAMS_API_KEY`: required for NAMS requests and marked sensitive.
-- `NAMS_WORKSPACE_ID`: required for NAMS requests.
+- `NAMS_WORKSPACE_ID`: optional for Gemini runtime auto-resolution when NAMS
+  returns exactly one valid workspace; required when the key can see multiple
+  workspaces.
 - `NAMS_BASE_URL`: optional when another configuration source supplies
   `baseUrl`; use `https://memory.neo4jlabs.com` for the standard service.
 

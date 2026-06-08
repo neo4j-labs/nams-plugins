@@ -10,6 +10,13 @@ Repository: nams-hooks
 
 The workspace concern should be separated from NAMS memory management. A new workspace hook command owns workspace discovery, single-workspace auto-selection, and future workspace selection commands. Existing memory hooks continue to own conversation creation, recall, message persistence, and tool metadata. Memory hooks consume an effective workspace ID; they do not negotiate workspace selection.
 
+2026-06-08 amendment: NAMS now has workspace keys and admin keys. Both can call
+`GET /v1/users/me/workspaces`; workspace keys always return one workspace and
+admin keys may return multiple workspaces. `nams-hooks` intentionally does not
+model key type. It infers behavior only from the count of valid workspace IDs
+returned by the workspace list endpoint. See
+`docs/superpowers/specs/2026-06-08-nams-key-scope-workspace-resolution-design.md`.
+
 Runtime workspace resolution is allowed only when hook ordering is deterministic enough to guarantee the workspace hook completes before the memory hook can create a conversation. Harnesses without deterministic hook ordering continue to require install-time or config-time `workspaceId` selection.
 
 ## Source Inputs
@@ -183,11 +190,12 @@ The workspace hook resolves an effective workspace ID before memory work:
 1. Load config values that do not require `workspaceId`: `apiKey` and optional `baseUrl`.
 2. If `workspaceId` is already configured through JSON, platform config, or environment, record the effective source and allow memory to proceed.
 3. If `workspaceId` is missing, call `GET /v1/users/me/workspaces` with bearer auth and no `X-Workspace-Id` header.
-4. If exactly one workspace is returned, store that workspace ID in local state and allow memory to proceed.
-5. If multiple workspaces are returned and runtime interaction is supported for the harness, stop or block the first prompt with a user-visible list of workspace names, roles, statuses, and IDs.
-6. If multiple workspaces are returned and runtime interaction is not supported, report a sanitized diagnostic and require install-time or config-time workspace selection.
-7. If zero workspaces are returned, report a sanitized diagnostic and skip NAMS memory work.
-8. If the workspace listing request fails, fail open for the agent harness and skip NAMS memory work for that turn.
+4. If exactly one valid workspace is returned, store that workspace ID in local state and allow memory to proceed. This covers workspace keys and admin keys that can see one workspace.
+5. If multiple valid workspaces are returned, require explicit workspace selection/configuration. This commonly covers admin keys with access to multiple workspaces.
+6. If runtime interaction is supported for the harness, stop or block the first prompt with a user-visible list of workspace names, roles, statuses, and IDs.
+7. If runtime interaction is not supported, report a sanitized diagnostic and require install-time or config-time workspace selection.
+8. If zero valid workspaces are returned, report a sanitized diagnostic and skip NAMS memory work.
+9. If the workspace listing request fails, fail open for the agent harness and skip NAMS memory work for that turn.
 
 The memory hook must re-check effective workspace state before creating the NAMS client. If no effective workspace ID exists, it must not create a conversation or perform workspace-scoped NAMS requests.
 
