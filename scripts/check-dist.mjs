@@ -27,6 +27,7 @@ await access(generatedClientPath);
 await access(geminiExtensionPath);
 await access(opencodeTemplatePath);
 await verifyRootPackageFiles(rootPackagePath);
+await verifySourcePackageIdentity(rootPackagePath);
 await verifyGeminiExtensionSettings(geminiExtensionPath);
 await verifyClaudePluginFiles();
 await verifyCodexPluginFiles();
@@ -56,17 +57,23 @@ async function verifyClaudePluginFiles() {
   const plugin = JSON.parse(await readFile(claudePluginManifestPath, "utf8"));
   const hooks = JSON.parse(await readFile(claudePluginHooksPath, "utf8"));
 
-  if (marketplace.name !== "neo4j-nams-hooks") {
-    throw new Error("dist/.claude-plugin/marketplace.json must name the marketplace neo4j-nams-hooks.");
+  if (marketplace.name !== "nams-plugins") {
+    throw new Error("dist/.claude-plugin/marketplace.json must name the marketplace nams-plugins.");
   }
   if (marketplace.plugins?.[0]?.name !== "nams-hooks" || marketplace.plugins[0].source !== "./plugins/nams-hooks") {
     throw new Error("Claude marketplace must expose nams-hooks from ./plugins/nams-hooks.");
+  }
+  if (marketplace.plugins[0].repository !== "https://github.com/neo4j-labs/nams-plugins") {
+    throw new Error("Claude marketplace plugin repository must point to neo4j-labs/nams-plugins.");
   }
   if (marketplace.plugins[0].version !== packageJson.version) {
     throw new Error("Claude marketplace plugin version must match package.json.");
   }
   if (plugin.name !== "nams-hooks" || plugin.version !== packageJson.version) {
     throw new Error("Claude plugin manifest must name nams-hooks and match package.json version.");
+  }
+  if (plugin.repository !== "https://github.com/neo4j-labs/nams-plugins") {
+    throw new Error("Claude plugin manifest repository must point to neo4j-labs/nams-plugins.");
   }
   if (Object.hasOwn(plugin, "hooks")) {
     throw new Error("Claude plugin manifest must not reference standard hooks/hooks.json because Claude loads it automatically.");
@@ -99,8 +106,8 @@ async function verifyCodexPluginFiles() {
   const plugin = JSON.parse(pluginSource);
   const hooks = JSON.parse(hooksSource);
 
-  if (marketplace.name !== "neo4j-nams-hooks") {
-    throw new Error("dist/.agents/plugins/marketplace.json must name the marketplace neo4j-nams-hooks.");
+  if (marketplace.name !== "nams-plugins") {
+    throw new Error("dist/.agents/plugins/marketplace.json must name the marketplace nams-plugins.");
   }
   if (marketplace.metadata?.version !== packageJson.version) {
     throw new Error("Codex marketplace metadata version must match package.json.");
@@ -112,6 +119,9 @@ async function verifyCodexPluginFiles() {
   }
   if (marketplacePlugin.source?.source !== "local" || marketplacePlugin.source?.path !== "./plugins/codex-nams-hooks") {
     throw new Error("Codex marketplace must expose nams-hooks from ./plugins/codex-nams-hooks.");
+  }
+  if (marketplacePlugin.repository !== "https://github.com/neo4j-labs/nams-plugins") {
+    throw new Error("Codex marketplace plugin repository must point to neo4j-labs/nams-plugins.");
   }
   if (marketplacePlugin.policy?.installation !== "AVAILABLE") {
     throw new Error("Codex marketplace must mark nams-hooks as available for installation.");
@@ -131,6 +141,9 @@ async function verifyCodexPluginFiles() {
 
   if (plugin.name !== "nams-hooks" || plugin.version !== packageJson.version) {
     throw new Error("Codex plugin manifest must name nams-hooks and match package.json version.");
+  }
+  if (plugin.repository !== "https://github.com/neo4j-labs/nams-plugins") {
+    throw new Error("Codex plugin manifest repository must point to neo4j-labs/nams-plugins.");
   }
   if (plugin.license !== packageJson.license) {
     throw new Error("Codex plugin manifest license must match package.json.");
@@ -241,6 +254,9 @@ async function listFiles(directory, prefix = "") {
 
 async function checkPackedPackage(packageDir, binTarget) {
   const packageJson = JSON.parse(await readFile(path.join(packageDir, "package.json"), "utf8"));
+  if (packageJson.name !== "@neo4j-labs/nams-plugins") {
+    throw new Error(`${path.relative(root, packageDir) || "."}/package.json name must be @neo4j-labs/nams-plugins.`);
+  }
   if (packageJson.bin?.["nams-hooks"] !== `./${binTarget}`) {
     throw new Error(`${path.relative(root, packageDir) || "."}/package.json bin must point to ./${binTarget}.`);
   }
@@ -294,6 +310,16 @@ async function verifyRootPackageFiles(packagePath) {
   const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
   if (!Array.isArray(packageJson.files) || !packageJson.files.includes("templates/")) {
     throw new Error("package.json files must include templates/ for the OpenCode plugin shim.");
+  }
+}
+
+async function verifySourcePackageIdentity(packagePath) {
+  const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
+  if (packageJson.name !== "@neo4j-labs/nams-plugins") {
+    throw new Error("package.json name must be @neo4j-labs/nams-plugins.");
+  }
+  if (packageJson.bin?.["nams-hooks"] !== "./dist/bin/cli.js") {
+    throw new Error("package.json must expose the nams-hooks executable at ./dist/bin/cli.js.");
   }
 }
 
