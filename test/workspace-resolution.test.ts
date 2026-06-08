@@ -33,7 +33,7 @@ function invocation(projectDir: string): HookInvocation<"BeforeAgent"> {
   };
 }
 
-test("configured workspace skips workspace listing", async () => {
+test("configured workspace skips workspace listing and is not preflight validated", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-workspace-resolution-"));
   try {
     const nams = createNamsFetchMock().workspaces({ error: "unexpected workspace listing" }, 500);
@@ -57,13 +57,18 @@ test("configured workspace skips workspace listing", async () => {
 
     assert.equal(result.status, "ready");
     assert.equal(result.config.workspaceId, "configured-workspace");
+    assert.deepEqual(state.workspace, {
+      id: "configured-workspace",
+      source: "config",
+      selectedAt: state.workspace?.selectedAt,
+    });
     assert.equal(nams.calls("listMyWorkspaces").length, 0);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
 });
 
-test("single returned workspace stores session workspace and returns ready config", async () => {
+test("single listed workspace auto-selects by cardinality", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-workspace-resolution-"));
   try {
     const nams = createNamsFetchMock().workspaces({
@@ -176,7 +181,7 @@ test("empty workspace list skips memory with fixed diagnostic", async () => {
   }
 });
 
-test("multiple workspaces return Gemini deny output before memory can continue", async () => {
+test("multiple listed workspaces require Gemini selection before memory can continue", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-workspace-resolution-"));
   try {
     createNamsFetchMock().workspaces({
@@ -214,7 +219,7 @@ test("multiple workspaces return Gemini deny output before memory can continue",
   }
 });
 
-test("multiple workspaces return OpenCode configuration-required output without memory readiness", async () => {
+test("multiple listed workspaces require OpenCode configuration before memory readiness", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-workspace-resolution-"));
   try {
     createNamsFetchMock().workspaces({
