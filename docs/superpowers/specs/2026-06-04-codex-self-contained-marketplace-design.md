@@ -69,7 +69,7 @@ dist/
 
 The marketplace file exposes a single plugin named `nams-hooks` with `source.path` set to `./plugins/codex-nams-hooks`. Its policy sets `installation` to `AVAILABLE` and `authentication` to `ON_USE`. It does not make the plugin installed by default, and it does not define Codex plugin NAMS credential prompts. The source directory is platform-specific because the existing Claude plugin release path already uses `dist/plugins/nams-hooks/hooks/hooks.json` for Claude-specific hook commands.
 
-The plugin manifest uses stable package metadata: `name`, `version`, `description`, `license`, `repository`, and keywords. Lifecycle hooks are provided through the default `hooks/hooks.json` file rather than inline manifest hook configuration.
+The plugin manifest uses stable package metadata: `name`, `version`, `description`, `license`, `repository`, and keywords. Its `repository` value is `https://github.com/neo4j-labs/nams-plugins`. Lifecycle hooks are provided through the default `hooks/hooks.json` file rather than inline manifest hook configuration.
 
 ## Hook Command Shape
 
