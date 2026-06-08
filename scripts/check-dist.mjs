@@ -28,7 +28,7 @@ await access(generatedClientPath);
 await access(geminiExtensionPath);
 await access(opencodeTemplatePath);
 await verifyRootPackageFiles(rootPackagePath);
-await verifySourcePackageIdentity(rootPackagePath);
+const rootPackageJson = await verifySourcePackageIdentity(rootPackagePath);
 await verifyGeminiExtensionSettings(geminiExtensionPath);
 await verifyClaudePluginFiles();
 await verifyCodexPluginFiles();
@@ -44,7 +44,7 @@ if (openApiArtifacts.length > 0) {
   throw new Error(`dist must not include runtime OpenAPI artifacts: ${openApiArtifacts.join(", ")}`);
 }
 
-await checkPackedPackage(root, "dist/bin/cli.js");
+await checkPackedPackage(root, "dist/bin/cli.js", { packageJson: rootPackageJson, identityAlreadyVerified: true });
 await checkPackedPackage(distDir, "bin/cli.js");
 
 async function verifyClaudePluginFiles() {
@@ -253,9 +253,11 @@ async function listFiles(directory, prefix = "") {
   return files;
 }
 
-async function checkPackedPackage(packageDir, binTarget) {
-  const packageJson = JSON.parse(await readFile(path.join(packageDir, "package.json"), "utf8"));
-  assertPackageIdentity(packageJson, packageDir, `./${binTarget}`);
+async function checkPackedPackage(packageDir, binTarget, options = {}) {
+  const packageJson = options.packageJson ?? JSON.parse(await readFile(path.join(packageDir, "package.json"), "utf8"));
+  if (options.identityAlreadyVerified !== true) {
+    assertPackageIdentity(packageJson, packageDir, `./${binTarget}`);
+  }
   await assertExecutable(path.join(packageDir, binTarget));
 
   const pack = await npmPackDryRun(packageDir);
@@ -312,6 +314,7 @@ async function verifyRootPackageFiles(packagePath) {
 async function verifySourcePackageIdentity(packagePath) {
   const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
   assertPackageIdentity(packageJson, path.dirname(packagePath), "./dist/bin/cli.js");
+  return packageJson;
 }
 
 function assertPackageIdentity(packageJson, packageDir, expectedBinTarget) {
