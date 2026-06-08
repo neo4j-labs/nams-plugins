@@ -197,6 +197,34 @@ test("workspaces configure codex writes project config for explicit workspace", 
   }
 });
 
+test("workspaces configure auto-writes the only returned workspace when workspace id is omitted", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-"));
+  try {
+    await withWorkspaceServer(
+      async (baseUrl) => {
+        const result = await runCli(
+          ["workspaces", "configure", "codex", "--scope", "project"],
+          {},
+          runtimeEnv(path.join(projectDir, "home"), baseUrl),
+          projectDir,
+        );
+
+        assert.equal(result.code, 0, result.stderr);
+        assert.match(result.stdout, /workspace-only/);
+        assert.equal(result.stderr, "");
+        assert.deepEqual(JSON.parse(await readFile(path.join(projectDir, ".nams", "config.json"), "utf8")), {
+          workspaceId: "workspace-only",
+        });
+      },
+      {
+        workspaces: [{ id: "workspace-only", name: "Engineering", role: "owner", status: "active" }],
+      },
+    );
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("workspaces configure rejects symlinked project config before loading config", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-"));
   try {
