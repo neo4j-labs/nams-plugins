@@ -21,6 +21,7 @@ const codexPluginCliPath = path.join(root, "dist", "plugins", "codex-nams-hooks"
 const codexHookEvents = ["SessionStart", "UserPromptSubmit", "Stop", "PostToolUse"];
 const opencodeTemplatePath = path.join(root, "templates", "opencode", "plugins", "nams-hooks.js");
 const rootPackagePath = path.join(root, "package.json");
+const releasePackageName = "@neo4j-labs/nams-plugins";
 const execFileAsync = promisify(execFile);
 
 await access(generatedClientPath);
@@ -254,12 +255,7 @@ async function listFiles(directory, prefix = "") {
 
 async function checkPackedPackage(packageDir, binTarget) {
   const packageJson = JSON.parse(await readFile(path.join(packageDir, "package.json"), "utf8"));
-  if (packageJson.name !== "@neo4j-labs/nams-plugins") {
-    throw new Error(`${path.relative(root, packageDir) || "."}/package.json name must be @neo4j-labs/nams-plugins.`);
-  }
-  if (packageJson.bin?.["nams-hooks"] !== `./${binTarget}`) {
-    throw new Error(`${path.relative(root, packageDir) || "."}/package.json bin must point to ./${binTarget}.`);
-  }
+  assertPackageIdentity(packageJson, packageDir, `./${binTarget}`);
   await assertExecutable(path.join(packageDir, binTarget));
 
   const pack = await npmPackDryRun(packageDir);
@@ -315,11 +311,16 @@ async function verifyRootPackageFiles(packagePath) {
 
 async function verifySourcePackageIdentity(packagePath) {
   const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
-  if (packageJson.name !== "@neo4j-labs/nams-plugins") {
-    throw new Error("package.json name must be @neo4j-labs/nams-plugins.");
+  assertPackageIdentity(packageJson, path.dirname(packagePath), "./dist/bin/cli.js");
+}
+
+function assertPackageIdentity(packageJson, packageDir, expectedBinTarget) {
+  const packageLabel = packageDir === root ? "package.json" : `${path.relative(root, packageDir)}/package.json`;
+  if (packageJson.name !== releasePackageName) {
+    throw new Error(`${packageLabel} name must be ${releasePackageName}.`);
   }
-  if (packageJson.bin?.["nams-hooks"] !== "./dist/bin/cli.js") {
-    throw new Error("package.json must expose the nams-hooks executable at ./dist/bin/cli.js.");
+  if (packageJson.bin?.["nams-hooks"] !== expectedBinTarget) {
+    throw new Error(`${packageLabel} must expose the nams-hooks executable at ${expectedBinTarget}.`);
   }
 }
 
