@@ -62,7 +62,7 @@ type WorkspaceListCardinalityDecision =
 - Modify: `test/workspace-resolution.test.ts`
 - Inspect only: `src/runtime/workspace-resolution.ts`
 
-- [ ] **Step 1: Rename the configured-workspace test and add a preflight-validation assertion**
+- [x] **Step 1: Rename the configured-workspace test and add a preflight-validation assertion**
 
 In `test/workspace-resolution.test.ts`, rename:
 
@@ -92,7 +92,7 @@ assert.deepEqual(state.workspace, {
 });
 ```
 
-- [ ] **Step 2: Rename the single-workspace test to describe cardinality, not key type**
+- [x] **Step 2: Rename the single-workspace test to describe cardinality, not key type**
 
 In `test/workspace-resolution.test.ts`, rename:
 
@@ -114,7 +114,7 @@ workspaces: [{ id: "workspace-1", name: "Engineering", role: "owner", status: "a
 
 Do not add test fixture fields such as `keyType`, `adminKey`, `workspaceKey`, `admin-key`, or `workspace-key`.
 
-- [ ] **Step 3: Rename the multi-workspace tests to describe cardinality**
+- [x] **Step 3: Rename the multi-workspace tests to describe cardinality**
 
 In `test/workspace-resolution.test.ts`, rename:
 
@@ -140,7 +140,7 @@ to:
 test("multiple listed workspaces require OpenCode configuration before memory readiness", async () => {
 ```
 
-- [ ] **Step 4: Run the targeted workspace-resolution tests**
+- [x] **Step 4: Run the targeted workspace-resolution tests**
 
 Run:
 
@@ -182,7 +182,7 @@ const client = new NamsWorkspaceClient({
 });
 ```
 
-- [ ] **Step 5: Commit runtime test hardening**
+- [x] **Step 5: Commit runtime test hardening**
 
 Run:
 
@@ -201,7 +201,7 @@ Expected: commit succeeds. If `src/runtime/workspace-resolution.ts` was unchange
 - Modify: `test/cli-workspaces.test.ts`
 - Inspect only: `src/runtime/workspace-configuration.ts`
 
-- [ ] **Step 1: Add a configure test for omitted `--workspace-id` with one listed workspace**
+- [x] **Step 1: Add a configure test for omitted `--workspace-id` with one listed workspace**
 
 In `test/cli-workspaces.test.ts`, add this test after `workspaces configure codex writes project config for explicit workspace`:
 
@@ -237,7 +237,7 @@ test("workspaces configure auto-writes the only returned workspace when workspac
 
 This test documents the workspace-key setup path without introducing a key-type fixture.
 
-- [ ] **Step 2: Run the targeted CLI workspace tests**
+- [x] **Step 2: Run the targeted CLI workspace tests**
 
 Run:
 
@@ -259,7 +259,7 @@ function selectWorkspace(
 }
 ```
 
-- [ ] **Step 3: Commit configure test hardening**
+- [x] **Step 3: Commit configure test hardening**
 
 Run:
 
@@ -279,7 +279,7 @@ Expected: commit succeeds. If `src/runtime/workspace-configuration.ts` was uncha
 - Modify: `INSTALL.md`
 - Modify: `docs/superpowers/specs/2026-06-05-nams-workspace-resolution-hook-design.md`
 
-- [ ] **Step 1: Update `INSTALL.md` workspace selection wording**
+- [x] **Step 1: Update `INSTALL.md` workspace selection wording**
 
 In `INSTALL.md`, replace the `### Workspace Selection` introductory paragraphs with:
 
@@ -328,7 +328,7 @@ with:
   workspaces.
 ```
 
-- [ ] **Step 2: Update `README.md` runtime paragraph**
+- [x] **Step 2: Update `README.md` runtime paragraph**
 
 In `README.md`, replace the runtime configuration paragraph under `### Runtime Configuration And Storage` with:
 
@@ -336,7 +336,7 @@ In `README.md`, replace the runtime configuration paragraph under `### Runtime C
 Runtime configuration is JSON-first: `~/.nams/config.json`, optional project `.nams/config.json`, optional platform discovery such as Claude plugin user configuration, then final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. `apiKey` and a resolved `baseUrl` are required for NAMS requests; the standard service URL can be supplied by JSON config or platform configuration templates. NAMS supports workspace keys and admin keys. `nams-hooks` does not configure a key type; it uses the number of workspaces returned by NAMS to decide whether a workspace can be auto-selected. `workspaceId` is required unless the harness path supports workspace auto-resolution and NAMS returns exactly one valid workspace. Runtime state and logs are user-local under per-platform directories in `~/.nams/state/` and `~/.nams/logs/`.
 ```
 
-- [ ] **Step 3: Add an amendment note to the existing workspace-resolution spec**
+- [x] **Step 3: Add an amendment note to the existing workspace-resolution spec**
 
 In `docs/superpowers/specs/2026-06-05-nams-workspace-resolution-hook-design.md`, add this paragraph after the opening summary section that ends with "they do not negotiate workspace selection.":
 
@@ -373,7 +373,7 @@ Then renumber the existing zero-workspace and request-failure items so the seque
 9. If the workspace listing request fails, fail open for the agent harness and skip NAMS memory work for that turn.
 ```
 
-- [ ] **Step 4: Verify documentation contains the key-scope language**
+- [x] **Step 4: Verify documentation contains the key-scope language**
 
 Run:
 
@@ -383,7 +383,7 @@ rg -n "workspace keys|admin keys|key type|exactly one valid workspace|multiple v
 
 Expected: matches appear in README, INSTALL, both workspace specs, and no wording says users must configure a key type inside `nams-hooks`.
 
-- [ ] **Step 5: Commit documentation updates**
+- [x] **Step 5: Commit documentation updates**
 
 Run:
 
@@ -401,7 +401,7 @@ Expected: commit succeeds.
 **Files:**
 - Verify only unless tests reveal missed updates.
 
-- [ ] **Step 1: Run full verification**
+- [x] **Step 1: Run full verification**
 
 Run:
 
@@ -411,7 +411,7 @@ npm run check
 
 Expected: OpenAPI generation is stable, TypeScript builds, test typecheck passes, and the full Node test suite passes.
 
-- [ ] **Step 2: Verify distribution artifacts still package correctly**
+- [x] **Step 2: Verify distribution artifacts still package correctly**
 
 Run:
 
@@ -422,7 +422,7 @@ npm run dist:check
 
 Expected: distribution build and packaged template checks pass.
 
-- [ ] **Step 3: Verify runtime source has no key-type model**
+- [x] **Step 3: Verify runtime source has no key-type model**
 
 Run:
 
@@ -432,7 +432,7 @@ rg -n "keyType|adminKey|workspaceKey|admin-key|workspace-key" src scripts/genera
 
 Expected: no matches. The command exits `1` when no matches are found.
 
-- [ ] **Step 4: Verify workspace-list header behavior remains separated**
+- [x] **Step 4: Verify workspace-list header behavior remains separated**
 
 Run:
 
@@ -442,7 +442,7 @@ node --import=tsx --test test/nams-workspace-client-generator.test.ts
 
 Expected: workspace client generator tests pass, including the assertion that `listMyWorkspaces` omits `X-Workspace-Id`.
 
-- [ ] **Step 5: Check for whitespace errors**
+- [x] **Step 5: Check for whitespace errors**
 
 Run:
 
@@ -452,7 +452,7 @@ git diff --check
 
 Expected: no output and exit code `0`.
 
-- [ ] **Step 6: Commit any final fixes**
+- [x] **Step 6: Commit any final fixes**
 
 If any verification step required a small correction, commit it:
 
