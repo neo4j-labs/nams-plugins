@@ -132,7 +132,7 @@ codex plugin marketplace add ./dist
 codex plugin marketplace list
 ```
 
-Restart Codex, open `/plugins`, select the `neo4j-nams-hooks` marketplace, and
+Restart Codex, open `/plugins`, select the `nams-plugins` marketplace, and
 install `NAMS Hooks`. Then use `/hooks` to review and trust the plugin-bundled
 hooks when Codex asks for hook review.
 
@@ -182,7 +182,7 @@ Build and validate the generated local Claude plugin marketplace:
 npm run dist
 claude plugin validate ./dist
 claude plugin marketplace add ./dist
-claude plugin install nams-hooks@neo4j-nams-hooks
+claude plugin install nams-hooks@nams-plugins
 ```
 
 The generated marketplace lives at:

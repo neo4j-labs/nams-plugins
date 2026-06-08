@@ -34,8 +34,8 @@ It ensures deterministic memory persistence and context recall across different 
 Install the Claude Code marketplace release:
 
 ```bash
-claude plugin marketplace add kubamarchwicki/nams-hooks@latest
-claude plugin install nams-hooks@neo4j-nams-hooks
+claude plugin marketplace add neo4j-labs/nams-plugins@latest
+claude plugin install nams-hooks@nams-plugins
 ```
 
 The Claude plugin prompts for the required NAMS API key and workspace ID, and
