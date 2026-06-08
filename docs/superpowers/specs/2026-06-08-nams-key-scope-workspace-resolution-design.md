@@ -194,4 +194,3 @@ User-facing docs should explain:
 
 The docs should avoid implying that users need to choose or configure a key type
 inside `nams-hooks`.
-
