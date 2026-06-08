@@ -25,10 +25,11 @@ test("Claude plugin template invokes the bundled CLI through plugin root", async
 test("Claude marketplace template exposes the nams-hooks plugin source", async () => {
   const template = JSON.parse(await readFile("templates/claude/.claude-plugin/marketplace.json", "utf8"));
 
-  assert.equal(template.name, "neo4j-nams-hooks");
+  assert.equal(template.name, "nams-plugins");
   assert.equal(template.metadata.version, "__PACKAGE_VERSION__");
   assert.equal(template.plugins[0].name, "nams-hooks");
   assert.equal(template.plugins[0].source, "./plugins/nams-hooks");
+  assert.equal(template.plugins[0].repository, "https://github.com/neo4j-labs/nams-plugins");
   assert.equal(template.plugins[0].version, "__PACKAGE_VERSION__");
   assert.equal(template.plugins[0].license, "__PACKAGE_LICENSE__");
 });
@@ -39,6 +40,7 @@ test("Claude plugin manifest template declares user config without standard hook
   assert.equal(template.name, "nams-hooks");
   assert.equal(template.version, "__PACKAGE_VERSION__");
   assert.equal(template.license, "__PACKAGE_LICENSE__");
+  assert.equal(template.repository, "https://github.com/neo4j-labs/nams-plugins");
   assert.equal(Object.hasOwn(template, "hooks"), false);
   assert.deepEqual(template.userConfig.NAMS_API_KEY, {
     type: "string",

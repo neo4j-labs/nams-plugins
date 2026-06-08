@@ -11,7 +11,7 @@ const pluginRoot = "${PLUGIN_ROOT}";
 test("Codex repo marketplace template exposes nams-hooks as available", async () => {
   const template = JSON.parse(await readFile(marketplacePath, "utf8"));
 
-  assert.equal(template.name, "neo4j-nams-hooks");
+  assert.equal(template.name, "nams-plugins");
   assert.equal(template.metadata.description, "Neo4j Agent Memory Service hooks for Codex.");
   assert.equal(template.metadata.version, "__PACKAGE_VERSION__");
 
@@ -31,7 +31,7 @@ test("Codex repo marketplace template exposes nams-hooks as available", async ()
   assert.equal(plugin.description, "Persistent Neo4j Agent Memory Service hooks for Codex.");
   assert.equal(plugin.version, "__PACKAGE_VERSION__");
   assert.equal(plugin.author.name, "Neo4j Labs");
-  assert.equal(plugin.repository, "https://github.com/neo4j-labs/nams-hooks");
+  assert.equal(plugin.repository, "https://github.com/neo4j-labs/nams-plugins");
   assert.equal(plugin.license, "__PACKAGE_LICENSE__");
   assert.deepEqual(plugin.keywords, ["memory", "context", "persistence", "neo4j", "nams"]);
   assert.equal(plugin.category, "Productivity");
@@ -44,7 +44,7 @@ test("Codex plugin manifest template declares metadata without credential prompt
   assert.equal(template.version, "__PACKAGE_VERSION__");
   assert.equal(template.description, "Persistent Neo4j Agent Memory Service hooks for Codex.");
   assert.equal(template.author.name, "Neo4j Labs");
-  assert.equal(template.repository, "https://github.com/neo4j-labs/nams-hooks");
+  assert.equal(template.repository, "https://github.com/neo4j-labs/nams-plugins");
   assert.equal(template.license, "__PACKAGE_LICENSE__");
   assert.deepEqual(template.keywords, ["memory", "context", "persistence", "neo4j", "nams"]);
   assert.equal(Object.hasOwn(template, "userConfig"), false);
