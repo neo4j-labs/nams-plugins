@@ -50,10 +50,9 @@ test("Claude plugin manifest template declares user config without standard hook
   assert.deepEqual(template.userConfig.NAMS_WORKSPACE_ID, {
     type: "string",
     title: "NAMS workspace ID",
-    description: "Neo4j Agent Memory Service workspace ID.",
-    required: true,
+    description: "Optional workspace ID for Neo4j Agent Memory Service. If omitted, nams-hooks auto-selects a single available workspace before memory starts.",
   });
-  assert.equal(template.userConfig.NAMS_WORKSPACE_ID.required, true);
+  assert.equal(Object.hasOwn(template.userConfig.NAMS_WORKSPACE_ID, "required"), false);
   assert.deepEqual(template.userConfig.NAMS_BASE_URL, {
     type: "string",
     title: "NAMS base URL",

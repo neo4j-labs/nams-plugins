@@ -67,6 +67,12 @@ Runtime workspace resolution is allowed only when hook ordering is deterministic
 
 The table intentionally distinguishes "can block" from "can order side effects." Blocking is not enough when a sibling memory hook can still start and create a conversation.
 
+> 2026-06-09 amendment: Claude and Codex still must not use sibling first-prompt
+> workspace hooks, but their memory adapters can now perform inline
+> single-workspace auto-resolution before creating a conversation. This
+> preserves deterministic side effects while supporting workspace keys that
+> return exactly one workspace.
+
 ## Command Model
 
 Add a new workspace-oriented command surface:
@@ -273,10 +279,10 @@ Platform installation research:
 
 - Gemini extensions support static extension settings that are collected during installation or later with `gemini extensions config`. Settings declare environment variable names, can be marked sensitive, and are allowlisted into the extension environment. Gemini also supports hooks from `hooks/hooks.json`. The documented settings prompt is static, so it can ask for `NAMS_WORKSPACE_ID`, but it cannot itself call NAMS to populate choices. Gemini's platform strategy should use runtime `BeforeAgent` auto-resolution for single-workspace users and optionally use `InstallConfigure` from a wrapper/config command to write extension settings or `.nams/config.json` for multi-workspace users.
 - Claude plugins support manifest `userConfig` values prompted when the plugin is enabled. These values are available as `${user_config.KEY}` substitutions and as `CLAUDE_PLUGIN_OPTION_<KEY>` environment variables. Claude plugins can also ship hooks, including `Setup`; however, `Setup` fires only for explicit `--init-only`, `--init` in print mode, or `--maintenance` in print mode, cannot block, and does not run on normal startup. Claude's platform strategy should treat `userConfig` as the native manual workspace ID surface and may use `InstallConfigure` through a NAMS setup command or explicitly triggered setup flow, but should not rely on a sibling first-prompt runtime workspace hook.
-- Codex plugins can be installed from marketplaces, can declare install/authentication policy, can bundle lifecycle hooks, and can use plugin data directories. Codex may prompt for external app or MCP authentication during install or first use, but the docs do not expose a plugin-provided arbitrary install script or dynamic config form for a NAMS workspace picker. Plugin-bundled hooks are non-managed hooks that require user trust and, for matching command hooks on the same event, are launched concurrently with other matching hooks. Codex's platform strategy should keep workspace ID required in metadata/docs until `InstallConfigure` is implemented through a NAMS-controlled configure flow or a verified Codex-specific setup surface.
+- Codex plugins can be installed from marketplaces, can declare install/authentication policy, can bundle lifecycle hooks, and can use plugin data directories. Codex may prompt for external app or MCP authentication during install or first use, but the docs do not expose a plugin-provided arbitrary install script or dynamic config form for a NAMS workspace picker. Plugin-bundled hooks are non-managed hooks that require user trust and, for matching command hooks on the same event, are launched concurrently with other matching hooks. Codex's platform strategy should avoid sibling first-prompt workspace hooks, but the memory adapter may perform inline single-workspace auto-resolution before creating a conversation.
 - OpenCode loads local plugins directly and installs npm plugin packages with Bun at startup. Plugin hooks run in documented source order, and plugins can subscribe to `installation.updated`, TUI, shell, tool, message, and session events. The docs do not describe a blocking install-time configuration prompt or a first-message selection UI for this use case. OpenCode's platform strategy can use ordered in-plugin runtime phases for single-workspace auto-resolution, and may later map `InstallConfigure` to `installation.updated`, `tui.prompt.append`, or another verified OpenCode flow if it can block or clearly guide the user before memory starts.
 
-Claude and Codex plugin metadata should continue to mark workspace ID as required until that setup flow exists for their plugin path. Gemini can mark workspace ID optional only when the sequential workspace hook is shipped and verified. OpenCode optionality is limited to the verified single-workspace auto-resolution path shipped with the runtime.
+Claude and Codex plugin metadata should not add sibling first-prompt workspace hooks. Their memory adapters can still make workspace ID optional for single-workspace accounts by resolving inline before memory side effects. Gemini can mark workspace ID optional only when the sequential workspace hook is shipped and verified. OpenCode optionality is limited to the verified single-workspace auto-resolution path shipped with the runtime.
 
 ## Diagnostics And Logging
 
@@ -333,8 +339,8 @@ Required platform tests:
 - Gemini template uses a `sequential: true` `BeforeAgent` group with workspace command before memory command.
 - Gemini can auto-resolve a single workspace and then create a conversation with `X-Workspace-Id`.
 - Gemini multi-workspace handling returns `decision: "deny"` with a visible workspace list before conversation creation.
-- Claude plugin metadata keeps `NAMS_WORKSPACE_ID` required.
-- Codex plugin metadata or docs keep `workspaceId` required until install-time selection exists.
+- Claude plugin metadata marks `NAMS_WORKSPACE_ID` optional for single-workspace runtime auto-resolution.
+- Codex docs describe single-workspace runtime auto-resolution and explicit configuration for multi-workspace users.
 - OpenCode plugin shim performs workspace phase before memory phase for first user message.
 - OpenCode multi-workspace handling skips memory and reports configuration required until a blocking picker is verified.
 

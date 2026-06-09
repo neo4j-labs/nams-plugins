@@ -17,7 +17,7 @@ For local development, generated artifact testing, and `./dist` workflows, see
 
 ## Runtime Configuration
 
-Runtime configuration is JSON-first: `~/.nams/config.json`, optional project `.nams/config.json`, optional platform discovery such as Claude plugin user configuration, then final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. `apiKey` and `baseUrl` are required for NAMS requests. `workspaceId` is required unless the harness path supports workspace auto-resolution before memory starts. Runtime state and logs are user-local under per-platform directories in `~/.nams/state/` and `~/.nams/logs/`.
+Runtime configuration is JSON-first: `~/.nams/config.json`, optional project `.nams/config.json`, optional platform discovery such as Claude plugin user configuration, then final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. `apiKey` and `baseUrl` are required for NAMS requests. When `workspaceId` is omitted, nams-hooks calls `GET /v1/users/me/workspaces` before memory creation. If exactly one valid workspace is returned, that workspace is stored in session state and reused by later memory hooks. If multiple valid workspaces are returned, configure one explicitly with `nams-hooks workspaces configure ... --workspace-id <workspace-id>`. Runtime state and logs are user-local under per-platform directories in `~/.nams/state/` and `~/.nams/logs/`.
 
 The portable configuration path is a user-local config file:
 
@@ -57,9 +57,11 @@ NAMS supports workspace keys and admin keys. Both key scopes can list available
 workspaces through NAMS. Workspace keys return exactly one workspace from that
 list; admin keys may return multiple workspaces.
 
-Gemini CLI and OpenCode can auto-select a workspace before memory starts when
-NAMS returns exactly one valid workspace. Claude Code and Codex require a
-configured workspace ID before memory requests run.
+All memory adapters can auto-select a workspace before memory starts when NAMS
+returns exactly one valid workspace. Gemini CLI can additionally block a
+multi-workspace first prompt before memory starts because its workspace hook runs
+in a verified sequential hook group. Other platforms skip memory for the turn
+until you configure a workspace explicitly.
 
 To configure a specific project workspace for Codex, run:
 
@@ -99,7 +101,8 @@ After installation, configure and reload the plugin inside Claude Code:
 Claude prompts for:
 
 - `NAMS_API_KEY`: required, sensitive, stored by Claude Code in secure storage.
-- `NAMS_WORKSPACE_ID`: required, non-sensitive.
+- `NAMS_WORKSPACE_ID`: optional, non-sensitive. If omitted, nams-hooks
+  auto-selects a single available workspace before memory starts.
 - `NAMS_BASE_URL`: optional, non-sensitive, defaults to
   `https://memory.neo4jlabs.com`.
 

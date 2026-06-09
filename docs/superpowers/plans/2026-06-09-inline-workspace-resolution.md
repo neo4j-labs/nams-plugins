@@ -603,7 +603,7 @@ git commit -m "feat: auto-resolve Codex workspace inline" -m "Co-authored-by: Co
 - Modify: `INSTALL.md`
 - Modify: `docs/superpowers/specs/2026-06-05-nams-workspace-resolution-hook-design.md`
 
-- [ ] **Step 1: Add failing Claude template test**
+- [x] **Step 1: Add failing Claude template test**
 
 In `test/claude-template.test.js`, update the `NAMS_WORKSPACE_ID` expectation:
 
@@ -616,7 +616,7 @@ assert.deepEqual(template.userConfig.NAMS_WORKSPACE_ID, {
 assert.equal(Object.hasOwn(template.userConfig.NAMS_WORKSPACE_ID, "required"), false);
 ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
 Run:
 
@@ -626,7 +626,7 @@ node --test test/claude-template.test.js
 
 Expected: fail because the template still marks `NAMS_WORKSPACE_ID.required` as `true`.
 
-- [ ] **Step 3: Update Claude plugin config template**
+- [x] **Step 3: Update Claude plugin config template**
 
 In `templates/claude/plugins/nams-hooks/.claude-plugin/plugin.json`, change:
 
@@ -643,7 +643,7 @@ to:
 
 Keep `NAMS_BASE_URL.default` as `https://memory.neo4jlabs.com`; that default belongs to configuration, not generated runtime source.
 
-- [ ] **Step 4: Update docs**
+- [x] **Step 4: Update docs**
 
 In `README.md` and `INSTALL.md`, update workspace-selection language so it says:
 
@@ -657,7 +657,7 @@ In `docs/superpowers/specs/2026-06-05-nams-workspace-resolution-hook-design.md`,
 > 2026-06-09 amendment: Claude and Codex still must not use sibling first-prompt workspace hooks, but their memory adapters can now perform inline single-workspace auto-resolution before creating a conversation. This preserves deterministic side effects while supporting workspace keys that return exactly one workspace.
 ```
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run:
 
