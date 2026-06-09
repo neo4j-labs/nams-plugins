@@ -39,7 +39,7 @@
 - Modify: `src/runtime/logging.ts`
 - Modify: `test/workspace-resolution.test.ts`
 
-- [ ] **Step 1: Add failing shared-helper tests**
+- [x] **Step 1: Add failing shared-helper tests**
 
 In `test/workspace-resolution.test.ts`, import `loadEffectiveNamsConfigForMemory`:
 
@@ -175,7 +175,7 @@ function invocation(projectDir: string, platform: HookInvocation<"BeforeAgent">[
 }
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run:
 
@@ -185,7 +185,7 @@ node --import=tsx --test test/workspace-resolution.test.ts
 
 Expected: new effective-helper tests fail because `loadEffectiveNamsConfigForMemory` logs `NAMS workspaceId missing` and does not list workspaces.
 
-- [ ] **Step 3: Implement shared helper fallback**
+- [x] **Step 3: Implement shared helper fallback**
 
 In `src/runtime/logging.ts`, add:
 
@@ -244,7 +244,7 @@ if (input.state.workspace !== undefined) {
 }
 ```
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 Run:
 

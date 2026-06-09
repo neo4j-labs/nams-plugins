@@ -3,6 +3,7 @@ import type { HookInvocation, HookResult, Platform } from "../interfaces.js";
 import {
   configDiagnosticPayload,
   loadNamsConnectionConfig,
+  type NamsConfigDiscovery,
   type NamsRuntimeConfig,
 } from "./config.js";
 import {
@@ -26,37 +27,27 @@ export interface ResolveWorkspaceInput {
   state: SessionState;
   projectDirectory: string;
   interaction: WorkspaceInteraction;
+  discoverConfig?: NamsConfigDiscovery;
 }
 
 export async function loadEffectiveNamsConfigForMemory(
   invocation: HookInvocation,
   state: SessionState,
   projectDirectory: string,
+  discoverConfig?: NamsConfigDiscovery,
 ): Promise<NamsRuntimeConfig | undefined> {
-  const connectionResult = await loadNamsConnectionConfig(projectDirectory);
-  await appendPlatformDiagnosticLog(invocation, state, configDiagnosticPayload(connectionResult));
-  if (!connectionResult.ok) {
-    return undefined;
-  }
-
-  const config = connectionResult.config;
-  if (config.workspaceId !== undefined) {
-    return runtimeConfig(config.apiKey, config.workspaceId, config.baseUrl);
-  }
-
-  if (state.workspace !== undefined) {
-    return runtimeConfig(config.apiKey, state.workspace.id, config.baseUrl);
-  }
-
-  await appendPlatformDiagnosticLog(invocation, state, {
-    message: "NAMS workspaceId missing",
-    configSources: connectionResult.sources,
+  const result = await resolveWorkspaceForMemory({
+    invocation,
+    state,
+    projectDirectory,
+    interaction: "single-only",
+    discoverConfig,
   });
-  return undefined;
+  return result.status === "ready" ? result.config : undefined;
 }
 
 export async function resolveWorkspaceForMemory(input: ResolveWorkspaceInput): Promise<WorkspaceResolutionResult> {
-  const connectionResult = await loadNamsConnectionConfig(input.projectDirectory);
+  const connectionResult = await loadNamsConnectionConfig(input.projectDirectory, input.discoverConfig);
   if (!connectionResult.ok) {
     await appendPlatformDiagnosticLog(input.invocation, input.state, configDiagnosticPayload(connectionResult));
     return { status: "skip-memory", output: allowOutput() };
@@ -80,6 +71,13 @@ export async function resolveWorkspaceForMemory(input: ResolveWorkspaceInput): P
   }
 
   if (input.state.workspace !== undefined) {
+    await appendWorkspaceDiagnostic(input.invocation, input.state, {
+      message: workspaceDiagnosticMessages.loadedFromSessionState,
+      workspace: {
+        id: input.state.workspace.id,
+        source: input.state.workspace.source,
+      },
+    });
     return {
       status: "ready",
       config: runtimeConfig(config.apiKey, input.state.workspace.id, config.baseUrl),
