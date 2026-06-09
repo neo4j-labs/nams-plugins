@@ -52,7 +52,14 @@ Claude and Codex should not gain sibling workspace hooks for the first prompt.
 Instead, their existing memory adapters should call the shared effective-config
 helper. That helper performs single-workspace auto-resolution inline before any
 conversation is created. Multiple workspaces remain a configuration-required
-state that skips memory for that turn.
+state that skips memory for that turn. On user-prompt hooks, this case should
+return non-blocking `hookSpecificOutput.additionalContext` explaining that NAMS
+memory is inactive, no memory messages were stored, multiple workspaces are
+available, and an explicit `workspaceId` must be configured. Claude should also
+return the same notice as a top-level `systemMessage`, because Claude records
+`additionalContext` for the model but does not render it as a user-visible chat
+message. This warning output must leave `suppressOutput` false; otherwise Claude
+can consume the context while hiding the visible hook output path.
 
 Claude must preserve plugin user configuration discovery while using the shared
 helper, because Claude can source `apiKey`, `workspaceId`, and `baseUrl` from
@@ -103,6 +110,10 @@ Tests should cover:
 - Codex `BeforeAgent` auto-selects the same way;
 - Claude/Codex multi-workspace cases skip memory without creating a
   conversation;
+- Claude/Codex multi-workspace user-prompt cases return non-blocking
+  `hookSpecificOutput.additionalContext` with the selection-required message;
+- Claude multi-workspace user-prompt cases also return top-level
+  `systemMessage` so the same notice is visible to the user;
 - Claude plugin templates mark `NAMS_WORKSPACE_ID` optional for runtime
   auto-resolution while preserving the base URL default in configuration.
 

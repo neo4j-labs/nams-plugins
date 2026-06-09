@@ -16,7 +16,10 @@ import {
   saveSessionState,
   type SessionState,
 } from "../../runtime/session-state.js";
-import { loadEffectiveNamsConfigForMemory } from "../../runtime/workspace-resolution.js";
+import {
+  loadEffectiveNamsConfigForMemory,
+  resolveWorkspaceForMemory,
+} from "../../runtime/workspace-resolution.js";
 import { parseCodexPayload } from "./payload.js";
 import { readCodexTranscript, type CodexTranscriptEntry } from "./transcript.js";
 
@@ -54,11 +57,17 @@ export class CodexAdapter implements MemoryPlatformAdapter {
       return allowOutput();
     }
 
-    const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
-    if (config === undefined) {
+    const workspaceResult = await resolveWorkspaceForMemory({
+      invocation,
+      state,
+      projectDirectory: payloadInfo.projectDirectory,
+      interaction: "single-only",
+    });
+    if (workspaceResult.status !== "ready") {
       await saveSessionState(invocation.platform, state.sessionKey, state);
-      return allowOutput();
+      return workspaceResult.output;
     }
+    const config = workspaceResult.config;
 
     let additionalContext: string | undefined;
     try {

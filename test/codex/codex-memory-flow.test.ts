@@ -272,7 +272,18 @@ test("Codex beforeAgent skips memory when multiple listed workspaces require sel
       },
     });
 
-    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    assert.equal(result.stdout.continue, true);
+    assert.equal(result.stdout.suppressOutput, true);
+    assert.equal(Object.hasOwn(result.stdout, "additionalContext"), false);
+    assert.equal(hookSpecificOutput(result).hookEventName, "UserPromptSubmit");
+    assert.match(hookSpecificOutput(result).additionalContext, /NAMS memory is inactive for this turn/);
+    assert.match(hookSpecificOutput(result).additionalContext, /No memory messages were stored/);
+    assert.match(hookSpecificOutput(result).additionalContext, /Multiple NAMS workspaces are available/);
+    assert.match(
+      hookSpecificOutput(result).additionalContext,
+      /nams-hooks workspaces configure codex --scope project --workspace-id/,
+    );
+    assert.match(hookSpecificOutput(result).additionalContext, /workspace-2/);
     assert.equal(nams.calls("listMyWorkspaces").length, 1);
     assert.equal(nams.calls("createConversation").length, 0);
     const state = (await loadSessionState("codex", "session-1"))!;

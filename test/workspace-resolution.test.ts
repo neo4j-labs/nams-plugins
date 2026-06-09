@@ -355,3 +355,47 @@ test("multiple listed workspaces require OpenCode configuration before memory re
     await rm(projectDir, { recursive: true, force: true });
   }
 });
+
+test("multiple listed workspaces return Claude additionalContext selection notice", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-workspace-resolution-"));
+  try {
+    createNamsFetchMock().workspaces({
+      workspaces: [
+        { id: "workspace-1", name: "Engineering", role: "owner", status: "active" },
+        { id: "workspace-2", name: "Research", role: "member", status: "active" },
+      ],
+    });
+    useEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+    const state = createInitialSessionState({
+      platform: "claude",
+      sessionId: "session-1",
+      projectDirectory: projectDir,
+    });
+
+    const result = await resolveWorkspaceForMemory({
+      invocation: { ...invocation(projectDir), platform: "claude" },
+      state,
+      projectDirectory: projectDir,
+      interaction: "single-only",
+    });
+
+    assert.equal(result.status, "skip-memory");
+    assert.equal(result.output.stdout.continue, true);
+    assert.equal(result.output.stdout.suppressOutput, false);
+    assert.match(String(result.output.stdout.systemMessage), /NAMS memory is inactive for this turn/);
+    assert.match(String(result.output.stdout.systemMessage), /nams-hooks workspaces configure claude --scope project --workspace-id/);
+    assert.equal(Object.hasOwn(result.output.stdout, "additionalContext"), false);
+    const hookOutput = result.output.stdout.hookSpecificOutput as Record<string, unknown>;
+    assert.equal(hookOutput.hookEventName, "UserPromptSubmit");
+    assert.match(String(hookOutput.additionalContext), /NAMS memory is inactive for this turn/);
+    assert.match(String(hookOutput.additionalContext), /No memory messages were stored/);
+    assert.match(String(hookOutput.additionalContext), /Multiple NAMS workspaces are available/);
+    assert.match(String(hookOutput.additionalContext), /nams-hooks workspaces configure claude --scope project --workspace-id/);
+    assert.match(String(hookOutput.additionalContext), /workspace-2/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});

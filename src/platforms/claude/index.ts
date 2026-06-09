@@ -9,7 +9,10 @@ import {
   createNamsMemoryService,
 } from "../../runtime/memory-service.js";
 import { createInitialSessionState, loadSessionState, saveSessionState } from "../../runtime/session-state.js";
-import { loadEffectiveNamsConfigForMemory } from "../../runtime/workspace-resolution.js";
+import {
+  loadEffectiveNamsConfigForMemory,
+  resolveWorkspaceForMemory,
+} from "../../runtime/workspace-resolution.js";
 import { discoverClaudeNamsConfig } from "./config.js";
 import { parseClaudePayload } from "./payload.js";
 
@@ -47,16 +50,18 @@ export class ClaudeAdapter implements MemoryPlatformAdapter {
       return allowOutput();
     }
 
-    const config = await loadEffectiveNamsConfigForMemory(
+    const workspaceResult = await resolveWorkspaceForMemory({
       invocation,
       state,
-      payloadInfo.projectDirectory,
-      discoverClaudeNamsConfig,
-    );
-    if (config === undefined) {
+      projectDirectory: payloadInfo.projectDirectory,
+      interaction: "single-only",
+      discoverConfig: discoverClaudeNamsConfig,
+    });
+    if (workspaceResult.status !== "ready") {
       await saveSessionState(invocation.platform, state.sessionKey, state);
-      return allowOutput();
+      return workspaceResult.output;
     }
+    const config = workspaceResult.config;
 
     let additionalContext: string | undefined;
     try {
