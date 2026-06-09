@@ -444,7 +444,7 @@ git commit -m "feat: auto-resolve Claude workspace inline" -m "Co-authored-by: C
 - Modify: `src/platforms/codex/index.ts`
 - Modify: `test/codex/codex-memory-flow.test.ts`
 
-- [ ] **Step 1: Add failing Codex tests**
+- [x] **Step 1: Add failing Codex tests**
 
 In `test/codex/codex-memory-flow.test.ts`, add after `creates Codex conversation, recalls memory, returns context, and stores UserPromptSubmit prompt`:
 
@@ -536,7 +536,7 @@ test("Codex beforeAgent skips memory when multiple listed workspaces require sel
 });
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run:
 
@@ -546,7 +546,7 @@ node --import=tsx --test test/codex/codex-memory-flow.test.ts
 
 Expected: new single-workspace test fails because Codex still uses `loadNamsConfig`.
 
-- [ ] **Step 3: Switch Codex adapter to effective helper**
+- [x] **Step 3: Switch Codex adapter to effective helper**
 
 In `src/platforms/codex/index.ts`, replace:
 
@@ -574,7 +574,7 @@ if (config === undefined) {
 
 Use `config` for `createNamsMemoryService(config, invocation, state)`.
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 Run:
 
