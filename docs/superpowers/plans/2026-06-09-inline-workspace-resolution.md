@@ -683,7 +683,7 @@ git commit -m "docs: clarify inline workspace auto-resolution" -m "Co-authored-b
 **Files:**
 - Verify only unless checks reveal a missed source or doc update.
 
-- [ ] **Step 1: Run full verification**
+- [x] **Step 1: Run full verification**
 
 Run:
 
@@ -696,7 +696,7 @@ git diff --check
 
 Expected: all commands exit `0`.
 
-- [ ] **Step 2: Inspect runtime URL and key-type constraints**
+- [x] **Step 2: Inspect runtime URL and key-type constraints**
 
 Run:
 
@@ -711,7 +711,7 @@ Expected:
 - Claude config template may still contain the production URL as a user configuration default.
 - No runtime key-type branching exists.
 
-- [ ] **Step 3: Commit verification fixes if needed**
+- [x] **Step 3: Commit verification fixes if needed**
 
 If verification required changes:
 

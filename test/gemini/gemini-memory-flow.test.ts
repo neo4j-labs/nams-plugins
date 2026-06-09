@@ -118,11 +118,11 @@ test("creates Gemini conversation, recalls memory, and stores first BeforeAgent 
 
     const { lines } = await readSingleSessionLog(projectDir);
     assert.equal(lines[0].kind, "hook.event");
-    const configDiagnostics = lines.filter(
-      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS config loaded",
+    const workspaceDiagnostics = lines.filter(
+      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS workspace loaded from config",
     );
-    assert.equal(configDiagnostics.length, 1);
-    assert.deepEqual(configDiagnostics[0].payload.configSources, {
+    assert.equal(workspaceDiagnostics.length, 1);
+    assert.deepEqual(workspaceDiagnostics[0].payload.configSources, {
       apiKey: "env:NAMS_API_KEY",
       workspaceId: "env:NAMS_WORKSPACE_ID",
       baseUrl: "env:NAMS_BASE_URL",

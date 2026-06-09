@@ -113,11 +113,11 @@ test("OpenCode chat.message creates conversation, recalls memory, and stores use
     assert.equal(state.pendingMemoryContext.messageId, "user-1");
 
     const { lines } = await readSingleSessionLog(projectDir);
-    const configDiagnostics = lines.filter(
-      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS config loaded",
+    const workspaceDiagnostics = lines.filter(
+      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS workspace loaded from config",
     );
-    assert.equal(configDiagnostics.length, 1);
-    assert.deepEqual(configDiagnostics[0].payload.configSources, {
+    assert.equal(workspaceDiagnostics.length, 1);
+    assert.deepEqual(workspaceDiagnostics[0].payload.configSources, {
       apiKey: "env:NAMS_API_KEY",
       workspaceId: "env:NAMS_WORKSPACE_ID",
       baseUrl: "env:NAMS_BASE_URL",
