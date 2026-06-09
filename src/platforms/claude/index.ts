@@ -1,8 +1,6 @@
 import type { HookInvocation, HookResult, MemoryPlatformAdapter } from "../../interfaces.js";
-import { loadNamsConfig } from "../../runtime/config.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
 import {
-  appendNamsConfigDiagnostic,
   appendNamsFailureDiagnostic,
   appendRawPlatformLog,
 } from "../../runtime/logging.js";
@@ -11,6 +9,7 @@ import {
   createNamsMemoryService,
 } from "../../runtime/memory-service.js";
 import { createInitialSessionState, loadSessionState, saveSessionState } from "../../runtime/session-state.js";
+import { loadEffectiveNamsConfigForMemory } from "../../runtime/workspace-resolution.js";
 import { discoverClaudeNamsConfig } from "./config.js";
 import { parseClaudePayload } from "./payload.js";
 
@@ -48,13 +47,16 @@ export class ClaudeAdapter implements MemoryPlatformAdapter {
       return allowOutput();
     }
 
-    const configResult = await loadNamsConfig(payloadInfo.projectDirectory, discoverClaudeNamsConfig);
-    await appendNamsConfigDiagnostic(invocation, state, configResult);
-    if (!configResult.ok) {
+    const config = await loadEffectiveNamsConfigForMemory(
+      invocation,
+      state,
+      payloadInfo.projectDirectory,
+      discoverClaudeNamsConfig,
+    );
+    if (config === undefined) {
       await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
-    const config = configResult.config;
 
     let additionalContext: string | undefined;
     try {
@@ -126,9 +128,13 @@ export class ClaudeAdapter implements MemoryPlatformAdapter {
       return allowOutput();
     }
 
-    const configResult = await loadNamsConfig(payloadInfo.projectDirectory, discoverClaudeNamsConfig);
-    await appendNamsConfigDiagnostic(invocation, state, configResult);
-    if (!configResult.ok) {
+    const config = await loadEffectiveNamsConfigForMemory(
+      invocation,
+      state,
+      payloadInfo.projectDirectory,
+      discoverClaudeNamsConfig,
+    );
+    if (config === undefined) {
       await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
@@ -140,7 +146,7 @@ export class ClaudeAdapter implements MemoryPlatformAdapter {
 
     try {
       if (!alreadySeen) {
-        const memory = createNamsMemoryService(configResult.config, invocation, state);
+        const memory = createNamsMemoryService(config, invocation, state);
         await memory.storeAssistantMessage(state.conversationId, response);
       }
     } catch {
@@ -178,9 +184,13 @@ export class ClaudeAdapter implements MemoryPlatformAdapter {
       return allowOutput();
     }
 
-    const configResult = await loadNamsConfig(payloadInfo.projectDirectory, discoverClaudeNamsConfig);
-    await appendNamsConfigDiagnostic(invocation, state, configResult);
-    if (!configResult.ok) {
+    const config = await loadEffectiveNamsConfigForMemory(
+      invocation,
+      state,
+      payloadInfo.projectDirectory,
+      discoverClaudeNamsConfig,
+    );
+    if (config === undefined) {
       await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
@@ -193,7 +203,7 @@ export class ClaudeAdapter implements MemoryPlatformAdapter {
         payloadInfo.toolInput,
       );
       if (!hasSeenAny(state.seenToolCallIds, toolCallKeys.lookupKeys)) {
-        const memory = createNamsMemoryService(configResult.config, invocation, state);
+        const memory = createNamsMemoryService(config, invocation, state);
         const reasoningStep = {
           conversationId: state.conversationId,
           reasoning: `Claude Code ran ${payloadInfo.toolName} with the provided tool input.`,

@@ -134,15 +134,97 @@ test("creates Claude conversation, recalls memory, injects additionalContext, an
 
     const { lines } = await readSingleSessionLog(env.HOME, "claude");
     assert.equal(lines[0].kind, "hook.event");
-    const configDiagnostics = lines.filter(
-      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS config loaded",
+    const workspaceDiagnostics = lines.filter(
+      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS workspace loaded from config",
     );
-    assert.equal(configDiagnostics.length, 1);
-    assert.deepEqual(configDiagnostics[0].payload.configSources, {
+    assert.equal(workspaceDiagnostics.length, 1);
+    assert.deepEqual(workspaceDiagnostics[0].payload.configSources, {
       apiKey: "env:NAMS_API_KEY",
       workspaceId: "env:NAMS_WORKSPACE_ID",
       baseUrl: "env:NAMS_BASE_URL",
     });
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Claude BeforeAgent auto-selects a single listed workspace when config workspaceId is missing", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-claude-flow-"));
+  try {
+    const prompt = "Resolve my workspace before memory.";
+    const nams = createNamsFetchMock()
+      .workspaces({
+        workspaces: [{ id: "workspace-1", name: "Engineering", role: "owner", status: "active" }],
+      })
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message();
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+    const adapter = new ClaudeAdapter();
+
+    const result = await adapter.beforeAgent({
+      platform: "claude",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt,
+      },
+    });
+
+    assert.equal(result.stdout.continue, true);
+    assert.equal(nams.calls("listMyWorkspaces").length, 1);
+    assert.equal(nams.calls("createConversation").length, 1);
+    const createHeaders = nams.calls("createConversation")[0].options.headers as Record<string, string>;
+    assert.equal(createHeaders["x-workspace-id"], "workspace-1");
+    const state = (await loadSessionState("claude", "session-1"))!;
+    assert.equal(state.workspace?.id, "workspace-1");
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Claude BeforeAgent skips memory when multiple listed workspaces require selection", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-claude-flow-"));
+  try {
+    const nams = createNamsFetchMock()
+      .workspaces({
+        workspaces: [
+          { id: "workspace-1", name: "Engineering", role: "owner", status: "active" },
+          { id: "workspace-2", name: "Research", role: "member", status: "active" },
+        ],
+      })
+      .all({ error: "unexpected memory call" }, 500);
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+    const adapter = new ClaudeAdapter();
+
+    const result = await adapter.beforeAgent({
+      platform: "claude",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "This should not create memory yet.",
+      },
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    assert.equal(nams.calls("listMyWorkspaces").length, 1);
+    assert.equal(nams.calls("createConversation").length, 0);
+    const state = (await loadSessionState("claude", "session-1"))!;
+    assert.equal(state.workspace, undefined);
+    assert.equal(state.conversationId, undefined);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }

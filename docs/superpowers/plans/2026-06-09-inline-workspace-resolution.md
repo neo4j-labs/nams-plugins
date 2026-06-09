@@ -270,7 +270,7 @@ git commit -m "feat: auto-resolve effective workspace for memory" -m "Co-authore
 - Modify: `src/platforms/claude/index.ts`
 - Modify: `test/claude/claude-memory-flow.test.ts`
 
-- [ ] **Step 1: Add failing Claude tests**
+- [x] **Step 1: Add failing Claude tests**
 
 In `test/claude/claude-memory-flow.test.ts`, add after `creates Claude conversation, recalls memory, injects additionalContext, and stores UserPromptSubmit prompt`:
 
@@ -362,7 +362,7 @@ test("Claude BeforeAgent skips memory when multiple listed workspaces require se
 });
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run:
 
@@ -372,7 +372,7 @@ node --import=tsx --test test/claude/claude-memory-flow.test.ts
 
 Expected: new single-workspace test fails because Claude still uses `loadNamsConfig`.
 
-- [ ] **Step 3: Switch Claude adapter to effective helper**
+- [x] **Step 3: Switch Claude adapter to effective helper**
 
 In `src/platforms/claude/index.ts`, replace:
 
@@ -418,7 +418,7 @@ if (config === undefined) {
 For `afterAgent` and `afterTool`, use the same helper and pass `config` into
 `createNamsMemoryService(config, invocation, state)`.
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 Run:
 
