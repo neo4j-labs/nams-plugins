@@ -1,5 +1,5 @@
 import { NamsWorkspaceClient, type WorkspaceSummary } from "../generated/nams-client.js";
-import type { HookInvocation, HookResult, Platform } from "../interfaces.js";
+import type { HookInvocation } from "../interfaces.js";
 import {
   configDiagnosticPayload,
   loadNamsConnectionConfig,
@@ -15,12 +15,21 @@ import {
 import { namsProvenanceHeaders } from "./provenance.js";
 import type { SessionState } from "./session-state.js";
 
-export type WorkspaceInteraction = "gemini-blocking" | "single-only";
+export type WorkspaceInteraction = "blocking-selection" | "single-only";
+
+export interface PublicWorkspaceSummary {
+  id: string;
+  name?: string;
+  role?: string;
+  status?: string;
+  dbMode?: string;
+}
 
 export type WorkspaceResolutionResult =
   | { status: "ready"; config: NamsRuntimeConfig }
-  | { status: "skip-memory"; output: HookResult }
-  | { status: "block"; output: HookResult };
+  | { status: "skip-memory"; reason: "unavailable" }
+  | { status: "skip-memory"; reason: "selection-required"; workspaces: PublicWorkspaceSummary[] }
+  | { status: "block"; reason: "selection-required"; workspaces: PublicWorkspaceSummary[] };
 
 export interface ResolveWorkspaceInput {
   invocation: HookInvocation;
@@ -50,7 +59,7 @@ export async function resolveWorkspaceForMemory(input: ResolveWorkspaceInput): P
   const connectionResult = await loadNamsConnectionConfig(input.projectDirectory, input.discoverConfig);
   if (!connectionResult.ok) {
     await appendPlatformDiagnosticLog(input.invocation, input.state, configDiagnosticPayload(connectionResult));
-    return { status: "skip-memory", output: allowOutput() };
+    return { status: "skip-memory", reason: "unavailable" };
   }
 
   const config = connectionResult.config;
@@ -99,14 +108,14 @@ export async function resolveWorkspaceForMemory(input: ResolveWorkspaceInput): P
     await appendWorkspaceDiagnostic(input.invocation, input.state, {
       message: workspaceDiagnosticMessages.requestFailed,
     });
-    return { status: "skip-memory", output: allowOutput() };
+    return { status: "skip-memory", reason: "unavailable" };
   }
 
   if (workspaces.length === 0) {
     await appendWorkspaceDiagnostic(input.invocation, input.state, {
       message: workspaceDiagnosticMessages.listEmpty,
     });
-    return { status: "skip-memory", output: allowOutput() };
+    return { status: "skip-memory", reason: "unavailable" };
   }
 
   if (workspaces.length === 1) {
@@ -131,64 +140,18 @@ export async function resolveWorkspaceForMemory(input: ResolveWorkspaceInput): P
     workspaces: workspaces.map(publicWorkspace),
   });
 
-  if (input.interaction === "gemini-blocking") {
+  if (input.interaction === "blocking-selection") {
     return {
       status: "block",
-      output: workspaceSelectionRequiredOutput(input.invocation.platform, workspaces),
+      reason: "selection-required",
+      workspaces: workspaces.map(publicWorkspace),
     };
   }
   return {
     status: "skip-memory",
-    output: workspaceSelectionRequiredOutput(input.invocation.platform, workspaces),
+    reason: "selection-required",
+    workspaces: workspaces.map(publicWorkspace),
   };
-}
-
-export function workspaceSelectionRequiredOutput(platform: Platform, workspaces: WorkspaceSummary[]): HookResult {
-  if (platform === "gemini") {
-    return {
-      stdout: {
-        decision: "deny",
-        reason: workspaceSelectionReason(workspaces),
-      },
-    };
-  }
-  if (platform === "opencode") {
-    return {
-      stdout: {
-        continue: true,
-        suppressOutput: true,
-        namsWorkspaceSelectionRequired: true,
-        reason: workspaceSelectionReason(workspaces),
-      },
-    };
-  }
-  if (platform === "claude") {
-    const message = workspaceSelectionAdditionalContext(platform, workspaces);
-    return {
-      stdout: {
-        continue: true,
-        suppressOutput: false,
-        systemMessage: message,
-        hookSpecificOutput: {
-          hookEventName: "UserPromptSubmit",
-          additionalContext: message,
-        },
-      },
-    };
-  }
-  if (platform === "codex") {
-    return {
-      stdout: {
-        continue: true,
-        suppressOutput: true,
-        hookSpecificOutput: {
-          hookEventName: "UserPromptSubmit",
-          additionalContext: workspaceSelectionAdditionalContext(platform, workspaces),
-        },
-      },
-    };
-  }
-  return allowOutput();
 }
 
 function runtimeConfig(apiKey: string, workspaceId: string, baseUrl: string): NamsRuntimeConfig {
@@ -199,40 +162,13 @@ function runtimeConfig(apiKey: string, workspaceId: string, baseUrl: string): Na
   };
 }
 
-function workspaceSelectionReason(workspaces: WorkspaceSummary[]): string {
-  return [
-    "NAMS workspace selection required. Configure one workspace before memory starts:",
-    ...workspaces.map((workspace, index) => {
-      const name = workspace.name?.trim() || "(unnamed workspace)";
-      const role = workspace.role?.trim() || "unknown-role";
-      const status = workspace.status?.trim() || "unknown-status";
-      return `${index + 1}. ${name} (${role}, ${status}) - ${workspace.id}`;
-    }),
-  ].join("\n");
-}
-
-function workspaceSelectionAdditionalContext(platform: "claude" | "codex", workspaces: WorkspaceSummary[]): string {
-  return [
-    "NAMS memory is inactive for this turn.",
-    "No memory messages were stored. Multiple NAMS workspaces are available, and no workspaceId is configured.",
-    `Configure an explicit workspace before memory can resume: nams-hooks workspaces configure ${platform} --scope project --workspace-id <workspace-id>`,
-    "Available NAMS workspaces:",
-    ...workspaces.map((workspace, index) => {
-      const name = workspace.name?.trim() || "(unnamed workspace)";
-      const role = workspace.role?.trim() || "unknown-role";
-      const status = workspace.status?.trim() || "unknown-status";
-      return `${index + 1}. ${name} (${role}, ${status}) - ${workspace.id}`;
-    }),
-  ].join("\n");
-}
-
 function validWorkspaces(workspaces: WorkspaceSummary[] | undefined): Array<WorkspaceSummary & { id: string }> {
   return (workspaces ?? []).filter((workspace): workspace is WorkspaceSummary & { id: string } => {
     return typeof workspace.id === "string" && workspace.id.trim() !== "";
   });
 }
 
-function publicWorkspace(workspace: WorkspaceSummary): Record<string, string | undefined> {
+function publicWorkspace(workspace: WorkspaceSummary & { id: string }): PublicWorkspaceSummary {
   return {
     id: workspace.id,
     name: workspace.name,
@@ -240,8 +176,4 @@ function publicWorkspace(workspace: WorkspaceSummary): Record<string, string | u
     status: workspace.status,
     dbMode: workspace.dbMode,
   };
-}
-
-function allowOutput(): HookResult {
-  return { stdout: { continue: true, suppressOutput: true } };
 }

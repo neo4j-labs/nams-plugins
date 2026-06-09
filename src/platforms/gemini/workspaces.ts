@@ -2,7 +2,11 @@ import type { WorkspaceHookInvocation, WorkspaceHookResult, WorkspacePlatformAda
 import { appendRawPlatformLog } from "../../runtime/logging.js";
 import { createInitialSessionState, loadSessionState, saveSessionState } from "../../runtime/session-state.js";
 import { configureWorkspaceSelection } from "../../runtime/workspace-configuration.js";
-import { resolveWorkspaceForMemory } from "../../runtime/workspace-resolution.js";
+import {
+  type PublicWorkspaceSummary,
+  resolveWorkspaceForMemory,
+  type WorkspaceResolutionResult,
+} from "../../runtime/workspace-resolution.js";
 import { parseGeminiPayload } from "./payload.js";
 
 export class GeminiWorkspaceAdapter implements WorkspacePlatformAdapter {
@@ -20,10 +24,10 @@ export class GeminiWorkspaceAdapter implements WorkspacePlatformAdapter {
       invocation,
       state,
       projectDirectory: payloadInfo.projectDirectory,
-      interaction: "gemini-blocking",
+      interaction: "blocking-selection",
     });
     await saveSessionState(invocation.platform, state.sessionKey, state);
-    return result.status === "ready" ? allowOutput() : result.output;
+    return result.status === "ready" ? allowOutput() : workspaceResultOutput(result);
   }
 
   async installConfigure(invocation: WorkspaceHookInvocation<"InstallConfigure">): Promise<WorkspaceHookResult> {
@@ -33,4 +37,28 @@ export class GeminiWorkspaceAdapter implements WorkspacePlatformAdapter {
 
 function allowOutput(): WorkspaceHookResult {
   return { stdout: { continue: true, suppressOutput: true } };
+}
+
+function workspaceResultOutput(result: Exclude<WorkspaceResolutionResult, { status: "ready" }>): WorkspaceHookResult {
+  if (result.reason === "selection-required") {
+    return {
+      stdout: {
+        decision: "deny",
+        reason: workspaceSelectionReason(result.workspaces),
+      },
+    };
+  }
+  return allowOutput();
+}
+
+function workspaceSelectionReason(workspaces: PublicWorkspaceSummary[]): string {
+  return [
+    "NAMS workspace selection required. Configure one workspace before memory starts:",
+    ...workspaces.map((workspace, index) => {
+      const name = workspace.name?.trim() || "(unnamed workspace)";
+      const role = workspace.role?.trim() || "unknown-role";
+      const status = workspace.status?.trim() || "unknown-status";
+      return `${index + 1}. ${name} (${role}, ${status}) - ${workspace.id}`;
+    }),
+  ].join("\n");
 }

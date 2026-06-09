@@ -38,6 +38,12 @@ If neither config nor state provides a workspace, the runtime lists workspaces:
 - multiple valid workspace IDs: skip memory and allow on inline memory paths;
   ordered workspace hooks such as Gemini may still block before memory starts.
 
+The shared resolver returns only platform-neutral outcomes: ready config,
+unavailable workspace resolution, or sanitized workspace-selection-required
+metadata. Platform adapters own all hook JSON formatting such as Gemini
+`decision`, OpenCode shim flags, Claude `systemMessage`, and Codex
+`hookSpecificOutput`.
+
 ## Platform Behavior
 
 Gemini keeps its separate ordered workspace hook. The hook can still block a

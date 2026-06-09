@@ -18,7 +18,9 @@ import {
 } from "../../runtime/session-state.js";
 import {
   loadEffectiveNamsConfigForMemory,
+  type PublicWorkspaceSummary,
   resolveWorkspaceForMemory,
+  type WorkspaceResolutionResult,
 } from "../../runtime/workspace-resolution.js";
 import { parseCodexPayload } from "./payload.js";
 import { readCodexTranscript, type CodexTranscriptEntry } from "./transcript.js";
@@ -65,7 +67,7 @@ export class CodexAdapter implements MemoryPlatformAdapter {
     });
     if (workspaceResult.status !== "ready") {
       await saveSessionState(invocation.platform, state.sessionKey, state);
-      return workspaceResult.output;
+      return workspaceResultOutput(workspaceResult);
     }
     const config = workspaceResult.config;
 
@@ -274,6 +276,28 @@ function allowOutput(additionalContext?: string): HookResult {
         : {}),
     },
   };
+}
+
+function workspaceResultOutput(result: Exclude<WorkspaceResolutionResult, { status: "ready" }>): HookResult {
+  if (result.reason === "selection-required") {
+    return allowOutput(workspaceSelectionAdditionalContext(result.workspaces));
+  }
+  return allowOutput();
+}
+
+function workspaceSelectionAdditionalContext(workspaces: PublicWorkspaceSummary[]): string {
+  return [
+    "NAMS memory is inactive for this turn.",
+    "No memory messages were stored. Multiple NAMS workspaces are available, and no workspaceId is configured.",
+    "Configure an explicit workspace before memory can resume: nams-hooks workspaces configure codex --scope project --workspace-id <workspace-id>",
+    "Available NAMS workspaces:",
+    ...workspaces.map((workspace, index) => {
+      const name = workspace.name?.trim() || "(unnamed workspace)";
+      const role = workspace.role?.trim() || "unknown-role";
+      const status = workspace.status?.trim() || "unknown-status";
+      return `${index + 1}. ${name} (${role}, ${status}) - ${workspace.id}`;
+    }),
+  ].join("\n");
 }
 
 function allowPostToolUseOutput(): HookResult {

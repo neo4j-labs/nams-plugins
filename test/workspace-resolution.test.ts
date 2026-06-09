@@ -58,7 +58,7 @@ test("configured workspace skips workspace listing and is not preflight validate
       invocation: invocation(projectDir),
       state,
       projectDirectory: projectDir,
-      interaction: "gemini-blocking",
+      interaction: "blocking-selection",
     });
 
     assert.equal(result.status, "ready");
@@ -94,7 +94,7 @@ test("single listed workspace auto-selects by cardinality", async () => {
       invocation: invocation(projectDir),
       state,
       projectDirectory: projectDir,
-      interaction: "gemini-blocking",
+      interaction: "blocking-selection",
     });
 
     assert.equal(result.status, "ready");
@@ -225,11 +225,11 @@ test("workspace request failure skips memory with fixed diagnostic", async () =>
       invocation: invocation(projectDir),
       state,
       projectDirectory: projectDir,
-      interaction: "gemini-blocking",
+      interaction: "blocking-selection",
     });
 
     assert.equal(result.status, "skip-memory");
-    assert.deepEqual(result.output.stdout, { continue: true, suppressOutput: true });
+    assert.equal(result.reason, "unavailable");
     assert.equal(state.workspace, undefined);
     assert.equal(nams.calls().length, 1);
 
@@ -262,11 +262,11 @@ test("empty workspace list skips memory with fixed diagnostic", async () => {
       invocation: invocation(projectDir),
       state,
       projectDirectory: projectDir,
-      interaction: "gemini-blocking",
+      interaction: "blocking-selection",
     });
 
     assert.equal(result.status, "skip-memory");
-    assert.deepEqual(result.output.stdout, { continue: true, suppressOutput: true });
+    assert.equal(result.reason, "unavailable");
     assert.equal(state.workspace, undefined);
     assert.equal(nams.calls("listMyWorkspaces").length, 1);
     assert.equal(nams.calls("createConversation").length, 0);
@@ -305,22 +305,22 @@ test("multiple listed workspaces require Gemini selection before memory can cont
       invocation: invocation(projectDir),
       state,
       projectDirectory: projectDir,
-      interaction: "gemini-blocking",
+      interaction: "blocking-selection",
     });
 
     assert.equal(result.status, "block");
     assert.equal(state.workspace, undefined);
-    assert.deepEqual(result.output.stdout.continue, undefined);
-    assert.equal(result.output.stdout.decision, "deny");
-    assert.match(String(result.output.stdout.reason), /NAMS workspace selection required/);
-    assert.match(String(result.output.stdout.reason), /Engineering/);
-    assert.match(String(result.output.stdout.reason), /workspace-2/);
+    assert.equal(result.reason, "selection-required");
+    assert.deepEqual(result.workspaces, [
+      { id: "workspace-1", name: "Engineering", role: "owner", status: "active", dbMode: undefined },
+      { id: "workspace-2", name: "Research", role: "member", status: "active", dbMode: undefined },
+    ]);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
 });
 
-test("multiple listed workspaces require OpenCode configuration before memory readiness", async () => {
+test("multiple listed workspaces return platform-neutral selection-required result", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-workspace-resolution-"));
   try {
     createNamsFetchMock().workspaces({
@@ -347,54 +347,11 @@ test("multiple listed workspaces require OpenCode configuration before memory re
     });
 
     assert.equal(result.status, "skip-memory");
-    assert.equal(result.output.stdout.namsMemoryReady, undefined);
-    assert.equal(result.output.stdout.namsWorkspaceSelectionRequired, true);
-    assert.match(String(result.output.stdout.reason), /NAMS workspace selection required/);
-    assert.match(String(result.output.stdout.reason), /workspace-2/);
-  } finally {
-    await rm(projectDir, { recursive: true, force: true });
-  }
-});
-
-test("multiple listed workspaces return Claude additionalContext selection notice", async () => {
-  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-workspace-resolution-"));
-  try {
-    createNamsFetchMock().workspaces({
-      workspaces: [
-        { id: "workspace-1", name: "Engineering", role: "owner", status: "active" },
-        { id: "workspace-2", name: "Research", role: "member", status: "active" },
-      ],
-    });
-    useEnv(projectDir, {
-      NAMS_API_KEY: "key",
-      NAMS_BASE_URL: "https://memory.example.test",
-    });
-    const state = createInitialSessionState({
-      platform: "claude",
-      sessionId: "session-1",
-      projectDirectory: projectDir,
-    });
-
-    const result = await resolveWorkspaceForMemory({
-      invocation: { ...invocation(projectDir), platform: "claude" },
-      state,
-      projectDirectory: projectDir,
-      interaction: "single-only",
-    });
-
-    assert.equal(result.status, "skip-memory");
-    assert.equal(result.output.stdout.continue, true);
-    assert.equal(result.output.stdout.suppressOutput, false);
-    assert.match(String(result.output.stdout.systemMessage), /NAMS memory is inactive for this turn/);
-    assert.match(String(result.output.stdout.systemMessage), /nams-hooks workspaces configure claude --scope project --workspace-id/);
-    assert.equal(Object.hasOwn(result.output.stdout, "additionalContext"), false);
-    const hookOutput = result.output.stdout.hookSpecificOutput as Record<string, unknown>;
-    assert.equal(hookOutput.hookEventName, "UserPromptSubmit");
-    assert.match(String(hookOutput.additionalContext), /NAMS memory is inactive for this turn/);
-    assert.match(String(hookOutput.additionalContext), /No memory messages were stored/);
-    assert.match(String(hookOutput.additionalContext), /Multiple NAMS workspaces are available/);
-    assert.match(String(hookOutput.additionalContext), /nams-hooks workspaces configure claude --scope project --workspace-id/);
-    assert.match(String(hookOutput.additionalContext), /workspace-2/);
+    assert.equal(result.reason, "selection-required");
+    assert.deepEqual(result.workspaces, [
+      { id: "workspace-1", name: "Engineering", role: "owner", status: "active", dbMode: undefined },
+      { id: "workspace-2", name: "Research", role: "member", status: "active", dbMode: undefined },
+    ]);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
