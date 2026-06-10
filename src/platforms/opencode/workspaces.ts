@@ -62,7 +62,10 @@ function workspaceResultOutput(result: Exclude<WorkspaceResolutionResult, { stat
 
 function workspaceSelectionReason(workspaces: PublicWorkspaceSummary[]): string {
   return [
-    "NAMS workspace selection required. Configure one workspace before memory starts:",
+    "NAMS memory is inactive for this turn.",
+    "No memory messages were stored. Multiple NAMS workspaces are available, and no workspaceId is configured.",
+    "Configure an explicit workspace before memory can resume: nams-hooks workspaces configure opencode --scope project --workspace-id <workspace-id>",
+    "Available NAMS workspaces:",
     ...workspaces.map((workspace, index) => {
       const name = workspace.name?.trim() || "(unnamed workspace)";
       const role = workspace.role?.trim() || "unknown-role";

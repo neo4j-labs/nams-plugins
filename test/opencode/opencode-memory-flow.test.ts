@@ -164,6 +164,37 @@ test("OpenCode chat.message uses auto-selected workspace when NAMS_WORKSPACE_ID 
   }
 });
 
+test("OpenCode workspace hook reports inactive memory when multiple workspaces are available", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
+  try {
+    createNamsFetchMock().workspaces({
+      workspaces: [
+        { id: "workspace-1", name: "Engineering", role: "owner", status: "active" },
+        { id: "workspace-2", name: "Research", role: "member", status: "active" },
+      ],
+    });
+    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
+    const workspaceAdapter = new OpenCodeWorkspaceAdapter();
+
+    const result = await workspaceAdapter.beforeAgent({
+      platform: "opencode",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: chatMessagePayload(projectDir, "session-1", "user-1", "Resolve workspace before memory."),
+    });
+
+    assert.equal(result.stdout.continue, true);
+    assert.equal(result.stdout.namsMemoryReady, undefined);
+    assert.equal(result.stdout.namsWorkspaceSelectionRequired, true);
+    assert.match(String(result.stdout.reason), /NAMS memory is inactive for this turn/);
+    assert.match(String(result.stdout.reason), /No memory messages were stored/);
+    assert.match(String(result.stdout.reason), /workspaces configure opencode/);
+    assert.match(String(result.stdout.reason), /Research/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("OpenCode system transform returns and consumes pending memory context", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
   try {

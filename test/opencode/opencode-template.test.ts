@@ -98,7 +98,13 @@ test("chat.message handler skips memory when workspace result is not ready", asy
 });
 
 test("chat.message handler logs workspace selection requirement and skips memory", async () => {
-  const reason = "NAMS workspace selection required. Configure one workspace before memory starts:\n1. Engineering - workspace-1";
+  const reason = [
+    "NAMS memory is inactive for this turn.",
+    "No memory messages were stored. Multiple NAMS workspaces are available, and no workspaceId is configured.",
+    "Configure an explicit workspace before memory can resume: nams-hooks workspaces configure opencode --scope project --workspace-id <workspace-id>",
+    "Available NAMS workspaces:",
+    "1. Engineering (owner, active) - workspace-1",
+  ].join("\n");
   const fixture = await createNamsHooksStub({
     stdoutByCommand: {
       workspaces: { namsWorkspaceSelectionRequired: true, reason },
@@ -130,6 +136,46 @@ test("chat.message handler logs workspace selection requirement and skips memory
       level: "warn",
       message: reason,
     });
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("system transform handler surfaces pending workspace selection requirement", async () => {
+  const reason = [
+    "NAMS memory is inactive for this turn.",
+    "No memory messages were stored. Multiple NAMS workspaces are available, and no workspaceId is configured.",
+    "Configure an explicit workspace before memory can resume: nams-hooks workspaces configure opencode --scope project --workspace-id <workspace-id>",
+    "Available NAMS workspaces:",
+    "1. Engineering (owner, active) - workspace-1",
+  ].join("\n");
+  const fixture = await createNamsHooksStub({
+    stdoutByCommand: {
+      workspaces: { namsWorkspaceSelectionRequired: true, reason },
+      run: { continue: true, suppressOutput: true },
+    },
+  });
+  try {
+    const { NamsHooks } = await importTemplateWithCommand(fixture.commandPath);
+    const plugin = await NamsHooks({ directory: fixture.directory, project: "project-a", worktree: "worktree-a" });
+    const chatInput = {
+      sessionID: "session-1",
+      message: { id: "message-1", parts: [{ type: "text", text: "hello" }] },
+    };
+
+    await plugin["chat.message"](chatInput, { ok: true });
+    const output = { system: [] };
+    const result = await plugin["experimental.chat.system.transform"]({ sessionID: "session-1" }, output);
+
+    assert.equal(result, output);
+    assert.deepEqual(output.system, [reason]);
+    const calls = await readCalls(fixture.callsPath);
+    assert.deepEqual(calls.map((call) => call.args), [
+      ["workspaces", "opencode", "--event", "BeforeAgent"],
+      ["run", "opencode", "--event", "BeforeAgent"],
+    ]);
+    assert.equal(calls[0].payload.hook, "chat.message");
+    assert.equal(calls[1].payload.hook, "experimental.chat.system.transform");
   } finally {
     await fixture.cleanup();
   }
