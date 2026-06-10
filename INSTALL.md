@@ -17,7 +17,7 @@ For local development, generated artifact testing, and `./dist` workflows, see
 
 ## Runtime Configuration
 
-Runtime configuration is JSON-first: `~/.nams/config.json`, optional project `.nams/config.json`, optional platform discovery such as Claude plugin user configuration, then final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. `apiKey` and `baseUrl` are required for NAMS requests. `workspaceId` is required unless the harness path supports workspace auto-resolution before memory starts. Runtime state and logs are user-local under per-platform directories in `~/.nams/state/` and `~/.nams/logs/`.
+Runtime configuration is JSON-first: `~/.nams/config.json`, optional project `.nams/config.json`, optional platform discovery such as Claude plugin user configuration, then final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. `apiKey` and `baseUrl` are required for NAMS requests. When `workspaceId` is omitted, nams-hooks calls `GET /v1/users/me/workspaces` before memory creation. If exactly one valid workspace is returned, that workspace is stored in session state and reused by later memory hooks. If multiple valid workspaces are returned, configure one explicitly with `nams-hooks workspaces configure ... --workspace-id <workspace-id>`. Runtime state and logs are user-local under per-platform directories in `~/.nams/state/` and `~/.nams/logs/`.
 
 The portable configuration path is a user-local config file:
 
@@ -53,9 +53,14 @@ and gitignored, especially if it contains an API key.
 
 ### Workspace Selection
 
-Gemini CLI and OpenCode can auto-select a workspace before memory starts when
-your NAMS account has exactly one valid workspace. Claude Code and Codex require
-a configured workspace ID before memory requests run.
+NAMS supports workspace keys and admin keys. Both key scopes can list available
+workspaces through NAMS. Workspace keys return exactly one workspace from that
+list; admin keys may return multiple workspaces.
+
+All memory adapters can auto-select a workspace before memory starts when NAMS
+returns exactly one valid workspace. When NAMS returns multiple valid
+workspaces, hooks notify that memory is inactive for the turn, continue agent
+execution, and skip memory writes until you configure a workspace explicitly.
 
 To configure a specific project workspace for Codex, run:
 
@@ -68,9 +73,10 @@ platform path. Use `--scope user` to write `~/.nams/config.json` instead of the
 project `.nams/config.json`.
 
 If you omit `--workspace-id`, the configure command writes the workspace
-automatically only when NAMS returns a single valid workspace. When NAMS returns
-multiple valid workspaces, the command prints the available choices and exits
-without changing config.
+automatically only when NAMS returns a single valid workspace. This is the
+normal path for workspace keys. When NAMS returns multiple valid workspaces,
+which is common for admin keys, the command prints the available choices and
+exits without changing config until you pass one ID explicitly.
 
 ## Claude Code
 
@@ -94,7 +100,8 @@ After installation, configure and reload the plugin inside Claude Code:
 Claude prompts for:
 
 - `NAMS_API_KEY`: required, sensitive, stored by Claude Code in secure storage.
-- `NAMS_WORKSPACE_ID`: required, non-sensitive.
+- `NAMS_WORKSPACE_ID`: optional, non-sensitive. If omitted, nams-hooks
+  auto-selects a single available workspace before memory starts.
 - `NAMS_BASE_URL`: optional, non-sensitive, defaults to
   `https://memory.neo4jlabs.com`.
 
@@ -141,7 +148,9 @@ gemini extensions install https://github.com/neo4j-labs/nams-plugins --ref lates
 The Gemini extension declares these settings:
 
 - `NAMS_API_KEY`: required for NAMS requests and marked sensitive.
-- `NAMS_WORKSPACE_ID`: required for NAMS requests.
+- `NAMS_WORKSPACE_ID`: optional for Gemini runtime auto-resolution when NAMS
+  returns exactly one valid workspace; required when the key can see multiple
+  workspaces.
 - `NAMS_BASE_URL`: optional when another configuration source supplies
   `baseUrl`; use `https://memory.neo4jlabs.com` for the standard service.
 

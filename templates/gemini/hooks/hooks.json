@@ -16,14 +16,7 @@
     "BeforeAgent": [
       {
         "matcher": "*",
-        "sequential": true,
         "hooks": [
-          {
-            "type": "command",
-            "name": "nams-workspace-before-agent",
-            "description": "Resolve the NAMS workspace before Gemini CLI memory starts.",
-            "command": "node \"${extensionPath}/bin/cli.js\" workspaces gemini --event BeforeAgent"
-          },
           {
             "type": "command",
             "name": "nams-memory-before-agent",

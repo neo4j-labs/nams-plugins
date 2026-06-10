@@ -7,7 +7,12 @@ import {
 import { combineMemoryContexts, createNamsMemoryService, serializeToolInput } from "../../runtime/memory-service.js";
 import { createInitialSessionState, loadSessionState, saveSessionState } from "../../runtime/session-state.js";
 import type { SessionState } from "../../runtime/session-state.js";
-import { loadEffectiveNamsConfigForMemory } from "../../runtime/workspace-resolution.js";
+import {
+  loadEffectiveNamsConfigForMemory,
+  resolveWorkspaceForMemory,
+  type WorkspaceResolutionResult,
+} from "../../runtime/workspace-resolution.js";
+import { formatWorkspaceSelectionNotice } from "../workspace-selection.js";
 import { parseOpenCodePayload, type OpenCodePayloadInfo } from "./payload.js";
 
 export class OpenCodeAdapter implements MemoryPlatformAdapter {
@@ -54,11 +59,16 @@ export class OpenCodeAdapter implements MemoryPlatformAdapter {
       return allowOutput();
     }
 
-    const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
-    if (config === undefined) {
+    const workspaceResult = await resolveWorkspaceForMemory({
+      invocation,
+      state,
+      projectDirectory: payloadInfo.projectDirectory,
+    });
+    if (workspaceResult.status !== "ready") {
       await saveSessionState(invocation.platform, state.sessionKey, state);
-      return allowOutput();
+      return workspaceResultOutput(workspaceResult);
     }
+    const config = workspaceResult.config;
 
     try {
       const memory = createNamsMemoryService(config, invocation, state);
@@ -264,6 +274,20 @@ export class OpenCodeAdapter implements MemoryPlatformAdapter {
 
 function allowOutput(): HookResult {
   return { stdout: { continue: true, suppressOutput: true } };
+}
+
+function workspaceResultOutput(result: Exclude<WorkspaceResolutionResult, { status: "ready" }>): HookResult {
+  if (result.reason === "selection-required") {
+    return {
+      stdout: {
+        continue: true,
+        suppressOutput: true,
+        namsWorkspaceSelectionRequired: true,
+        reason: formatWorkspaceSelectionNotice("opencode", result.workspaces),
+      },
+    };
+  }
+  return allowOutput();
 }
 
 async function consumePendingContext(

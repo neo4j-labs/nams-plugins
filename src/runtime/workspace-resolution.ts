@@ -1,8 +1,9 @@
 import { NamsWorkspaceClient, type WorkspaceSummary } from "../generated/nams-client.js";
-import type { HookInvocation, HookResult, Platform } from "../interfaces.js";
+import type { HookInvocation } from "../interfaces.js";
 import {
   configDiagnosticPayload,
   loadNamsConnectionConfig,
+  type NamsConfigDiscovery,
   type NamsRuntimeConfig,
 } from "./config.js";
 import {
@@ -14,52 +15,46 @@ import {
 import { namsProvenanceHeaders } from "./provenance.js";
 import type { SessionState } from "./session-state.js";
 
-export type WorkspaceInteraction = "gemini-blocking" | "single-only";
+export interface PublicWorkspaceSummary {
+  id: string;
+  name?: string;
+  role?: string;
+  status?: string;
+  dbMode?: string;
+}
 
 export type WorkspaceResolutionResult =
   | { status: "ready"; config: NamsRuntimeConfig }
-  | { status: "skip-memory"; output: HookResult }
-  | { status: "block"; output: HookResult };
+  | { status: "skip-memory"; reason: "unavailable" }
+  | { status: "skip-memory"; reason: "selection-required"; workspaces: PublicWorkspaceSummary[] };
 
 export interface ResolveWorkspaceInput {
   invocation: HookInvocation;
   state: SessionState;
   projectDirectory: string;
-  interaction: WorkspaceInteraction;
+  discoverConfig?: NamsConfigDiscovery;
 }
 
 export async function loadEffectiveNamsConfigForMemory(
   invocation: HookInvocation,
   state: SessionState,
   projectDirectory: string,
+  discoverConfig?: NamsConfigDiscovery,
 ): Promise<NamsRuntimeConfig | undefined> {
-  const connectionResult = await loadNamsConnectionConfig(projectDirectory);
-  await appendPlatformDiagnosticLog(invocation, state, configDiagnosticPayload(connectionResult));
-  if (!connectionResult.ok) {
-    return undefined;
-  }
-
-  const config = connectionResult.config;
-  if (config.workspaceId !== undefined) {
-    return runtimeConfig(config.apiKey, config.workspaceId, config.baseUrl);
-  }
-
-  if (state.workspace !== undefined) {
-    return runtimeConfig(config.apiKey, state.workspace.id, config.baseUrl);
-  }
-
-  await appendPlatformDiagnosticLog(invocation, state, {
-    message: "NAMS workspaceId missing",
-    configSources: connectionResult.sources,
+  const result = await resolveWorkspaceForMemory({
+    invocation,
+    state,
+    projectDirectory,
+    discoverConfig,
   });
-  return undefined;
+  return result.status === "ready" ? result.config : undefined;
 }
 
 export async function resolveWorkspaceForMemory(input: ResolveWorkspaceInput): Promise<WorkspaceResolutionResult> {
-  const connectionResult = await loadNamsConnectionConfig(input.projectDirectory);
+  const connectionResult = await loadNamsConnectionConfig(input.projectDirectory, input.discoverConfig);
   if (!connectionResult.ok) {
     await appendPlatformDiagnosticLog(input.invocation, input.state, configDiagnosticPayload(connectionResult));
-    return { status: "skip-memory", output: allowOutput() };
+    return { status: "skip-memory", reason: "unavailable" };
   }
 
   const config = connectionResult.config;
@@ -80,6 +75,13 @@ export async function resolveWorkspaceForMemory(input: ResolveWorkspaceInput): P
   }
 
   if (input.state.workspace !== undefined) {
+    await appendWorkspaceDiagnostic(input.invocation, input.state, {
+      message: workspaceDiagnosticMessages.loadedFromSessionState,
+      workspace: {
+        id: input.state.workspace.id,
+        source: input.state.workspace.source,
+      },
+    });
     return {
       status: "ready",
       config: runtimeConfig(config.apiKey, input.state.workspace.id, config.baseUrl),
@@ -101,14 +103,14 @@ export async function resolveWorkspaceForMemory(input: ResolveWorkspaceInput): P
     await appendWorkspaceDiagnostic(input.invocation, input.state, {
       message: workspaceDiagnosticMessages.requestFailed,
     });
-    return { status: "skip-memory", output: allowOutput() };
+    return { status: "skip-memory", reason: "unavailable" };
   }
 
   if (workspaces.length === 0) {
     await appendWorkspaceDiagnostic(input.invocation, input.state, {
       message: workspaceDiagnosticMessages.listEmpty,
     });
-    return { status: "skip-memory", output: allowOutput() };
+    return { status: "skip-memory", reason: "unavailable" };
   }
 
   if (workspaces.length === 1) {
@@ -133,38 +135,11 @@ export async function resolveWorkspaceForMemory(input: ResolveWorkspaceInput): P
     workspaces: workspaces.map(publicWorkspace),
   });
 
-  if (input.interaction === "gemini-blocking") {
-    return {
-      status: "block",
-      output: workspaceSelectionRequiredOutput(input.invocation.platform, workspaces),
-    };
-  }
   return {
     status: "skip-memory",
-    output: workspaceSelectionRequiredOutput(input.invocation.platform, workspaces),
+    reason: "selection-required",
+    workspaces: workspaces.map(publicWorkspace),
   };
-}
-
-export function workspaceSelectionRequiredOutput(platform: Platform, workspaces: WorkspaceSummary[]): HookResult {
-  if (platform === "gemini") {
-    return {
-      stdout: {
-        decision: "deny",
-        reason: workspaceSelectionReason(workspaces),
-      },
-    };
-  }
-  if (platform === "opencode") {
-    return {
-      stdout: {
-        continue: true,
-        suppressOutput: true,
-        namsWorkspaceSelectionRequired: true,
-        reason: workspaceSelectionReason(workspaces),
-      },
-    };
-  }
-  return allowOutput();
 }
 
 function runtimeConfig(apiKey: string, workspaceId: string, baseUrl: string): NamsRuntimeConfig {
@@ -175,25 +150,13 @@ function runtimeConfig(apiKey: string, workspaceId: string, baseUrl: string): Na
   };
 }
 
-function workspaceSelectionReason(workspaces: WorkspaceSummary[]): string {
-  return [
-    "NAMS workspace selection required. Configure one workspace before memory starts:",
-    ...workspaces.map((workspace, index) => {
-      const name = workspace.name?.trim() || "(unnamed workspace)";
-      const role = workspace.role?.trim() || "unknown-role";
-      const status = workspace.status?.trim() || "unknown-status";
-      return `${index + 1}. ${name} (${role}, ${status}) - ${workspace.id}`;
-    }),
-  ].join("\n");
-}
-
 function validWorkspaces(workspaces: WorkspaceSummary[] | undefined): Array<WorkspaceSummary & { id: string }> {
   return (workspaces ?? []).filter((workspace): workspace is WorkspaceSummary & { id: string } => {
     return typeof workspace.id === "string" && workspace.id.trim() !== "";
   });
 }
 
-function publicWorkspace(workspace: WorkspaceSummary): Record<string, string | undefined> {
+function publicWorkspace(workspace: WorkspaceSummary & { id: string }): PublicWorkspaceSummary {
   return {
     id: workspace.id,
     name: workspace.name,
@@ -201,8 +164,4 @@ function publicWorkspace(workspace: WorkspaceSummary): Record<string, string | u
     status: workspace.status,
     dbMode: workspace.dbMode,
   };
-}
-
-function allowOutput(): HookResult {
-  return { stdout: { continue: true, suppressOutput: true } };
 }

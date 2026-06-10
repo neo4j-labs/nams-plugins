@@ -40,43 +40,8 @@ test("opencode plugin template exposes NAMS hook handlers", async () => {
   assert.match(source, /nams-hooks/);
 });
 
-test("chat.message handler runs workspace resolution before memory when workspace is ready", async () => {
-  const fixture = await createNamsHooksStub({
-    stdoutByCommand: {
-      workspaces: { namsMemoryReady: true },
-    },
-  });
-  try {
-    const { NamsHooks } = await importTemplateWithCommand(fixture.commandPath);
-    const plugin = await NamsHooks({ directory: fixture.directory, project: "project-a", worktree: "worktree-a" });
-    const input = { message: { id: "message-1", parts: [{ type: "text", text: "hello" }] } };
-    const output = { ok: true };
-
-    const result = await plugin["chat.message"](input, output);
-
-    const calls = await readCalls(fixture.callsPath);
-    assert.equal(result, undefined);
-    assert.equal(calls.length, 2);
-    assert.deepEqual(calls.map((call) => call.args), [
-      ["workspaces", "opencode", "--event", "BeforeAgent"],
-      ["run", "opencode", "--event", "BeforeAgent"],
-    ]);
-    for (const call of calls) {
-      assert.equal(call.payload.hook, "chat.message");
-      assert.deepEqual(call.payload.input, input);
-      assert.deepEqual(call.payload.output, output);
-    }
-  } finally {
-    await fixture.cleanup();
-  }
-});
-
-test("chat.message handler skips memory when workspace result is not ready", async () => {
-  const fixture = await createNamsHooksStub({
-    stdoutByCommand: {
-      workspaces: { continue: true },
-    },
-  });
+test("chat.message handler routes through the memory command", async () => {
+  const fixture = await createNamsHooksStub();
   try {
     const { NamsHooks } = await importTemplateWithCommand(fixture.commandPath);
     const plugin = await NamsHooks({ directory: fixture.directory, project: "project-a", worktree: "worktree-a" });
@@ -88,7 +53,7 @@ test("chat.message handler skips memory when workspace result is not ready", asy
     const calls = await readCalls(fixture.callsPath);
     assert.equal(result, undefined);
     assert.equal(calls.length, 1);
-    assert.deepEqual(calls[0].args, ["workspaces", "opencode", "--event", "BeforeAgent"]);
+    assert.deepEqual(calls[0].args, ["run", "opencode", "--event", "BeforeAgent"]);
     assert.equal(calls[0].payload.hook, "chat.message");
     assert.deepEqual(calls[0].payload.input, input);
     assert.deepEqual(calls[0].payload.output, output);
@@ -98,10 +63,16 @@ test("chat.message handler skips memory when workspace result is not ready", asy
 });
 
 test("chat.message handler logs workspace selection requirement and skips memory", async () => {
-  const reason = "NAMS workspace selection required. Configure one workspace before memory starts:\n1. Engineering - workspace-1";
+  const reason = [
+    "NAMS memory is inactive for this turn.",
+    "No memory messages were stored. Multiple NAMS workspaces are available, and no workspaceId is configured.",
+    "Configure an explicit workspace before memory can resume: nams-hooks workspaces configure opencode --scope project --workspace-id <workspace-id>",
+    "Available NAMS workspaces:",
+    "1. Engineering (owner, active) - workspace-1",
+  ].join("\n");
   const fixture = await createNamsHooksStub({
     stdoutByCommand: {
-      workspaces: { namsWorkspaceSelectionRequired: true, reason },
+      run: { namsWorkspaceSelectionRequired: true, reason },
     },
   });
   try {
@@ -123,13 +94,92 @@ test("chat.message handler logs workspace selection requirement and skips memory
     const calls = await readCalls(fixture.callsPath);
     assert.equal(result, undefined);
     assert.equal(calls.length, 1);
-    assert.deepEqual(calls[0].args, ["workspaces", "opencode", "--event", "BeforeAgent"]);
+    assert.deepEqual(calls[0].args, ["run", "opencode", "--event", "BeforeAgent"]);
     assert.equal(logs.length, 1);
     assert.deepEqual(logs[0].body, {
       service: "nams-hooks",
       level: "warn",
       message: reason,
     });
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("chat.message handler shows workspace selection requirement in OpenCode TUI", async () => {
+  const reason = [
+    "NAMS memory is inactive for this turn.",
+    "No memory messages were stored. Multiple NAMS workspaces are available, and no workspaceId is configured.",
+    "Configure an explicit workspace before memory can resume: nams-hooks workspaces configure opencode --scope project --workspace-id <workspace-id>",
+  ].join("\n");
+  const fixture = await createNamsHooksStub({
+    stdoutByCommand: {
+      run: { namsWorkspaceSelectionRequired: true, reason },
+    },
+  });
+  try {
+    const toasts: any[] = [];
+    const client = {
+      tui: {
+        showToast: async (entry: Record<string, any>) => {
+          toasts.push(entry);
+        },
+      },
+    };
+    const { NamsHooks } = await importTemplateWithCommand(fixture.commandPath);
+    const plugin = await NamsHooks({ client, directory: fixture.directory, project: "project-a", worktree: "worktree-a" });
+
+    await plugin["chat.message"]({ sessionID: "session-1" }, { ok: true });
+
+    assert.deepEqual(toasts, [
+      {
+        body: {
+          title: "NAMS memory inactive",
+          message: reason,
+          variant: "warning",
+          duration: 30000,
+        },
+      },
+    ]);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("system transform handler surfaces pending workspace selection requirement", async () => {
+  const reason = [
+    "NAMS memory is inactive for this turn.",
+    "No memory messages were stored. Multiple NAMS workspaces are available, and no workspaceId is configured.",
+    "Configure an explicit workspace before memory can resume: nams-hooks workspaces configure opencode --scope project --workspace-id <workspace-id>",
+    "Available NAMS workspaces:",
+    "1. Engineering (owner, active) - workspace-1",
+  ].join("\n");
+  const fixture = await createNamsHooksStub({
+    stdoutByCommand: {
+      run: { namsWorkspaceSelectionRequired: true, reason },
+    },
+  });
+  try {
+    const { NamsHooks } = await importTemplateWithCommand(fixture.commandPath);
+    const plugin = await NamsHooks({ directory: fixture.directory, project: "project-a", worktree: "worktree-a" });
+    const chatInput = {
+      sessionID: "session-1",
+      message: { id: "message-1", parts: [{ type: "text", text: "hello" }] },
+    };
+
+    await plugin["chat.message"](chatInput, { ok: true });
+    const output = { system: [] };
+    const result = await plugin["experimental.chat.system.transform"]({ sessionID: "session-1" }, output);
+
+    assert.equal(result, output);
+    assert.deepEqual(output.system, [reason]);
+    const calls = await readCalls(fixture.callsPath);
+    assert.deepEqual(calls.map((call) => call.args), [
+      ["run", "opencode", "--event", "BeforeAgent"],
+      ["run", "opencode", "--event", "BeforeAgent"],
+    ]);
+    assert.equal(calls[0].payload.hook, "chat.message");
+    assert.equal(calls[1].payload.hook, "experimental.chat.system.transform");
   } finally {
     await fixture.cleanup();
   }

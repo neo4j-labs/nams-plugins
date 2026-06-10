@@ -183,6 +183,13 @@ test("workspace adapter registry is static", async () => {
   assert.equal(/\bimport\(|readdir|dynamic\b/.test(content), false);
 });
 
+test("workspace resolution runtime does not format platform hook output", async () => {
+  const content = await readFile("src/runtime/workspace-resolution.ts", "utf8");
+
+  assert.doesNotMatch(content, /\bdecision\b|\bhookSpecificOutput\b|\bsystemMessage\b|\bnamsWorkspaceSelectionRequired\b/);
+  assert.doesNotMatch(content, /\bgemini\b|\bclaude\b|\bcodex\b|\bopencode\b/);
+});
+
 test("platform session-start contract names local session initialization", async () => {
   const interfaceContent = await readFile("src/interfaces.ts", "utf8");
   const cliContent = await readFile("src/cli.ts", "utf8");

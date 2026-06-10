@@ -3,18 +3,11 @@ import { spawn } from "node:child_process";
 const command = process.env.NAMS_HOOKS_COMMAND ?? "nams-hooks";
 
 export const NamsHooks = async ({ client, directory, project, worktree }) => {
-  async function runWorkspace(event, payload) {
-    try {
-      return await invokeNams("workspaces", event, { directory, project, worktree, ...payload });
-    } catch {
-      await logDiagnostic(client, `NAMS OpenCode workspace hook ${event} failed`);
-      return undefined;
-    }
-  }
+  const pendingWorkspaceSelectionContexts = new Map();
 
   async function run(event, payload) {
     try {
-      return await invokeNams("run", event, { directory, project, worktree, ...payload });
+      return await invokeNams(event, { directory, project, worktree, ...payload });
     } catch {
       await logDiagnostic(client, `NAMS OpenCode hook ${event} failed`);
       return undefined;
@@ -31,26 +24,20 @@ export const NamsHooks = async ({ client, directory, project, worktree }) => {
     },
 
     "chat.message": async (input, output) => {
-      const workspaceResult = await runWorkspace("BeforeAgent", { hook: "chat.message", input, output });
-      if (workspaceResult?.namsWorkspaceSelectionRequired === true) {
-        await logDiagnostic(client, workspaceResult.reason ?? "NAMS workspace selection required");
+      const memoryResult = await run("BeforeAgent", { hook: "chat.message", input, output });
+      if (memoryResult?.namsWorkspaceSelectionRequired === true) {
+        const reason = memoryResult.reason ?? "NAMS workspace selection required";
+        rememberWorkspaceSelectionContext(input, reason);
+        await logDiagnostic(client, reason);
+        await showWarning(client, reason);
         return;
       }
-      if (workspaceResult?.namsMemoryReady !== true) {
-        return;
-      }
-      await run("BeforeAgent", { hook: "chat.message", input, output });
     },
 
     "experimental.chat.system.transform": async (input, output) => {
       const result = await run("BeforeAgent", { hook: "experimental.chat.system.transform", input, output });
-      const additionalContext = result?.hookSpecificOutput?.additionalContext;
-      if (typeof additionalContext === "string" && additionalContext.trim() !== "") {
-        if (!Array.isArray(output.system)) {
-          output.system = [];
-        }
-        output.system.push(additionalContext);
-      }
+      appendSystemContext(output, takeWorkspaceSelectionContext(input));
+      appendSystemContext(output, result?.hookSpecificOutput?.additionalContext);
       return output;
     },
 
@@ -62,13 +49,30 @@ export const NamsHooks = async ({ client, directory, project, worktree }) => {
       await run("AfterTool", { hook: "tool.execute.after", input, output });
     },
   };
+
+  function rememberWorkspaceSelectionContext(input, context) {
+    if (typeof context !== "string" || context.trim() === "") {
+      return;
+    }
+    pendingWorkspaceSelectionContexts.set(opencodeContextKey(input), context);
+  }
+
+  function takeWorkspaceSelectionContext(input) {
+    const key = opencodeContextKey(input);
+    const context = pendingWorkspaceSelectionContexts.get(key) ?? pendingWorkspaceSelectionContexts.get("__default__");
+    pendingWorkspaceSelectionContexts.delete(key);
+    if (key !== "__default__") {
+      pendingWorkspaceSelectionContexts.delete("__default__");
+    }
+    return context;
+  }
 };
 
 export default NamsHooks;
 
-async function invokeNams(commandName, event, payload) {
+async function invokeNams(event, payload) {
   return await new Promise((resolve, reject) => {
-    const child = spawn(command, [commandName, "opencode", "--event", event], {
+    const child = spawn(command, ["run", "opencode", "--event", event], {
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
@@ -130,4 +134,41 @@ async function logDiagnostic(client, message) {
   try {
     await client?.app?.log?.({ body: { service: "nams-hooks", level: "warn", message } });
   } catch {}
+}
+
+async function showWarning(client, message) {
+  try {
+    await client?.tui?.showToast?.({
+      body: {
+        title: "NAMS memory inactive",
+        message,
+        variant: "warning",
+        duration: 30000,
+      },
+    });
+  } catch {}
+}
+
+function appendSystemContext(output, context) {
+  if (typeof context !== "string" || context.trim() === "") {
+    return;
+  }
+  if (!Array.isArray(output.system)) {
+    output.system = [];
+  }
+  output.system.push(context);
+}
+
+function opencodeContextKey(input) {
+  for (const candidate of [
+    input?.sessionID,
+    input?.sessionId,
+    input?.message?.sessionID,
+    input?.message?.sessionId,
+  ]) {
+    if (typeof candidate === "string" && candidate.trim() !== "") {
+      return candidate;
+    }
+  }
+  return "__default__";
 }

@@ -23,20 +23,15 @@ test("Gemini extension template exposes NAMS environment settings in order", asy
   assert.match(settings[1].description, /Optional/);
 });
 
-test("Gemini hook template runs workspace resolution before BeforeAgent memory", async () => {
+test("Gemini hook template routes BeforeAgent through the memory hook only", async () => {
   const template = JSON.parse(await readFile(path.join(repoRoot, "templates", "gemini", "hooks", "hooks.json"), "utf8"));
   const groups = template.hooks.BeforeAgent;
 
   assert.equal(groups.length, 1);
   assert.equal(groups[0].matcher, "*");
-  assert.equal(groups[0].sequential, true);
   assert.deepEqual(
     groups[0].hooks.map((hook: { name: string; command: string }) => ({ name: hook.name, command: hook.command })),
     [
-      {
-        name: "nams-workspace-before-agent",
-        command: 'node "${extensionPath}/bin/cli.js" workspaces gemini --event BeforeAgent',
-      },
       {
         name: "nams-memory-before-agent",
         command: 'node "${extensionPath}/bin/cli.js" run gemini --event BeforeAgent',

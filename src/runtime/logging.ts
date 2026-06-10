@@ -62,6 +62,7 @@ export async function appendNamsRequestLog(
 
 export const workspaceDiagnosticMessages = {
   loadedFromConfig: "NAMS workspace loaded from config",
+  loadedFromSessionState: "NAMS workspace loaded from session state",
   autoSelected: "NAMS workspace auto-selected",
   selectionRequired: "NAMS workspace selection required",
   listEmpty: "NAMS workspace list empty",
