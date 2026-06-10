@@ -35,20 +35,22 @@ If neither config nor state provides a workspace, the runtime lists workspaces:
 - exactly one valid workspace ID: persist that ID in session state and continue
   memory creation;
 - zero valid workspace IDs: skip memory and allow the platform to continue;
-- multiple valid workspace IDs: skip memory and allow on inline memory paths;
-  ordered workspace hooks such as Gemini may still block before memory starts.
+- multiple valid workspace IDs: notify that memory is inactive for the turn,
+  skip memory, and allow the platform to continue.
 
 The shared resolver returns only platform-neutral outcomes: ready config,
 unavailable workspace resolution, or sanitized workspace-selection-required
 metadata. Platform adapters own all hook JSON formatting such as Gemini
-`decision`, OpenCode shim flags, Claude `systemMessage`, and Codex
-`hookSpecificOutput`.
+`hookSpecificOutput`, OpenCode shim flags, Claude `systemMessage`, and Codex
+`hookSpecificOutput`. No adapter should block execution solely because multiple
+workspaces are available.
 
 ## Platform Behavior
 
-Gemini keeps its separate ordered workspace hook. The hook can still block a
-multi-workspace user with a visible choice list before memory creation because
-the Gemini hook group is sequential.
+Gemini keeps its separate ordered workspace hook. The hook should auto-select a
+single workspace when possible. If multiple workspaces are returned, it should
+return non-blocking selection-required context, skip memory for the turn, and
+let the memory hook continue without creating a conversation.
 
 OpenCode keeps its ordered in-plugin workspace phase. Multi-workspace users get
 the existing configuration-required output, and the memory phase skips rather
@@ -111,12 +113,11 @@ Tests should cover:
 - configured workspace writes `source: "config"` diagnostics;
 - session workspace skips `/v1/users/me/workspaces`;
 - exactly one listed workspace auto-selects and is used for memory requests;
-- Claude `BeforeAgent` auto-selects a single listed workspace before creating a
-  conversation when config is missing `workspaceId`;
-- Codex `BeforeAgent` auto-selects the same way;
-- Claude/Codex multi-workspace cases skip memory without creating a
+- Gemini, Claude, Codex, and OpenCode auto-select a single listed workspace
+  before creating a conversation when config is missing `workspaceId`;
+- multi-workspace cases skip memory without creating a
   conversation;
-- Claude/Codex multi-workspace user-prompt cases return non-blocking
+- multi-workspace user-prompt cases return non-blocking
   `hookSpecificOutput.additionalContext` with the selection-required message;
 - Claude multi-workspace user-prompt cases also return top-level
   `systemMessage` so the same notice is visible to the user;

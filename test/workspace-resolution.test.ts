@@ -58,7 +58,6 @@ test("configured workspace skips workspace listing and is not preflight validate
       invocation: invocation(projectDir),
       state,
       projectDirectory: projectDir,
-      interaction: "blocking-selection",
     });
 
     assert.equal(result.status, "ready");
@@ -94,7 +93,6 @@ test("single listed workspace auto-selects by cardinality", async () => {
       invocation: invocation(projectDir),
       state,
       projectDirectory: projectDir,
-      interaction: "blocking-selection",
     });
 
     assert.equal(result.status, "ready");
@@ -225,7 +223,6 @@ test("workspace request failure skips memory with fixed diagnostic", async () =>
       invocation: invocation(projectDir),
       state,
       projectDirectory: projectDir,
-      interaction: "blocking-selection",
     });
 
     assert.equal(result.status, "skip-memory");
@@ -262,7 +259,6 @@ test("empty workspace list skips memory with fixed diagnostic", async () => {
       invocation: invocation(projectDir),
       state,
       projectDirectory: projectDir,
-      interaction: "blocking-selection",
     });
 
     assert.equal(result.status, "skip-memory");
@@ -282,7 +278,7 @@ test("empty workspace list skips memory with fixed diagnostic", async () => {
   }
 });
 
-test("multiple listed workspaces require Gemini selection before memory can continue", async () => {
+test("multiple listed workspaces skip memory without blocking", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-workspace-resolution-"));
   try {
     createNamsFetchMock().workspaces({
@@ -305,10 +301,9 @@ test("multiple listed workspaces require Gemini selection before memory can cont
       invocation: invocation(projectDir),
       state,
       projectDirectory: projectDir,
-      interaction: "blocking-selection",
     });
 
-    assert.equal(result.status, "block");
+    assert.equal(result.status, "skip-memory");
     assert.equal(state.workspace, undefined);
     assert.equal(result.reason, "selection-required");
     assert.deepEqual(result.workspaces, [
@@ -343,7 +338,6 @@ test("multiple listed workspaces return platform-neutral selection-required resu
       invocation: { ...invocation(projectDir), platform: "opencode" },
       state,
       projectDirectory: projectDir,
-      interaction: "single-only",
     });
 
     assert.equal(result.status, "skip-memory");

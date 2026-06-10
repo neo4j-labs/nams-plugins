@@ -63,7 +63,6 @@ export class CodexAdapter implements MemoryPlatformAdapter {
       invocation,
       state,
       projectDirectory: payloadInfo.projectDirectory,
-      interaction: "single-only",
     });
     if (workspaceResult.status !== "ready") {
       await saveSessionState(invocation.platform, state.sessionKey, state);

@@ -402,6 +402,45 @@ test("Gemini BeforeAgent uses auto-selected workspace when NAMS_WORKSPACE_ID is 
   }
 });
 
+test("Gemini workspace hook notifies and continues when multiple workspaces are available", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
+  try {
+    const nams = createNamsFetchMock().workspaces({
+      workspaces: [
+        { id: "workspace-1", name: "Default", role: "owner", status: "active" },
+        { id: "workspace-2", name: "test2", role: "owner", status: "active" },
+      ],
+    });
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+    const workspaceAdapter = new GeminiWorkspaceAdapter();
+
+    const result = await workspaceAdapter.beforeAgent({
+      platform: "gemini",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "remember this",
+      },
+    });
+
+    assert.equal(result.stdout.continue, true);
+    assert.equal(result.stdout.suppressOutput, false);
+    assert.equal(Object.hasOwn(result.stdout, "decision"), false);
+    assert.match(String(result.stdout.systemMessage), /NAMS memory is inactive/);
+    assert.match(String(result.stdout.systemMessage), /workspace-1/);
+    assert.match(String(result.stdout.systemMessage), /workspace-2/);
+    assert.match(String(hookSpecificOutput(result).additionalContext), /Multiple NAMS workspaces are available/);
+    assert.equal(nams.calls("listMyWorkspaces").length, 1);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("Gemini BeforeAgent logs invalid config diagnostics without raw JSON contents", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {

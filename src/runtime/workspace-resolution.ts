@@ -15,8 +15,6 @@ import {
 import { namsProvenanceHeaders } from "./provenance.js";
 import type { SessionState } from "./session-state.js";
 
-export type WorkspaceInteraction = "blocking-selection" | "single-only";
-
 export interface PublicWorkspaceSummary {
   id: string;
   name?: string;
@@ -28,14 +26,12 @@ export interface PublicWorkspaceSummary {
 export type WorkspaceResolutionResult =
   | { status: "ready"; config: NamsRuntimeConfig }
   | { status: "skip-memory"; reason: "unavailable" }
-  | { status: "skip-memory"; reason: "selection-required"; workspaces: PublicWorkspaceSummary[] }
-  | { status: "block"; reason: "selection-required"; workspaces: PublicWorkspaceSummary[] };
+  | { status: "skip-memory"; reason: "selection-required"; workspaces: PublicWorkspaceSummary[] };
 
 export interface ResolveWorkspaceInput {
   invocation: HookInvocation;
   state: SessionState;
   projectDirectory: string;
-  interaction: WorkspaceInteraction;
   discoverConfig?: NamsConfigDiscovery;
 }
 
@@ -49,7 +45,6 @@ export async function loadEffectiveNamsConfigForMemory(
     invocation,
     state,
     projectDirectory,
-    interaction: "single-only",
     discoverConfig,
   });
   return result.status === "ready" ? result.config : undefined;
@@ -140,13 +135,6 @@ export async function resolveWorkspaceForMemory(input: ResolveWorkspaceInput): P
     workspaces: workspaces.map(publicWorkspace),
   });
 
-  if (input.interaction === "blocking-selection") {
-    return {
-      status: "block",
-      reason: "selection-required",
-      workspaces: workspaces.map(publicWorkspace),
-    };
-  }
   return {
     status: "skip-memory",
     reason: "selection-required",

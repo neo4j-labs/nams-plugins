@@ -28,7 +28,6 @@ export class OpenCodeWorkspaceAdapter implements WorkspacePlatformAdapter {
       invocation,
       state,
       projectDirectory: payloadInfo.projectDirectory,
-      interaction: "single-only",
     });
     await saveSessionState(invocation.platform, state.sessionKey, state);
     return result.status === "ready" ? memoryReadyOutput() : workspaceResultOutput(result);

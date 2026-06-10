@@ -24,7 +24,6 @@ export class GeminiWorkspaceAdapter implements WorkspacePlatformAdapter {
       invocation,
       state,
       projectDirectory: payloadInfo.projectDirectory,
-      interaction: "blocking-selection",
     });
     await saveSessionState(invocation.platform, state.sessionKey, state);
     return result.status === "ready" ? allowOutput() : workspaceResultOutput(result);
@@ -41,10 +40,15 @@ function allowOutput(): WorkspaceHookResult {
 
 function workspaceResultOutput(result: Exclude<WorkspaceResolutionResult, { status: "ready" }>): WorkspaceHookResult {
   if (result.reason === "selection-required") {
+    const message = workspaceSelectionReason(result.workspaces);
     return {
       stdout: {
-        decision: "deny",
-        reason: workspaceSelectionReason(result.workspaces),
+        continue: true,
+        suppressOutput: false,
+        systemMessage: message,
+        hookSpecificOutput: {
+          additionalContext: message,
+        },
       },
     };
   }
@@ -53,7 +57,10 @@ function workspaceResultOutput(result: Exclude<WorkspaceResolutionResult, { stat
 
 function workspaceSelectionReason(workspaces: PublicWorkspaceSummary[]): string {
   return [
-    "NAMS workspace selection required. Configure one workspace before memory starts:",
+    "NAMS memory is inactive for this turn.",
+    "No memory messages were stored. Multiple NAMS workspaces are available, and no workspaceId is configured.",
+    "Configure an explicit workspace before memory can resume: nams-hooks workspaces configure gemini --scope project --workspace-id <workspace-id>",
+    "Available NAMS workspaces:",
     ...workspaces.map((workspace, index) => {
       const name = workspace.name?.trim() || "(unnamed workspace)";
       const role = workspace.role?.trim() || "unknown-role";

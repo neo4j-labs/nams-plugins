@@ -56,7 +56,6 @@ export class ClaudeAdapter implements MemoryPlatformAdapter {
       invocation,
       state,
       projectDirectory: payloadInfo.projectDirectory,
-      interaction: "single-only",
       discoverConfig: discoverClaudeNamsConfig,
     });
     if (workspaceResult.status !== "ready") {

@@ -60,8 +60,8 @@ Runtime workspace resolution is allowed only when hook ordering is deterministic
 
 | Harness | Hook ordering | Blocking or prompt behavior | Workspace hook strategy | `workspaceId` install config |
 | --- | --- | --- | --- | --- |
-| Gemini | Deterministic when hook group uses `sequential: true` | Supports denying a `BeforeAgent` turn with visible output | Separate workspace command before memory command in one sequential hook group | Optional for this verified runtime path; still allowed as an explicit override |
-| OpenCode | Plugin hooks are documented as running in sequence, but source load order is broader than NAMS | Single-workspace runtime resolution is safe; no documented blocking workspace picker is verified for multi-workspace selection | Workspace phase runs before memory phase inside the NAMS OpenCode plugin shim | Optional only for single-workspace auto-resolution; required for multi-workspace users until a blocking picker is verified |
+| Gemini | Deterministic when hook group uses `sequential: true` | Single-workspace runtime resolution is safe; multi-workspace selection is non-blocking and skips memory | Separate workspace command before memory command in one sequential hook group | Optional for this verified runtime path; still allowed as an explicit override |
+| OpenCode | Plugin hooks are documented as running in sequence, but source load order is broader than NAMS | Single-workspace runtime resolution is safe; multi-workspace selection is non-blocking and skips memory | Workspace phase runs before memory phase inside the NAMS OpenCode plugin shim | Optional for single-workspace auto-resolution; explicit configuration required for multi-workspace users |
 | Claude | Matching hooks can run in parallel; a blocking result does not prevent sibling hooks from starting | `UserPromptSubmit` can block, but not deterministically before memory side effects | No separate runtime sibling hook; use install-time or config-time selection | Required |
 | Codex | Multiple matching command hooks for the same event are launched concurrently | `UserPromptSubmit` can block, but not deterministically before memory side effects | No separate runtime sibling hook; use install-time or config-time selection | Required |
 
@@ -158,18 +158,21 @@ Gemini can use a separate workspace hook command because the hook group can be m
 }
 ```
 
-The workspace command must finish before the memory command starts. If the workspace command blocks or stops the turn, Gemini should not run the memory command in that sequential group. This assumption must be verified in tests or manual harness smoke testing before making `NAMS_WORKSPACE_ID` optional in released Gemini extension metadata.
+The workspace command must finish before the memory command starts. If the workspace command cannot choose a workspace because multiple valid workspaces are available, it should return non-blocking context and let the memory command skip memory without creating a conversation.
 
-For multi-workspace users, the workspace hook should prefer Gemini's structured hook output over stderr-only blocking:
+For multi-workspace users, the workspace hook should prefer Gemini's structured hook output over stderr-only messages:
 
 ```json
 {
-  "decision": "deny",
-  "reason": "NAMS workspace selection required. Configure one workspace before memory starts:\n1. Engineering (owner, active) - 11111111-1111-1111-1111-111111111111\n2. Research (member, active) - 22222222-2222-2222-2222-222222222222"
+  "continue": true,
+  "suppressOutput": false,
+  "hookSpecificOutput": {
+    "additionalContext": "NAMS memory is inactive for this turn.\nNo memory messages were stored. Multiple NAMS workspaces are available, and no workspaceId is configured.\nConfigure an explicit workspace before memory can resume: nams-hooks workspaces configure gemini --scope project --workspace-id <workspace-id>\nAvailable NAMS workspaces:\n1. Engineering (owner, active) - 11111111-1111-1111-1111-111111111111\n2. Research (member, active) - 22222222-2222-2222-2222-222222222222"
+  }
 }
 ```
 
-The command should exit `0` and print only JSON to stdout. `decision: "deny"` blocks the `BeforeAgent` turn and discards the submitted prompt from history, which is preferable for a setup prompt. `continue: false` is less suitable here because Gemini records the submitted prompt in history. Exit code `2` is also a block mechanism, but it depends on stderr text and is less explicit for tests.
+The command should exit `0` and print only JSON to stdout. This keeps agent execution non-blocking while making the memory skip explicit.
 
 ### OpenCode
 
@@ -328,7 +331,7 @@ Required runtime tests:
 - `InstallConfigure` dispatches through the workspace platform adapter without creating a memory service.
 - Configured workspace skips workspace listing.
 - Missing workspace with a single returned workspace stores session workspace and allows memory to proceed.
-- Missing workspace with multiple returned workspaces returns the correct platform-specific blocking output for an ordered harness.
+- Missing workspace with multiple returned workspaces returns the correct platform-specific non-blocking notification output.
 - Missing workspace with zero returned workspaces skips memory.
 - Workspace listing failure skips memory and logs a sanitized diagnostic.
 - Memory service is not created before workspace resolution succeeds.
@@ -338,11 +341,11 @@ Required platform tests:
 
 - Gemini template uses a `sequential: true` `BeforeAgent` group with workspace command before memory command.
 - Gemini can auto-resolve a single workspace and then create a conversation with `X-Workspace-Id`.
-- Gemini multi-workspace handling returns `decision: "deny"` with a visible workspace list before conversation creation.
+- Gemini multi-workspace handling returns non-blocking selection-required context before the memory command skips conversation creation.
 - Claude plugin metadata marks `NAMS_WORKSPACE_ID` optional for single-workspace runtime auto-resolution.
 - Codex docs describe single-workspace runtime auto-resolution and explicit configuration for multi-workspace users.
 - OpenCode plugin shim performs workspace phase before memory phase for first user message.
-- OpenCode multi-workspace handling skips memory and reports configuration required until a blocking picker is verified.
+- OpenCode multi-workspace handling skips memory and reports configuration required.
 
 Required docs tests or checks:
 
@@ -353,9 +356,9 @@ Required docs tests or checks:
 
 ## Resolved Review Questions
 
-- Gemini multi-workspace blocking should use stdout JSON with `decision: "deny"` and a sanitized `reason` listing workspace choices. This blocks the first turn and avoids saving the setup prompt in history.
-- OpenCode does not yet have a verified blocking picker API for this use case. Keep multi-workspace OpenCode users on install-time or config-time selection until a concrete prompt or block mechanism is tested.
-- There is no single portable platform install script hook across Gemini, Claude, Codex, and OpenCode. That is not a design blocker. NAMS should expose a generic `InstallConfigure` workspace lifecycle event and let the platform strategy map it to each harness: Gemini static settings or wrapper configure command, Claude `userConfig` or explicit setup/configure command, Codex NAMS-controlled configure flow, and OpenCode single-workspace runtime resolution until a blocking install/config UI is verified.
+- All platforms should treat multi-workspace resolution as non-blocking: notify that memory is inactive, skip memory writes for the turn, and require explicit configuration before memory can resume.
+- OpenCode does not yet have a verified picker API for this use case. Keep multi-workspace OpenCode users on install-time or config-time selection until a concrete prompt mechanism is tested.
+- There is no single portable platform install script hook across Gemini, Claude, Codex, and OpenCode. That is not a design blocker. NAMS should expose a generic `InstallConfigure` workspace lifecycle event and let the platform strategy map it to each harness: Gemini static settings or wrapper configure command, Claude `userConfig` or explicit setup/configure command, Codex NAMS-controlled configure flow, and OpenCode single-workspace runtime resolution plus explicit configuration for multi-workspace users.
 
 ## Approval Record
 

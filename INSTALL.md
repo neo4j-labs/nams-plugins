@@ -58,10 +58,9 @@ workspaces through NAMS. Workspace keys return exactly one workspace from that
 list; admin keys may return multiple workspaces.
 
 All memory adapters can auto-select a workspace before memory starts when NAMS
-returns exactly one valid workspace. Gemini CLI can additionally block a
-multi-workspace first prompt before memory starts because its workspace hook runs
-in a verified sequential hook group. Other platforms skip memory for the turn
-until you configure a workspace explicitly.
+returns exactly one valid workspace. When NAMS returns multiple valid
+workspaces, hooks notify that memory is inactive for the turn, continue agent
+execution, and skip memory writes until you configure a workspace explicitly.
 
 To configure a specific project workspace for Codex, run:
 

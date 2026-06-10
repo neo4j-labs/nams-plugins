@@ -137,11 +137,11 @@ Gemini and OpenCode keep ordered runtime workspace resolution:
 - Admin key with one visible workspace: one workspace is returned, so memory can
   start without `NAMS_WORKSPACE_ID`.
 - Admin key with multiple workspaces: runtime requires explicit selection before
-  memory writes.
+  memory writes, not before agent execution.
 
-For Gemini, multiple workspaces should block the prompt with a visible
-workspace-selection-required message. For OpenCode, the plugin shim should skip
-memory and surface configuration-required output.
+For every platform, multiple workspaces should produce a visible or contextual
+workspace-selection-required notice, continue agent execution, and skip memory
+writes for the turn.
 
 Claude and Codex still use config-time workspace selection for memory hooks.
 Their first-prompt hook ordering is not deterministic enough to split workspace
