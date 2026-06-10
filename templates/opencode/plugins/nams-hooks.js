@@ -38,6 +38,7 @@ export const NamsHooks = async ({ client, directory, project, worktree }) => {
         const reason = workspaceResult.reason ?? "NAMS workspace selection required";
         rememberWorkspaceSelectionContext(input, reason);
         await logDiagnostic(client, reason);
+        await showWarning(client, reason);
         return;
       }
       if (workspaceResult?.namsMemoryReady !== true) {
@@ -145,6 +146,19 @@ async function invokeNams(commandName, event, payload) {
 async function logDiagnostic(client, message) {
   try {
     await client?.app?.log?.({ body: { service: "nams-hooks", level: "warn", message } });
+  } catch {}
+}
+
+async function showWarning(client, message) {
+  try {
+    await client?.tui?.showToast?.({
+      body: {
+        title: "NAMS memory inactive",
+        message,
+        variant: "warning",
+        duration: 30000,
+      },
+    });
   } catch {}
 }
 

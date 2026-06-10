@@ -141,6 +141,46 @@ test("chat.message handler logs workspace selection requirement and skips memory
   }
 });
 
+test("chat.message handler shows workspace selection requirement in OpenCode TUI", async () => {
+  const reason = [
+    "NAMS memory is inactive for this turn.",
+    "No memory messages were stored. Multiple NAMS workspaces are available, and no workspaceId is configured.",
+    "Configure an explicit workspace before memory can resume: nams-hooks workspaces configure opencode --scope project --workspace-id <workspace-id>",
+  ].join("\n");
+  const fixture = await createNamsHooksStub({
+    stdoutByCommand: {
+      workspaces: { namsWorkspaceSelectionRequired: true, reason },
+    },
+  });
+  try {
+    const toasts: any[] = [];
+    const client = {
+      tui: {
+        showToast: async (entry: Record<string, any>) => {
+          toasts.push(entry);
+        },
+      },
+    };
+    const { NamsHooks } = await importTemplateWithCommand(fixture.commandPath);
+    const plugin = await NamsHooks({ client, directory: fixture.directory, project: "project-a", worktree: "worktree-a" });
+
+    await plugin["chat.message"]({ sessionID: "session-1" }, { ok: true });
+
+    assert.deepEqual(toasts, [
+      {
+        body: {
+          title: "NAMS memory inactive",
+          message: reason,
+          variant: "warning",
+          duration: 30000,
+        },
+      },
+    ]);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("system transform handler surfaces pending workspace selection requirement", async () => {
   const reason = [
     "NAMS memory is inactive for this turn.",
