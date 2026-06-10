@@ -47,27 +47,37 @@ workspaces are available.
 
 ## Platform Behavior
 
-Gemini keeps its separate ordered workspace hook. The hook should auto-select a
-single workspace when possible. If multiple workspaces are returned, it should
-return non-blocking selection-required context, skip memory for the turn, and
-let the memory hook continue without creating a conversation.
+Gemini, Claude, Codex, and OpenCode all resolve workspace selection in their
+main memory `BeforeAgent` adapter. There should be no packaged first-prompt
+workspace pre-hook for Gemini and no ordered workspace phase in the OpenCode
+plugin shim. The `workspaces` command remains for explicit configuration and
+can keep accepting `BeforeAgent` as a compatibility no-op, but it must not own
+runtime workspace resolution for normal memory flow.
 
-OpenCode keeps its ordered in-plugin workspace phase. Multi-workspace users get
-the existing configuration-required output, and the memory phase skips rather
-than creating a conversation.
+Each platform follows the same prompt-time sequence:
 
-Claude and Codex should not gain sibling workspace hooks for the first prompt.
-Instead, their existing memory adapters should call the shared effective-config
-helper. That helper performs single-workspace auto-resolution inline before any
-conversation is created. Multiple workspaces remain a configuration-required
-state that skips memory for that turn. On user-prompt hooks, this case should
-return non-blocking `hookSpecificOutput.additionalContext` explaining that NAMS
-memory is inactive, no memory messages were stored, multiple workspaces are
-available, and an explicit `workspaceId` must be configured. Claude should also
-return the same notice as a top-level `systemMessage`, because Claude records
-`additionalContext` for the model but does not render it as a user-visible chat
-message. This warning output must leave `suppressOutput` false; otherwise Claude
-can consume the context while hiding the visible hook output path.
+1. Parse the platform payload and load/create session state.
+2. If there is no user prompt for the hook surface, save state and allow.
+3. Call the shared workspace resolver before creating a conversation.
+4. If the resolver returns ready config, continue memory recall and persistence.
+5. If the resolver reports unavailable workspace resolution, skip memory and
+   allow.
+6. If the resolver reports multiple workspaces, skip memory and return the
+   platform-specific non-blocking user notice.
+
+The multi-workspace notice should use the same wording across platforms:
+NAMS memory is inactive for this turn, no memory messages were stored, multiple
+workspaces are available, and an explicit `workspaceId` must be configured with
+`nams-hooks workspaces configure <platform> --scope project --workspace-id
+<workspace-id>`.
+
+Gemini and Claude should return the notice as top-level `systemMessage` and
+`hookSpecificOutput.additionalContext`, leaving `suppressOutput` false for the
+visible hook output path. Codex should return the notice through
+`hookSpecificOutput.additionalContext`. OpenCode should return a
+`namsWorkspaceSelectionRequired` flag and the same notice as `reason`; the
+OpenCode plugin shim logs it, shows a warning toast through `client.tui`, and
+stores it for the next system-transform hook so it can enter model context.
 
 Claude must preserve plugin user configuration discovery while using the shared
 helper, because Claude can source `apiKey`, `workspaceId`, and `baseUrl` from
@@ -115,12 +125,14 @@ Tests should cover:
 - exactly one listed workspace auto-selects and is used for memory requests;
 - Gemini, Claude, Codex, and OpenCode auto-select a single listed workspace
   before creating a conversation when config is missing `workspaceId`;
-- multi-workspace cases skip memory without creating a
-  conversation;
+- multi-workspace cases skip memory without creating a conversation;
 - multi-workspace user-prompt cases return non-blocking
   `hookSpecificOutput.additionalContext` with the selection-required message;
-- Claude multi-workspace user-prompt cases also return top-level
+- Gemini and Claude multi-workspace user-prompt cases also return top-level
   `systemMessage` so the same notice is visible to the user;
+- Gemini package templates include only the memory `BeforeAgent` hook;
+- OpenCode plugin templates route `chat.message` through the memory command
+  only and surface `namsWorkspaceSelectionRequired` output from that command;
 - Claude plugin templates mark `NAMS_WORKSPACE_ID` optional for runtime
   auto-resolution while preserving the base URL default in configuration.
 
@@ -128,5 +140,5 @@ Tests should cover:
 
 - Modeling workspace-key versus admin-key types in configuration, state, logs,
   or CLI arguments.
-- Adding sibling Claude or Codex workspace hooks for first-prompt events.
+- Adding sibling workspace hooks for first-prompt events.
 - Validating an explicitly configured `workspaceId` on every hook invocation.

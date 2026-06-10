@@ -11,10 +11,10 @@ import {
 import { createInitialSessionState, loadSessionState, saveSessionState } from "../../runtime/session-state.js";
 import {
   loadEffectiveNamsConfigForMemory,
-  type PublicWorkspaceSummary,
   resolveWorkspaceForMemory,
   type WorkspaceResolutionResult,
 } from "../../runtime/workspace-resolution.js";
+import { formatWorkspaceSelectionNotice } from "../workspace-selection.js";
 import { discoverClaudeNamsConfig } from "./config.js";
 import { parseClaudePayload } from "./payload.js";
 
@@ -268,7 +268,7 @@ function allowOutput(additionalContext?: string): HookResult {
 
 function workspaceResultOutput(result: Exclude<WorkspaceResolutionResult, { status: "ready" }>): HookResult {
   if (result.reason === "selection-required") {
-    const message = workspaceSelectionAdditionalContext(result.workspaces);
+    const message = formatWorkspaceSelectionNotice("claude", result.workspaces);
     return {
       stdout: {
         continue: true,
@@ -282,21 +282,6 @@ function workspaceResultOutput(result: Exclude<WorkspaceResolutionResult, { stat
     };
   }
   return allowOutput();
-}
-
-function workspaceSelectionAdditionalContext(workspaces: PublicWorkspaceSummary[]): string {
-  return [
-    "NAMS memory is inactive for this turn.",
-    "No memory messages were stored. Multiple NAMS workspaces are available, and no workspaceId is configured.",
-    "Configure an explicit workspace before memory can resume: nams-hooks workspaces configure claude --scope project --workspace-id <workspace-id>",
-    "Available NAMS workspaces:",
-    ...workspaces.map((workspace, index) => {
-      const name = workspace.name?.trim() || "(unnamed workspace)";
-      const role = workspace.role?.trim() || "unknown-role";
-      const status = workspace.status?.trim() || "unknown-status";
-      return `${index + 1}. ${name} (${role}, ${status}) - ${workspace.id}`;
-    }),
-  ].join("\n");
 }
 
 function claudeToolCallDedupeKeys(

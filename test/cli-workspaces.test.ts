@@ -119,7 +119,7 @@ function runtimeEnvWithoutHome(baseUrl: string): NodeJS.ProcessEnv {
   };
 }
 
-test("workspaces gemini BeforeAgent lists workspaces without workspace header", async () => {
+test("workspaces BeforeAgent command allows without resolving workspace", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-"));
   try {
     await withWorkspaceServer(async (baseUrl, requests) => {
@@ -138,11 +138,7 @@ test("workspaces gemini BeforeAgent lists workspaces without workspace header", 
         continue: true,
         suppressOutput: true,
       });
-      assert.equal(requests.length, 1);
-      assert.equal(requests[0].method, "GET");
-      assert.equal(requests[0].url, "/v1/users/me/workspaces");
-      assert.equal(requests[0].headers.authorization, "Bearer test-api-key");
-      assert.equal(requests[0].headers["x-workspace-id"], undefined);
+      assert.equal(requests.length, 0);
     });
   } finally {
     await rm(projectDir, { recursive: true, force: true });

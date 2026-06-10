@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { GeminiAdapter } from "../../src/platforms/gemini/index.js";
-import { GeminiWorkspaceAdapter } from "../../src/platforms/gemini/workspaces.js";
 import { loadSessionState } from "../../src/runtime/session-state.js";
 import { createNamsFetchMock } from "../support/nams-fetch-mock.js";
 import { namsHome, readSingleSessionLog as readRuntimeSingleSessionLog } from "../support/runtime-home.js";
@@ -375,7 +374,6 @@ test("Gemini BeforeAgent uses auto-selected workspace when NAMS_WORKSPACE_ID is 
       NAMS_API_KEY: "key",
       NAMS_BASE_URL: "https://memory.example.test",
     });
-    const workspaceAdapter = new GeminiWorkspaceAdapter();
     const adapter = new GeminiAdapter();
     const invocation = {
       platform: "gemini" as const,
@@ -388,10 +386,8 @@ test("Gemini BeforeAgent uses auto-selected workspace when NAMS_WORKSPACE_ID is 
       },
     };
 
-    const workspaceResult = await workspaceAdapter.beforeAgent(invocation);
     const result = await adapter.beforeAgent(invocation);
 
-    assert.deepEqual(workspaceResult.stdout, { continue: true, suppressOutput: true });
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
     assert.equal(nams.calls("listMyWorkspaces").length, 1);
     assert.equal(nams.calls("createConversation").length, 1);
@@ -402,7 +398,7 @@ test("Gemini BeforeAgent uses auto-selected workspace when NAMS_WORKSPACE_ID is 
   }
 });
 
-test("Gemini workspace hook notifies and continues when multiple workspaces are available", async () => {
+test("Gemini BeforeAgent notifies and continues when multiple workspaces are available", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
     const nams = createNamsFetchMock().workspaces({
@@ -415,9 +411,9 @@ test("Gemini workspace hook notifies and continues when multiple workspaces are 
       NAMS_API_KEY: "key",
       NAMS_BASE_URL: "https://memory.example.test",
     });
-    const workspaceAdapter = new GeminiWorkspaceAdapter();
+    const adapter = new GeminiAdapter();
 
-    const result = await workspaceAdapter.beforeAgent({
+    const result = await adapter.beforeAgent({
       platform: "gemini",
       event: "BeforeAgent",
       processCwd: projectDir,
@@ -436,6 +432,7 @@ test("Gemini workspace hook notifies and continues when multiple workspaces are 
     assert.match(String(result.stdout.systemMessage), /workspace-2/);
     assert.match(String(hookSpecificOutput(result).additionalContext), /Multiple NAMS workspaces are available/);
     assert.equal(nams.calls("listMyWorkspaces").length, 1);
+    assert.equal(nams.calls("createConversation").length, 0);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }

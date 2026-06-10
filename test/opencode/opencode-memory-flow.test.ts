@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { OpenCodeAdapter } from "../../src/platforms/opencode/index.js";
-import { OpenCodeWorkspaceAdapter } from "../../src/platforms/opencode/workspaces.js";
 import { loadSessionState } from "../../src/runtime/session-state.js";
 import { createNamsFetchMock } from "../support/nams-fetch-mock.js";
 import { readSingleSessionLog as readRuntimeSingleSessionLog } from "../support/runtime-home.js";
@@ -141,7 +140,6 @@ test("OpenCode chat.message uses auto-selected workspace when NAMS_WORKSPACE_ID 
       .searchEntities()
       .message();
     testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
-    const workspaceAdapter = new OpenCodeWorkspaceAdapter();
     const adapter = new OpenCodeAdapter();
     const invocation = {
       platform: "opencode" as const,
@@ -150,10 +148,8 @@ test("OpenCode chat.message uses auto-selected workspace when NAMS_WORKSPACE_ID 
       rawPayload: chatMessagePayload(projectDir, "session-1", "user-1", prompt),
     };
 
-    const workspaceResult = await workspaceAdapter.beforeAgent(invocation);
     const result = await adapter.beforeAgent(invocation);
 
-    assert.deepEqual(workspaceResult.stdout, { continue: true, suppressOutput: true, namsMemoryReady: true });
     assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
     assert.equal(nams.calls("listMyWorkspaces").length, 1);
     assert.equal(nams.calls("createConversation").length, 1);
@@ -164,7 +160,7 @@ test("OpenCode chat.message uses auto-selected workspace when NAMS_WORKSPACE_ID 
   }
 });
 
-test("OpenCode workspace hook reports inactive memory when multiple workspaces are available", async () => {
+test("OpenCode chat.message reports inactive memory when multiple workspaces are available", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
   try {
     createNamsFetchMock().workspaces({
@@ -174,9 +170,9 @@ test("OpenCode workspace hook reports inactive memory when multiple workspaces a
       ],
     });
     testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
-    const workspaceAdapter = new OpenCodeWorkspaceAdapter();
+    const adapter = new OpenCodeAdapter();
 
-    const result = await workspaceAdapter.beforeAgent({
+    const result = await adapter.beforeAgent({
       platform: "opencode",
       event: "BeforeAgent",
       processCwd: projectDir,

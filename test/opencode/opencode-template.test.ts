@@ -40,43 +40,8 @@ test("opencode plugin template exposes NAMS hook handlers", async () => {
   assert.match(source, /nams-hooks/);
 });
 
-test("chat.message handler runs workspace resolution before memory when workspace is ready", async () => {
-  const fixture = await createNamsHooksStub({
-    stdoutByCommand: {
-      workspaces: { namsMemoryReady: true },
-    },
-  });
-  try {
-    const { NamsHooks } = await importTemplateWithCommand(fixture.commandPath);
-    const plugin = await NamsHooks({ directory: fixture.directory, project: "project-a", worktree: "worktree-a" });
-    const input = { message: { id: "message-1", parts: [{ type: "text", text: "hello" }] } };
-    const output = { ok: true };
-
-    const result = await plugin["chat.message"](input, output);
-
-    const calls = await readCalls(fixture.callsPath);
-    assert.equal(result, undefined);
-    assert.equal(calls.length, 2);
-    assert.deepEqual(calls.map((call) => call.args), [
-      ["workspaces", "opencode", "--event", "BeforeAgent"],
-      ["run", "opencode", "--event", "BeforeAgent"],
-    ]);
-    for (const call of calls) {
-      assert.equal(call.payload.hook, "chat.message");
-      assert.deepEqual(call.payload.input, input);
-      assert.deepEqual(call.payload.output, output);
-    }
-  } finally {
-    await fixture.cleanup();
-  }
-});
-
-test("chat.message handler skips memory when workspace result is not ready", async () => {
-  const fixture = await createNamsHooksStub({
-    stdoutByCommand: {
-      workspaces: { continue: true },
-    },
-  });
+test("chat.message handler routes through the memory command", async () => {
+  const fixture = await createNamsHooksStub();
   try {
     const { NamsHooks } = await importTemplateWithCommand(fixture.commandPath);
     const plugin = await NamsHooks({ directory: fixture.directory, project: "project-a", worktree: "worktree-a" });
@@ -88,7 +53,7 @@ test("chat.message handler skips memory when workspace result is not ready", asy
     const calls = await readCalls(fixture.callsPath);
     assert.equal(result, undefined);
     assert.equal(calls.length, 1);
-    assert.deepEqual(calls[0].args, ["workspaces", "opencode", "--event", "BeforeAgent"]);
+    assert.deepEqual(calls[0].args, ["run", "opencode", "--event", "BeforeAgent"]);
     assert.equal(calls[0].payload.hook, "chat.message");
     assert.deepEqual(calls[0].payload.input, input);
     assert.deepEqual(calls[0].payload.output, output);
@@ -107,7 +72,7 @@ test("chat.message handler logs workspace selection requirement and skips memory
   ].join("\n");
   const fixture = await createNamsHooksStub({
     stdoutByCommand: {
-      workspaces: { namsWorkspaceSelectionRequired: true, reason },
+      run: { namsWorkspaceSelectionRequired: true, reason },
     },
   });
   try {
@@ -129,7 +94,7 @@ test("chat.message handler logs workspace selection requirement and skips memory
     const calls = await readCalls(fixture.callsPath);
     assert.equal(result, undefined);
     assert.equal(calls.length, 1);
-    assert.deepEqual(calls[0].args, ["workspaces", "opencode", "--event", "BeforeAgent"]);
+    assert.deepEqual(calls[0].args, ["run", "opencode", "--event", "BeforeAgent"]);
     assert.equal(logs.length, 1);
     assert.deepEqual(logs[0].body, {
       service: "nams-hooks",
@@ -149,7 +114,7 @@ test("chat.message handler shows workspace selection requirement in OpenCode TUI
   ].join("\n");
   const fixture = await createNamsHooksStub({
     stdoutByCommand: {
-      workspaces: { namsWorkspaceSelectionRequired: true, reason },
+      run: { namsWorkspaceSelectionRequired: true, reason },
     },
   });
   try {
@@ -191,8 +156,7 @@ test("system transform handler surfaces pending workspace selection requirement"
   ].join("\n");
   const fixture = await createNamsHooksStub({
     stdoutByCommand: {
-      workspaces: { namsWorkspaceSelectionRequired: true, reason },
-      run: { continue: true, suppressOutput: true },
+      run: { namsWorkspaceSelectionRequired: true, reason },
     },
   });
   try {
@@ -211,7 +175,7 @@ test("system transform handler surfaces pending workspace selection requirement"
     assert.deepEqual(output.system, [reason]);
     const calls = await readCalls(fixture.callsPath);
     assert.deepEqual(calls.map((call) => call.args), [
-      ["workspaces", "opencode", "--event", "BeforeAgent"],
+      ["run", "opencode", "--event", "BeforeAgent"],
       ["run", "opencode", "--event", "BeforeAgent"],
     ]);
     assert.equal(calls[0].payload.hook, "chat.message");

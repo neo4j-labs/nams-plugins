@@ -15,7 +15,12 @@ import {
   saveSessionState,
   type SessionState,
 } from "../../runtime/session-state.js";
-import { loadEffectiveNamsConfigForMemory } from "../../runtime/workspace-resolution.js";
+import {
+  loadEffectiveNamsConfigForMemory,
+  resolveWorkspaceForMemory,
+  type WorkspaceResolutionResult,
+} from "../../runtime/workspace-resolution.js";
+import { formatWorkspaceSelectionNotice } from "../workspace-selection.js";
 import { parseGeminiPayload } from "./payload.js";
 import { readGeminiTranscript, type GeminiTranscriptEntry } from "./transcript.js";
 
@@ -53,11 +58,16 @@ export class GeminiAdapter implements MemoryPlatformAdapter {
       return allowOutput();
     }
 
-    const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
-    if (config === undefined) {
+    const workspaceResult = await resolveWorkspaceForMemory({
+      invocation,
+      state,
+      projectDirectory: payloadInfo.projectDirectory,
+    });
+    if (workspaceResult.status !== "ready") {
       await saveSessionState(invocation.platform, state.sessionKey, state);
-      return allowOutput();
+      return workspaceResultOutput(workspaceResult);
     }
+    const config = workspaceResult.config;
 
     let additionalContext: string | undefined;
     try {
@@ -255,6 +265,23 @@ function allowOutput(additionalContext?: string): HookResult {
         : {}),
     },
   };
+}
+
+function workspaceResultOutput(result: Exclude<WorkspaceResolutionResult, { status: "ready" }>): HookResult {
+  if (result.reason === "selection-required") {
+    const message = formatWorkspaceSelectionNotice("gemini", result.workspaces);
+    return {
+      stdout: {
+        continue: true,
+        suppressOutput: false,
+        systemMessage: message,
+        hookSpecificOutput: {
+          additionalContext: message,
+        },
+      },
+    };
+  }
+  return allowOutput();
 }
 
 interface GeminiAfterToolPayload {
