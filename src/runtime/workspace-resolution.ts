@@ -58,6 +58,21 @@ export async function resolveWorkspaceForMemory(input: ResolveWorkspaceInput): P
   }
 
   const config = connectionResult.config;
+  const sessionWorkspace = input.state.workspace;
+  if (sessionWorkspace?.source === "session-selection") {
+    await appendWorkspaceDiagnostic(input.invocation, input.state, {
+      message: workspaceDiagnosticMessages.loadedFromSessionState,
+      workspace: {
+        id: sessionWorkspace.id,
+        source: sessionWorkspace.source,
+      },
+    });
+    return {
+      status: "ready",
+      config: runtimeConfig(config.apiKey, sessionWorkspace.id, config.baseUrl),
+    };
+  }
+
   if (config.workspaceId !== undefined) {
     input.state.workspace = {
       id: config.workspaceId,
