@@ -96,7 +96,7 @@ async function withWorkspaceServer<T>(
 }
 
 function runtimeEnv(homeDir: string, baseUrl: string): NodeJS.ProcessEnv {
-  const env = { ...process.env };
+  const env = childProcessEnv();
   delete env.NAMS_WORKSPACE_ID;
   return {
     ...env,
@@ -108,7 +108,7 @@ function runtimeEnv(homeDir: string, baseUrl: string): NodeJS.ProcessEnv {
 }
 
 function runtimeEnvWithoutHome(baseUrl: string): NodeJS.ProcessEnv {
-  const env = { ...process.env };
+  const env = childProcessEnv();
   delete env.HOME;
   delete env.USERPROFILE;
   delete env.NAMS_WORKSPACE_ID;
@@ -117,6 +117,16 @@ function runtimeEnvWithoutHome(baseUrl: string): NodeJS.ProcessEnv {
     NAMS_API_KEY: "test-api-key",
     NAMS_BASE_URL: baseUrl,
   };
+}
+
+function childProcessEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) {
+    if (key.startsWith("npm_") || key.startsWith("NODE_TEST")) {
+      delete env[key];
+    }
+  }
+  return env;
 }
 
 test("workspaces BeforeAgent command allows without resolving workspace", async () => {
