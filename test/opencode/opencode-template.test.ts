@@ -66,7 +66,7 @@ test("chat.message handler logs workspace selection requirement and skips memory
   const reason = [
     "NAMS memory is inactive for this turn.",
     "No memory messages were stored. Multiple NAMS workspaces are available, and no workspaceId is configured.",
-    "Configure an explicit workspace before memory can resume: nams-hooks workspaces configure opencode --scope project --workspace-id <workspace-id>",
+    "Configure a session workspace before memory can resume: nams-hooks workspaces configure opencode --scope session --session-id <session-id> --workspace <workspace-id-or-name>",
     "Available NAMS workspaces:",
     "1. Engineering (owner, active) - workspace-1",
   ].join("\n");
@@ -110,7 +110,7 @@ test("chat.message handler shows workspace selection requirement in OpenCode TUI
   const reason = [
     "NAMS memory is inactive for this turn.",
     "No memory messages were stored. Multiple NAMS workspaces are available, and no workspaceId is configured.",
-    "Configure an explicit workspace before memory can resume: nams-hooks workspaces configure opencode --scope project --workspace-id <workspace-id>",
+    "Configure a session workspace before memory can resume: nams-hooks workspaces configure opencode --scope session --session-id <session-id> --workspace <workspace-id-or-name>",
   ].join("\n");
   const fixture = await createNamsHooksStub({
     stdoutByCommand: {
@@ -150,7 +150,7 @@ test("system transform handler surfaces pending workspace selection requirement"
   const reason = [
     "NAMS memory is inactive for this turn.",
     "No memory messages were stored. Multiple NAMS workspaces are available, and no workspaceId is configured.",
-    "Configure an explicit workspace before memory can resume: nams-hooks workspaces configure opencode --scope project --workspace-id <workspace-id>",
+    "Configure a session workspace before memory can resume: nams-hooks workspaces configure opencode --scope session --session-id <session-id> --workspace <workspace-id-or-name>",
     "Available NAMS workspaces:",
     "1. Engineering (owner, active) - workspace-1",
   ].join("\n");

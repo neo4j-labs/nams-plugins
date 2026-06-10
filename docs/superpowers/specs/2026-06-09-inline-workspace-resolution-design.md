@@ -67,9 +67,9 @@ Each platform follows the same prompt-time sequence:
 
 The multi-workspace notice should use the same wording across platforms:
 NAMS memory is inactive for this turn, no memory messages were stored, multiple
-workspaces are available, and an explicit `workspaceId` must be configured with
-`nams-hooks workspaces configure <platform> --scope project --workspace-id
-<workspace-id>`.
+workspaces are available, and an explicit session workspace must be selected
+with `nams-hooks workspaces configure <platform> --scope session --session-id
+<session-id> --workspace <workspace-id-or-name>`.
 
 Gemini and Claude should return the notice as top-level `systemMessage` and
 `hookSpecificOutput.additionalContext`, leaving `suppressOutput` false for the

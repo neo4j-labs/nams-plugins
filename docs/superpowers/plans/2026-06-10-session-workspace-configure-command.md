@@ -20,7 +20,7 @@
 
 ## Out Of Scope
 
-- Do not implement `/nams-hooks workspaces use ...` slash-command handling in this plan.
+- Do not implement platform slash-command handling in this plan.
 - Do not create a cross-platform picker.
 - Do not change generated NAMS client endpoint coverage.
 - Do not add runtime npm dependencies.
@@ -882,22 +882,17 @@ Do not add slash-command text in this task. Slash-command implementation and rel
 Run:
 
 ```bash
-rg -n -- "workspaces configure .*--scope project --workspace-id|--workspace-id <workspace-id>" test src README.md INSTALL.md
+rg -n -- "workspaces configure .*--scope project --workspace-id|--workspace-id <workspace-id>" test src README.md INSTALL.md docs
 ```
 
 Update the matching test expectations to look for the session command. In tests that use regex, use this pattern:
 
 ```ts
-/nams-hooks workspaces configure .* --scope session --session-id <session-id> --workspace/
+/nams-hooks workspaces configure .* --scope session --session-id <session-id> --workspace <workspace-id-or-name>/
 ```
 
-In `test/opencode/opencode-template.test.ts`, replace the expected line:
-
-```ts
-"Configure an explicit workspace before memory can resume: nams-hooks workspaces configure opencode --scope project --workspace-id <workspace-id>",
-```
-
-with:
+In `test/opencode/opencode-template.test.ts`, replace any legacy project-scope
+notice expectation with:
 
 ```ts
 "Configure a session workspace before memory can resume: nams-hooks workspaces configure opencode --scope session --session-id <session-id> --workspace <workspace-id-or-name>",

@@ -14,11 +14,8 @@ editing project or user configuration:
 nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope session --session-id <session-id> --workspace <workspace-id-or-name>
 ```
 
-Platform slash commands such as
-`/nams-hooks workspaces use <workspace-id-or-name>` are thin
-platform-specific wrappers over that shared command. The wrapper supplies the
-current platform and session ID; the shared runtime validates and stores the
-selection.
+Platform-specific shortcuts are deferred follow-up work. The shared command is
+the source of truth for validation and state mutation.
 
 This design amends:
 
@@ -42,8 +39,7 @@ explicit configuration path that writes that state after validating the chosen
 workspace.
 
 The 2026-06-05 workspace-resolution design left multi-workspace command-based
-selection, including slash-command selection, as a later design. This is that
-design.
+selection as a later design. This is that design for the shared CLI command.
 
 ## Goals
 
@@ -52,8 +48,8 @@ design.
   effective workspace ID.
 - Keep `src/cli.ts` as a gateway that parses command arguments and dispatches
   through the platform registry.
-- Keep platform-specific slash-command mechanics inside platform templates or
-  adapters.
+- Leave any future platform-specific shortcut mechanics inside platform
+  templates or adapters.
 - Validate explicit session selections through `GET /v1/users/me/workspaces`.
 - Avoid writing project or user config for session-scoped selections.
 - Preserve existing runtime dependency constraints.
@@ -65,8 +61,7 @@ design.
 - Add a cross-platform interactive picker in this change.
 - Store complete workspace lists in session state.
 - Change the NAMS memory API request shape.
-- Make slash-command support mandatory for every platform in the first
-  implementation.
+- Implement platform-specific shortcut commands.
 
 ## Command Model
 
@@ -96,14 +91,9 @@ The existing `--workspace-id` flag may remain supported for `project` and
 when the value is known to be an ID. New user-facing session-selection docs
 should prefer `--workspace`.
 
-The platform-facing slash command:
-
-```text
-/nams-hooks workspaces use <workspace-id-or-name>
-```
-
-is equivalent to the session-scoped configure command once the platform wrapper
-adds the current platform and session ID.
+Future platform wrappers should call this same session-scoped configure command
+after supplying the current platform and session ID. They must not duplicate
+workspace validation or state mutation logic.
 
 ## Workspace Precedence
 
@@ -181,28 +171,16 @@ The CLI should parse `--scope session`, `--session-id`, and `--workspace`,
 then route through the existing workspace adapter with an opaque raw payload.
 It should not parse platform hook payloads or infer session IDs from stdin.
 
-## Platform Slash Commands
+## Deferred Platform Shortcuts
 
-Slash-command support is platform-specific sugar, not the source of truth.
-
-OpenCode is the likely first platform because its plugin shim is already a
-JavaScript boundary that sees session metadata and can invoke the bundled
-`nams-hooks` command. It can translate:
-
-```text
-/nams-hooks workspaces use <workspace-id-or-name>
-```
-
-into:
-
-```bash
-nams-hooks workspaces configure opencode --scope session --session-id <current-session-id> --workspace <workspace-id-or-name>
-```
+Platform-specific shortcuts are out of scope for this change. OpenCode is a
+likely first follow-up because its plugin shim is already a JavaScript boundary
+that sees session metadata and can invoke the bundled `nams-hooks` command.
 
 Gemini, Claude, and Codex should begin with documented shell command support
-unless their command extension surfaces expose a verified way to register the
-slash command and pass the current session ID safely. Adding one platform's
-slash wrapper must not duplicate workspace validation or state mutation logic.
+unless their command extension surfaces expose a verified way to register a
+shortcut and pass the current session ID safely. Adding one platform's shortcut
+must not duplicate workspace validation or state mutation logic.
 
 ## Error Handling
 
@@ -253,12 +231,6 @@ notices should recommend the session-scoped command as the quickest fix:
 nams-hooks workspaces configure <platform> --scope session --session-id <session-id> --workspace <workspace-id-or-name>
 ```
 
-Where a platform supports the slash wrapper, the notice may also show:
-
-```text
-/nams-hooks workspaces use <workspace-id-or-name>
-```
-
 The current project/user configure command remains useful when the user wants a
 durable default rather than a current-session selection.
 
@@ -283,8 +255,8 @@ Add or update tests before implementation:
 - Omitted workspace selector auto-selects only when exactly one valid workspace
   is returned.
 - Multi-workspace memory notices mention the session command.
-- Platform slash wrapper tests are added only for platforms that implement a
-  verified wrapper.
+- Platform shortcut tests are added only for platforms that implement a
+  verified wrapper in a follow-up change.
 
 Existing tests should continue to prove that `NamsWorkspaceClient` calls
 `GET /v1/users/me/workspaces` without `X-Workspace-Id`, and that memory
@@ -306,7 +278,5 @@ without changing defaults.
 ## Rollout
 
 Implement the shared session-scope CLI and runtime first. That gives every
-platform a testable command path. Add OpenCode slash-command support only after
-the shared behavior is covered. Treat Gemini, Claude, and Codex slash commands
-as follow-up platform work unless their command APIs are verified during
-implementation planning.
+platform a testable command path. Treat platform shortcut commands as follow-up
+work unless their command APIs are verified during implementation planning.
