@@ -1,8 +1,9 @@
-import { loadNamsConfig } from "../../runtime/config.js";
 import { sha256 } from "../../runtime/hashing.js";
-import { appendNamsConfigDiagnostic, appendNamsFailureDiagnostic, appendRawPlatformLog, } from "../../runtime/logging.js";
+import { appendNamsFailureDiagnostic, appendRawPlatformLog, } from "../../runtime/logging.js";
 import { combineMemoryContexts, createNamsMemoryService, serializeToolInput, } from "../../runtime/memory-service.js";
 import { createInitialSessionState, loadSessionState, saveSessionState, } from "../../runtime/session-state.js";
+import { loadEffectiveNamsConfigForMemory, resolveWorkspaceForMemory, } from "../../runtime/workspace-resolution.js";
+import { formatWorkspaceSelectionNotice } from "../workspace-selection.js";
 import { parseCodexPayload } from "./payload.js";
 import { readCodexTranscript } from "./transcript.js";
 export class CodexAdapter {
@@ -33,13 +34,16 @@ export class CodexAdapter {
             await saveSessionState(invocation.platform, state.sessionKey, state);
             return allowOutput();
         }
-        const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
-        await appendNamsConfigDiagnostic(invocation, state, configResult);
-        if (!configResult.ok) {
+        const workspaceResult = await resolveWorkspaceForMemory({
+            invocation,
+            state,
+            projectDirectory: payloadInfo.projectDirectory,
+        });
+        if (workspaceResult.status !== "ready") {
             await saveSessionState(invocation.platform, state.sessionKey, state);
-            return allowOutput();
+            return workspaceResultOutput(workspaceResult);
         }
-        const config = configResult.config;
+        const config = workspaceResult.config;
         let additionalContext;
         try {
             const memory = createNamsMemoryService(config, invocation, state);
@@ -105,13 +109,11 @@ export class CodexAdapter {
             return allowOutput();
         }
         const conversationId = state.conversationId;
-        const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
-        await appendNamsConfigDiagnostic(invocation, state, configResult);
-        if (!configResult.ok) {
+        const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
+        if (config === undefined) {
             await saveSessionState(invocation.platform, state.sessionKey, state);
             return allowOutput();
         }
-        const config = configResult.config;
         try {
             const memory = createNamsMemoryService(config, invocation, state);
             const response = payloadInfo.lastAssistantMessage?.trim();
@@ -157,13 +159,11 @@ export class CodexAdapter {
             await saveSessionState(invocation.platform, state.sessionKey, state);
             return allowPostToolUseOutput();
         }
-        const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
-        await appendNamsConfigDiagnostic(invocation, state, configResult);
-        if (!configResult.ok) {
+        const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
+        if (config === undefined) {
             await saveSessionState(invocation.platform, state.sessionKey, state);
             return allowPostToolUseOutput();
         }
-        const config = configResult.config;
         const toolInput = payloadInfo.toolInput ?? {};
         const toolCallId = codexToolCallId({
             sessionKey: state.sessionKey,
@@ -225,6 +225,12 @@ function allowOutput(additionalContext) {
                 : {}),
         },
     };
+}
+function workspaceResultOutput(result) {
+    if (result.reason === "selection-required") {
+        return allowOutput(formatWorkspaceSelectionNotice("codex", result.workspaces));
+    }
+    return allowOutput();
 }
 function allowPostToolUseOutput() {
     return { stdout: { continue: true } };

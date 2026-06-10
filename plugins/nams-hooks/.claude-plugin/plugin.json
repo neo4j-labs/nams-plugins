@@ -25,8 +25,7 @@
     "NAMS_WORKSPACE_ID": {
       "type": "string",
       "title": "NAMS workspace ID",
-      "description": "Neo4j Agent Memory Service workspace ID.",
-      "required": true
+      "description": "Optional workspace ID for Neo4j Agent Memory Service. If omitted, nams-hooks auto-selects a single available workspace before memory starts."
     },
     "NAMS_BASE_URL": {
       "type": "string",

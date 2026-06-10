@@ -1,8 +1,9 @@
-import { loadNamsConfig } from "../../runtime/config.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
-import { appendNamsConfigDiagnostic, appendNamsFailureDiagnostic, appendRawPlatformLog, } from "../../runtime/logging.js";
+import { appendNamsFailureDiagnostic, appendRawPlatformLog, } from "../../runtime/logging.js";
 import { combineMemoryContexts, createNamsMemoryService, serializeToolInput } from "../../runtime/memory-service.js";
 import { createInitialSessionState, loadSessionState, saveSessionState } from "../../runtime/session-state.js";
+import { loadEffectiveNamsConfigForMemory, resolveWorkspaceForMemory, } from "../../runtime/workspace-resolution.js";
+import { formatWorkspaceSelectionNotice } from "../workspace-selection.js";
 import { parseOpenCodePayload } from "./payload.js";
 export class OpenCodeAdapter {
     async startSession(invocation) {
@@ -40,13 +41,16 @@ export class OpenCodeAdapter {
             await saveSessionState(invocation.platform, state.sessionKey, state);
             return allowOutput();
         }
-        const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
-        await appendNamsConfigDiagnostic(invocation, state, configResult);
-        if (!configResult.ok) {
+        const workspaceResult = await resolveWorkspaceForMemory({
+            invocation,
+            state,
+            projectDirectory: payloadInfo.projectDirectory,
+        });
+        if (workspaceResult.status !== "ready") {
             await saveSessionState(invocation.platform, state.sessionKey, state);
-            return allowOutput();
+            return workspaceResultOutput(workspaceResult);
         }
-        const config = configResult.config;
+        const config = workspaceResult.config;
         try {
             const memory = createNamsMemoryService(config, invocation, state);
             let conversationId = state.conversationId;
@@ -122,13 +126,11 @@ export class OpenCodeAdapter {
             await saveSessionState(invocation.platform, state.sessionKey, state);
             return allowOutput();
         }
-        const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
-        await appendNamsConfigDiagnostic(invocation, state, configResult);
-        if (!configResult.ok) {
+        const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
+        if (config === undefined) {
             await saveSessionState(invocation.platform, state.sessionKey, state);
             return allowOutput();
         }
-        const config = configResult.config;
         try {
             const memory = createNamsMemoryService(config, invocation, state);
             const assistantPartId = assistantPartKey(payloadInfo);
@@ -181,13 +183,11 @@ export class OpenCodeAdapter {
             await saveSessionState(invocation.platform, state.sessionKey, state);
             return allowOutput();
         }
-        const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
-        await appendNamsConfigDiagnostic(invocation, state, configResult);
-        if (!configResult.ok) {
+        const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
+        if (config === undefined) {
             await saveSessionState(invocation.platform, state.sessionKey, state);
             return allowOutput();
         }
-        const config = configResult.config;
         try {
             const dedupeKey = opencodeToolCallDedupeKey(state.sessionKey, payloadInfo.toolCallId, payloadInfo.toolName, payloadInfo.toolInput);
             if (!state.seenToolCallIds.includes(dedupeKey)) {
@@ -231,6 +231,19 @@ export class OpenCodeAdapter {
 }
 function allowOutput() {
     return { stdout: { continue: true, suppressOutput: true } };
+}
+function workspaceResultOutput(result) {
+    if (result.reason === "selection-required") {
+        return {
+            stdout: {
+                continue: true,
+                suppressOutput: true,
+                namsWorkspaceSelectionRequired: true,
+                reason: formatWorkspaceSelectionNotice("opencode", result.workspaces),
+            },
+        };
+    }
+    return allowOutput();
 }
 async function consumePendingContext(invocation, payloadInfo) {
     const initialState = createInitialSessionState({

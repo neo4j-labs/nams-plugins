@@ -11,7 +11,7 @@
     },
     {
       "name": "NAMS Workspace ID",
-      "description": "Workspace ID for Neo4j Agent Memory Service.",
+      "description": "Optional workspace ID for Neo4j Agent Memory Service. If omitted, nams-hooks auto-selects a single available workspace before memory starts.",
       "envVar": "NAMS_WORKSPACE_ID",
       "sensitive": false
     },

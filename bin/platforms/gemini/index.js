@@ -1,8 +1,9 @@
-import { loadNamsConfig } from "../../runtime/config.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
-import { appendNamsConfigDiagnostic, appendNamsFailureDiagnostic, appendRawPlatformLog, } from "../../runtime/logging.js";
+import { appendNamsFailureDiagnostic, appendRawPlatformLog, } from "../../runtime/logging.js";
 import { combineMemoryContexts, createNamsMemoryService, } from "../../runtime/memory-service.js";
 import { createInitialSessionState, loadSessionState, saveSessionState, } from "../../runtime/session-state.js";
+import { loadEffectiveNamsConfigForMemory, resolveWorkspaceForMemory, } from "../../runtime/workspace-resolution.js";
+import { formatWorkspaceSelectionNotice } from "../workspace-selection.js";
 import { parseGeminiPayload } from "./payload.js";
 import { readGeminiTranscript } from "./transcript.js";
 export class GeminiAdapter {
@@ -33,13 +34,16 @@ export class GeminiAdapter {
             await saveSessionState(invocation.platform, state.sessionKey, state);
             return allowOutput();
         }
-        const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
-        await appendNamsConfigDiagnostic(invocation, state, configResult);
-        if (!configResult.ok) {
+        const workspaceResult = await resolveWorkspaceForMemory({
+            invocation,
+            state,
+            projectDirectory: payloadInfo.projectDirectory,
+        });
+        if (workspaceResult.status !== "ready") {
             await saveSessionState(invocation.platform, state.sessionKey, state);
-            return allowOutput();
+            return workspaceResultOutput(workspaceResult);
         }
-        const config = configResult.config;
+        const config = workspaceResult.config;
         let additionalContext;
         try {
             const memory = createNamsMemoryService(config, invocation, state);
@@ -105,13 +109,11 @@ export class GeminiAdapter {
             return allowOutput();
         }
         const conversationId = state.conversationId;
-        const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
-        await appendNamsConfigDiagnostic(invocation, state, configResult);
-        if (!configResult.ok) {
+        const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
+        if (config === undefined) {
             await saveSessionState(invocation.platform, state.sessionKey, state);
             return allowOutput();
         }
-        const config = configResult.config;
         try {
             const memory = createNamsMemoryService(config, invocation, state);
             const response = payloadInfo.promptResponse?.trim();
@@ -160,13 +162,11 @@ export class GeminiAdapter {
             await saveSessionState(invocation.platform, state.sessionKey, state);
             return allowOutput();
         }
-        const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
-        await appendNamsConfigDiagnostic(invocation, state, configResult);
-        if (!configResult.ok) {
+        const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
+        if (config === undefined) {
             await saveSessionState(invocation.platform, state.sessionKey, state);
             return allowOutput();
         }
-        const config = configResult.config;
         try {
             const toolCallKeys = geminiToolCallDedupeKeys(state.sessionKey, toolPayload.toolName, toolPayload.input);
             if (!hasSeenAny(state.seenToolCallIds, toolCallKeys.lookupKeys)) {
@@ -221,6 +221,22 @@ function allowOutput(additionalContext) {
                 : {}),
         },
     };
+}
+function workspaceResultOutput(result) {
+    if (result.reason === "selection-required") {
+        const message = formatWorkspaceSelectionNotice("gemini", result.workspaces);
+        return {
+            stdout: {
+                continue: true,
+                suppressOutput: false,
+                systemMessage: message,
+                hookSpecificOutput: {
+                    additionalContext: message,
+                },
+            },
+        };
+    }
+    return allowOutput();
 }
 function parseGeminiAfterToolPayload(payload) {
     const toolResponse = firstRecord(payload.tool_response);

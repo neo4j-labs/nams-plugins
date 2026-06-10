@@ -1,13 +1,26 @@
 import { ClaudeAdapter } from "./claude/index.js";
+import { ClaudeWorkspaceAdapter } from "./claude/workspaces.js";
 import { CodexAdapter } from "./codex/index.js";
+import { CodexWorkspaceAdapter } from "./codex/workspaces.js";
 import { GeminiAdapter } from "./gemini/index.js";
+import { GeminiWorkspaceAdapter } from "./gemini/workspaces.js";
 import { OpenCodeAdapter } from "./opencode/index.js";
-const adapters = {
+import { OpenCodeWorkspaceAdapter } from "./opencode/workspaces.js";
+const memoryAdapters = {
     gemini: new GeminiAdapter(),
     claude: new ClaudeAdapter(),
     codex: new CodexAdapter(),
     opencode: new OpenCodeAdapter(),
 };
-export function getPlatformAdapter(platform) {
-    return adapters[platform];
+export function getMemoryPlatformAdapter(platform) {
+    return memoryAdapters[platform];
+}
+const workspaceAdapters = {
+    gemini: new GeminiWorkspaceAdapter(),
+    claude: new ClaudeWorkspaceAdapter(),
+    codex: new CodexWorkspaceAdapter(),
+    opencode: new OpenCodeWorkspaceAdapter(),
+};
+export function getWorkspacePlatformAdapter(platform) {
+    return workspaceAdapters[platform];
 }

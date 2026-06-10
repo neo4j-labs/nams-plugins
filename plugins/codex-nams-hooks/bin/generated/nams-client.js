@@ -19,6 +19,9 @@ export const NAMS_CLIENT_ENDPOINTS = [
     { methodName: "recordReasoningStep", httpMethod: "POST", path: "/v1/reasoning/steps" },
     { methodName: "recordToolCall", httpMethod: "POST", path: "/v1/reasoning/tool-calls" },
 ];
+export const NAMS_WORKSPACE_CLIENT_ENDPOINTS = [
+    { methodName: "listMyWorkspaces", httpMethod: "GET", path: "/v1/users/me/workspaces" },
+];
 export class NamsClient {
     baseUrl;
     apiKey;
@@ -27,9 +30,15 @@ export class NamsClient {
     fetchImpl;
     onRequest;
     constructor(options) {
-        this.baseUrl = (options.baseUrl ?? "https://memory.neo4jlabs.com").replace(/\/+$/, "");
+        if (options.baseUrl === undefined || options.baseUrl.trim() === "") {
+            throw new Error("NamsClient requires a baseUrl");
+        }
+        this.baseUrl = options.baseUrl.replace(/\/+$/, "");
         this.apiKey = options.apiKey;
         this.workspaceId = options.workspaceId;
+        if (this.workspaceId === undefined || this.workspaceId === "") {
+            throw new Error("NamsClient requires a workspaceId");
+        }
         this.defaultHeaders = options.defaultHeaders ?? {};
         this.fetchImpl = options.fetch ?? globalThis.fetch;
         this.onRequest = options.onRequest;
@@ -62,74 +71,131 @@ export class NamsClient {
         return this.request("recordToolCall", "POST", "/v1/reasoning/tool-calls", undefined, body);
     }
     async request(operation, httpMethod, pathTemplate, pathParams, body) {
-        const url = `${this.baseUrl}${formatPath(pathTemplate, pathParams)}`;
-        const headers = { ...this.defaultHeaders };
-        setHeader(headers, "Accept", "application/json");
-        setHeader(headers, "Authorization", `Bearer ${this.apiKey}`);
-        setHeader(headers, "X-Workspace-Id", this.workspaceId);
-        const init = { method: httpMethod, headers };
-        if (body !== undefined) {
-            setHeader(headers, "Content-Type", "application/json");
-            init.body = JSON.stringify(body);
+        return requestNams({
+            baseUrl: this.baseUrl,
+            apiKey: this.apiKey,
+            workspaceId: this.workspaceId,
+            defaultHeaders: this.defaultHeaders,
+            fetchImpl: this.fetchImpl,
+            onRequest: this.onRequest,
+            operation,
+            httpMethod,
+            pathTemplate,
+            pathParams,
+            body,
+        });
+    }
+}
+export class NamsWorkspaceClient {
+    baseUrl;
+    apiKey;
+    defaultHeaders;
+    fetchImpl;
+    onRequest;
+    constructor(options) {
+        if (options.baseUrl === undefined || options.baseUrl.trim() === "") {
+            throw new Error("NamsWorkspaceClient requires a baseUrl");
         }
-        else {
-            deleteHeader(headers, "Content-Type");
+        this.baseUrl = options.baseUrl.replace(/\/+$/, "");
+        this.apiKey = options.apiKey;
+        this.defaultHeaders = options.defaultHeaders ?? {};
+        this.fetchImpl = options.fetch ?? globalThis.fetch;
+        this.onRequest = options.onRequest;
+        if (this.fetchImpl === undefined) {
+            throw new Error("NamsWorkspaceClient requires a fetch implementation");
         }
-        const requestLog = {
-            method: httpMethod,
-            url,
-            path: pathTemplate,
-            headers: headersForLog(headers),
-            ...(body !== undefined ? { body } : {}),
-        };
-        const startedAt = Date.now();
-        let response;
-        try {
-            response = await this.fetchImpl(url, init);
-        }
-        catch (error) {
-            await this.emitRequestEvent({
-                operation,
-                method: httpMethod,
-                path: pathTemplate,
-                ok: false,
-                durationMs: elapsedMs(startedAt),
-                request: requestLog,
-            });
-            throw error;
-        }
-        const responseBody = await readResponseBody(response);
-        await this.emitRequestEvent({
+    }
+    async listMyWorkspaces() {
+        return this.request("listMyWorkspaces", "GET", "/v1/users/me/workspaces", undefined, undefined);
+    }
+    async request(operation, httpMethod, pathTemplate, pathParams, body) {
+        return requestNams({
+            baseUrl: this.baseUrl,
+            apiKey: this.apiKey,
+            defaultHeaders: this.defaultHeaders,
+            fetchImpl: this.fetchImpl,
+            onRequest: this.onRequest,
+            operation,
+            httpMethod,
+            pathTemplate,
+            pathParams,
+            body,
+        });
+    }
+}
+async function requestNams({ baseUrl, apiKey, workspaceId, defaultHeaders, fetchImpl, onRequest, operation, httpMethod, pathTemplate, pathParams, body, }) {
+    const url = `${baseUrl}${formatPath(pathTemplate, pathParams)}`;
+    const headers = { ...defaultHeaders };
+    setHeader(headers, "Accept", "application/json");
+    setHeader(headers, "Authorization", `Bearer ${apiKey}`);
+    if (workspaceId !== undefined) {
+        setHeader(headers, "X-Workspace-Id", workspaceId);
+    }
+    else {
+        deleteHeader(headers, "X-Workspace-Id");
+    }
+    const init = { method: httpMethod, headers };
+    if (body !== undefined) {
+        setHeader(headers, "Content-Type", "application/json");
+        init.body = JSON.stringify(body);
+    }
+    else {
+        deleteHeader(headers, "Content-Type");
+    }
+    const requestLog = {
+        method: httpMethod,
+        url,
+        path: pathTemplate,
+        headers: headersForLog(headers),
+        ...(body !== undefined ? { body } : {}),
+    };
+    const startedAt = Date.now();
+    let response;
+    try {
+        response = await fetchImpl(url, init);
+    }
+    catch (error) {
+        await emitRequestEvent(onRequest, {
             operation,
             method: httpMethod,
             path: pathTemplate,
-            status: response.status,
-            ok: response.ok,
+            ok: false,
             durationMs: elapsedMs(startedAt),
             request: requestLog,
-            response: {
-                status: response.status,
-                ok: response.ok,
-                headers: responseHeadersForLog(response.headers),
-                body: responseBody,
-            },
         });
-        if (!response.ok) {
-            const message = extractErrorMessage(responseBody) ?? `NAMS request failed with status ${response.status}`;
-            throw new NamsClientError(message, response.status, responseBody);
-        }
-        return responseBody;
+        throw error;
     }
-    async emitRequestEvent(event) {
-        if (this.onRequest === undefined) {
-            return;
-        }
-        try {
-            await this.onRequest(event);
-        }
-        catch {
-            // Observability callbacks must not block NAMS requests.
-        }
+    const responseBody = await readResponseBody(response);
+    await emitRequestEvent(onRequest, {
+        operation,
+        method: httpMethod,
+        path: pathTemplate,
+        status: response.status,
+        ok: response.ok,
+        durationMs: elapsedMs(startedAt),
+        request: requestLog,
+        response: {
+            status: response.status,
+            ok: response.ok,
+            headers: responseHeadersForLog(response.headers),
+            body: responseBody,
+        },
+    });
+    if (!response.ok) {
+        const message = extractErrorMessage(responseBody) ?? `NAMS request failed with status ${response.status}`;
+        throw new NamsClientError(message, response.status, responseBody);
+    }
+    return responseBody;
+}
+function emitRequestEvent(onRequest, event) {
+    if (onRequest === undefined) {
+        return Promise.resolve();
+    }
+    try {
+        return Promise.resolve(onRequest(event)).catch(() => undefined);
+    }
+    catch {
+        return Promise.resolve();
     }
 }
 function elapsedMs(startedAt) {
@@ -138,7 +204,8 @@ function elapsedMs(startedAt) {
 function headersForLog(headers) {
     const loggedHeaders = {};
     for (const [key, value] of Object.entries(headers)) {
-        if (key.toLowerCase() === "authorization") {
+        const normalizedKey = key.toLowerCase();
+        if (normalizedKey === "authorization" || normalizedKey === "x-api-key") {
             continue;
         }
         loggedHeaders[key] = value;

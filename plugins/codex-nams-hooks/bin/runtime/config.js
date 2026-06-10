@@ -21,18 +21,46 @@ export function configDiagnosticPayload(result) {
             configSources: result.sources,
         };
     }
+    if (result.reason === "missing-base-url") {
+        return {
+            message: "NAMS baseUrl missing",
+            configSources: result.sources,
+        };
+    }
     return {
         message: "NAMS apiKey missing",
         configSources: result.sources,
     };
 }
 export async function loadNamsConfig(projectDirectory, discoverConfig) {
+    const connectionResult = await loadNamsConnectionConfig(projectDirectory, discoverConfig);
+    if (!connectionResult.ok) {
+        return connectionResult;
+    }
+    if (connectionResult.config.workspaceId === undefined) {
+        return {
+            ok: false,
+            reason: "missing-workspace-id",
+            sources: connectionResult.sources,
+        };
+    }
+    return {
+        ok: true,
+        config: {
+            apiKey: connectionResult.config.apiKey,
+            workspaceId: connectionResult.config.workspaceId,
+            baseUrl: connectionResult.config.baseUrl,
+        },
+        sources: connectionResult.sources,
+    };
+}
+export async function loadNamsConnectionConfig(projectDirectory, discoverConfig) {
     const runtimeEnvironment = RuntimeEnvironment.fromProcess();
     const accumulated = {};
     const sources = {
         apiKey: "missing",
         workspaceId: "missing",
-        baseUrl: "default",
+        baseUrl: "missing",
     };
     const globalResult = await readGlobalJsonConfig(runtimeEnvironment);
     if (!globalResult.ok) {
@@ -55,10 +83,10 @@ export async function loadNamsConfig(projectDirectory, discoverConfig) {
             sources,
         };
     }
-    if (accumulated.workspaceId === undefined) {
+    if (accumulated.baseUrl === undefined) {
         return {
             ok: false,
-            reason: "missing-workspace-id",
+            reason: "missing-base-url",
             sources,
         };
     }
@@ -66,9 +94,10 @@ export async function loadNamsConfig(projectDirectory, discoverConfig) {
         ok: true,
         config: {
             apiKey: accumulated.apiKey,
-            workspaceId: accumulated.workspaceId,
-            ...(accumulated.baseUrl !== undefined ? { baseUrl: accumulated.baseUrl } : {}),
+            ...(accumulated.workspaceId !== undefined ? { workspaceId: accumulated.workspaceId } : {}),
+            baseUrl: accumulated.baseUrl,
         },
+        ...(accumulated.workspaceId !== undefined ? { workspaceId: accumulated.workspaceId } : {}),
         sources,
     };
 }
@@ -127,7 +156,7 @@ function defaultSources() {
     return {
         apiKey: "missing",
         workspaceId: "missing",
-        baseUrl: "default",
+        baseUrl: "missing",
     };
 }
 function applyJsonConfig(accumulated, sources, config, source) {
