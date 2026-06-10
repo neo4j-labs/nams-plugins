@@ -5,7 +5,11 @@ import { sha256 } from "./hashing.js";
 import { writePrivateFile } from "./permissions.js";
 import { RuntimeEnvironment } from "./paths.js";
 
-export type SessionWorkspaceSource = "config" | "runtime-single-workspace" | "install-selection";
+export type SessionWorkspaceSource =
+  | "config"
+  | "runtime-single-workspace"
+  | "install-selection"
+  | "session-selection";
 
 export interface SessionWorkspaceState {
   id: string;
