@@ -4,9 +4,17 @@ export type JsonValue = string | number | boolean | null | JsonValue[] | { [key:
 export type HttpMethod = "GET" | "POST";
 
 export interface NamsClientOptions {
-  baseUrl?: string;
+  baseUrl: string;
   apiKey: string;
   workspaceId: string;
+  defaultHeaders?: Record<string, string>;
+  fetch?: typeof fetch;
+  onRequest?: (event: NamsRequestEvent) => void | Promise<void>;
+}
+
+export interface NamsWorkspaceClientOptions {
+  baseUrl: string;
+  apiKey: string;
   defaultHeaders?: Record<string, string>;
   fetch?: typeof fetch;
   onRequest?: (event: NamsRequestEvent) => void | Promise<void>;
@@ -47,6 +55,20 @@ export class NamsClientError extends Error {
     super(message);
     this.name = "NamsClientError";
   }
+}
+
+interface RequestNamsOptions {
+  baseUrl: string;
+  apiKey: string;
+  workspaceId?: string;
+  defaultHeaders: Record<string, string>;
+  fetchImpl: typeof fetch;
+  onRequest?: (event: NamsRequestEvent) => void | Promise<void>;
+  operation: string;
+  httpMethod: HttpMethod;
+  pathTemplate: string;
+  pathParams?: Record<string, string>;
+  body?: unknown;
 }
 
 export interface CreateConversationRequest {
@@ -139,6 +161,10 @@ export interface RecordToolCallResponse {
   toolName?: string;
 }
 
+export interface WorkspaceListResponse {
+  workspaces?: WorkspaceSummary[];
+}
+
 export interface Observation {
   content?: string;
   conversationId?: string;
@@ -177,6 +203,14 @@ export interface Entity {
   updatedAt?: string;
 }
 
+export interface WorkspaceSummary {
+  dbMode?: string;
+  id?: string;
+  name?: string;
+  role?: string;
+  status?: string;
+}
+
 export const NAMS_CLIENT_ENDPOINTS = [
   { methodName: "createConversation", httpMethod: "POST", path: "/v1/conversations" },
   { methodName: "addMessage", httpMethod: "POST", path: "/v1/conversations/{id}/messages" },
@@ -188,6 +222,10 @@ export const NAMS_CLIENT_ENDPOINTS = [
   { methodName: "recordToolCall", httpMethod: "POST", path: "/v1/reasoning/tool-calls" },
 ] as const;
 
+export const NAMS_WORKSPACE_CLIENT_ENDPOINTS = [
+  { methodName: "listMyWorkspaces", httpMethod: "GET", path: "/v1/users/me/workspaces" },
+] as const;
+
 export class NamsClient {
   private readonly baseUrl: string;
   private readonly apiKey: string;
@@ -197,9 +235,15 @@ export class NamsClient {
   private readonly onRequest?: (event: NamsRequestEvent) => void | Promise<void>;
 
   constructor(options: NamsClientOptions) {
-    this.baseUrl = (options.baseUrl ?? "https://memory.neo4jlabs.com").replace(/\/+$/, "");
+    if (options.baseUrl === undefined || options.baseUrl.trim() === "") {
+      throw new Error("NamsClient requires a baseUrl");
+    }
+    this.baseUrl = options.baseUrl.replace(/\/+$/, "");
     this.apiKey = options.apiKey;
     this.workspaceId = options.workspaceId;
+    if (this.workspaceId === undefined || this.workspaceId === "") {
+      throw new Error("NamsClient requires a workspaceId");
+    }
     this.defaultHeaders = options.defaultHeaders ?? {};
     this.fetchImpl = options.fetch ?? globalThis.fetch;
     this.onRequest = options.onRequest;
@@ -247,73 +291,155 @@ export class NamsClient {
     pathParams?: Record<string, string>,
     body?: unknown,
   ): Promise<TResponse> {
-    const url = `${this.baseUrl}${formatPath(pathTemplate, pathParams)}`;
-    const headers: Record<string, string> = { ...this.defaultHeaders };
-    setHeader(headers, "Accept", "application/json");
-    setHeader(headers, "Authorization", `Bearer ${this.apiKey}`);
-    setHeader(headers, "X-Workspace-Id", this.workspaceId);
-    const init: RequestInit = { method: httpMethod, headers };
-    if (body !== undefined) {
-      setHeader(headers, "Content-Type", "application/json");
-      init.body = JSON.stringify(body);
-    } else {
-      deleteHeader(headers, "Content-Type");
-    }
-    const requestLog: NamsHttpLogRequest = {
-      method: httpMethod,
-      url,
-      path: pathTemplate,
-      headers: headersForLog(headers),
-      ...(body !== undefined ? { body } : {}),
-    };
+    return requestNams<TResponse>({
+      baseUrl: this.baseUrl,
+      apiKey: this.apiKey,
+      workspaceId: this.workspaceId,
+      defaultHeaders: this.defaultHeaders,
+      fetchImpl: this.fetchImpl,
+      onRequest: this.onRequest,
+      operation,
+      httpMethod,
+      pathTemplate,
+      pathParams,
+      body,
+    });
+  }
+}
 
-    const startedAt = Date.now();
-    let response: Response;
-    try {
-      response = await this.fetchImpl(url, init);
-    } catch (error) {
-      await this.emitRequestEvent({
-        operation,
-        method: httpMethod,
-        path: pathTemplate,
-        ok: false,
-        durationMs: elapsedMs(startedAt),
-        request: requestLog,
-      });
-      throw error;
+export class NamsWorkspaceClient {
+  private readonly baseUrl: string;
+  private readonly apiKey: string;
+  private readonly defaultHeaders: Record<string, string>;
+  private readonly fetchImpl: typeof fetch;
+  private readonly onRequest?: (event: NamsRequestEvent) => void | Promise<void>;
+
+  constructor(options: NamsWorkspaceClientOptions) {
+    if (options.baseUrl === undefined || options.baseUrl.trim() === "") {
+      throw new Error("NamsWorkspaceClient requires a baseUrl");
     }
-    const responseBody = await readResponseBody(response);
-    await this.emitRequestEvent({
+    this.baseUrl = options.baseUrl.replace(/\/+$/, "");
+    this.apiKey = options.apiKey;
+    this.defaultHeaders = options.defaultHeaders ?? {};
+    this.fetchImpl = options.fetch ?? globalThis.fetch;
+    this.onRequest = options.onRequest;
+    if (this.fetchImpl === undefined) {
+      throw new Error("NamsWorkspaceClient requires a fetch implementation");
+    }
+  }
+
+  async listMyWorkspaces(): Promise<WorkspaceListResponse> {
+    return this.request<WorkspaceListResponse>("listMyWorkspaces", "GET", "/v1/users/me/workspaces", undefined, undefined);
+  }
+
+  private async request<TResponse>(
+    operation: string,
+    httpMethod: HttpMethod,
+    pathTemplate: string,
+    pathParams?: Record<string, string>,
+    body?: unknown,
+  ): Promise<TResponse> {
+    return requestNams<TResponse>({
+      baseUrl: this.baseUrl,
+      apiKey: this.apiKey,
+      defaultHeaders: this.defaultHeaders,
+      fetchImpl: this.fetchImpl,
+      onRequest: this.onRequest,
+      operation,
+      httpMethod,
+      pathTemplate,
+      pathParams,
+      body,
+    });
+  }
+}
+
+async function requestNams<TResponse>({
+  baseUrl,
+  apiKey,
+  workspaceId,
+  defaultHeaders,
+  fetchImpl,
+  onRequest,
+  operation,
+  httpMethod,
+  pathTemplate,
+  pathParams,
+  body,
+}: RequestNamsOptions): Promise<TResponse> {
+  const url = `${baseUrl}${formatPath(pathTemplate, pathParams)}`;
+  const headers: Record<string, string> = { ...defaultHeaders };
+  setHeader(headers, "Accept", "application/json");
+  setHeader(headers, "Authorization", `Bearer ${apiKey}`);
+  if (workspaceId !== undefined) {
+    setHeader(headers, "X-Workspace-Id", workspaceId);
+  } else {
+    deleteHeader(headers, "X-Workspace-Id");
+  }
+  const init: RequestInit = { method: httpMethod, headers };
+  if (body !== undefined) {
+    setHeader(headers, "Content-Type", "application/json");
+    init.body = JSON.stringify(body);
+  } else {
+    deleteHeader(headers, "Content-Type");
+  }
+  const requestLog: NamsHttpLogRequest = {
+    method: httpMethod,
+    url,
+    path: pathTemplate,
+    headers: headersForLog(headers),
+    ...(body !== undefined ? { body } : {}),
+  };
+
+  const startedAt = Date.now();
+  let response: Response;
+  try {
+    response = await fetchImpl(url, init);
+  } catch (error) {
+    await emitRequestEvent(onRequest, {
       operation,
       method: httpMethod,
       path: pathTemplate,
-      status: response.status,
-      ok: response.ok,
+      ok: false,
       durationMs: elapsedMs(startedAt),
       request: requestLog,
-      response: {
-        status: response.status,
-        ok: response.ok,
-        headers: responseHeadersForLog(response.headers),
-        body: responseBody,
-      },
     });
-    if (!response.ok) {
-      const message = extractErrorMessage(responseBody) ?? `NAMS request failed with status ${response.status}`;
-      throw new NamsClientError(message, response.status, responseBody);
-    }
-    return responseBody as TResponse;
+    throw error;
   }
+  const responseBody = await readResponseBody(response);
+  await emitRequestEvent(onRequest, {
+    operation,
+    method: httpMethod,
+    path: pathTemplate,
+    status: response.status,
+    ok: response.ok,
+    durationMs: elapsedMs(startedAt),
+    request: requestLog,
+    response: {
+      status: response.status,
+      ok: response.ok,
+      headers: responseHeadersForLog(response.headers),
+      body: responseBody,
+    },
+  });
+  if (!response.ok) {
+    const message = extractErrorMessage(responseBody) ?? `NAMS request failed with status ${response.status}`;
+    throw new NamsClientError(message, response.status, responseBody);
+  }
+  return responseBody as TResponse;
+}
 
-  private async emitRequestEvent(event: NamsRequestEvent): Promise<void> {
-    if (this.onRequest === undefined) {
-      return;
-    }
-    try {
-      await this.onRequest(event);
-    } catch {
-      // Observability callbacks must not block NAMS requests.
-    }
+function emitRequestEvent(
+  onRequest: ((event: NamsRequestEvent) => void | Promise<void>) | undefined,
+  event: NamsRequestEvent,
+): Promise<void> {
+  if (onRequest === undefined) {
+    return Promise.resolve();
+  }
+  try {
+    return Promise.resolve(onRequest(event)).catch(() => undefined);
+  } catch {
+    return Promise.resolve();
   }
 }
 
@@ -324,7 +450,8 @@ function elapsedMs(startedAt: number): number {
 function headersForLog(headers: Record<string, string>): Record<string, string> {
   const loggedHeaders: Record<string, string> = {};
   for (const [key, value] of Object.entries(headers)) {
-    if (key.toLowerCase() === "authorization") {
+    const normalizedKey = key.toLowerCase();
+    if (normalizedKey === "authorization" || normalizedKey === "x-api-key") {
       continue;
     }
     loggedHeaders[key] = value;

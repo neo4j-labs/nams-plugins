@@ -12,5 +12,10 @@ test("opencode plugin template routes session-created events through the typed h
   assert.match(source, /session\.created/);
   assert.match(source, /nams-hooks/);
   assert.match(source, /run\("SessionStart", \{ hook: "event", event \}\)/);
-  assert.match(source, /"run", "opencode", "--event", event/);
+  assert.match(source, /run\("BeforeAgent", \{ hook: "chat\.message", input, output \}\)/);
+  assert.doesNotMatch(source, /runWorkspace/);
+  assert.match(source, /memoryResult\?\.namsWorkspaceSelectionRequired === true/);
+  assert.match(source, /showToast/);
+  assert.match(source, /invokeNams\(event,/);
+  assert.match(source, /\["run", "opencode", "--event", event\]/);
 });

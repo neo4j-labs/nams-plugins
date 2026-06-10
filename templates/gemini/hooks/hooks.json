@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "name": "nams-before-agent",
+            "name": "nams-memory-before-agent",
             "description": "Route Gemini CLI before-agent payload to the NAMS hook runtime.",
             "command": "node \"${extensionPath}/bin/cli.js\" run gemini --event BeforeAgent"
           }

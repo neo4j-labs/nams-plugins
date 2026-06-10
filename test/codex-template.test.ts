@@ -5,6 +5,7 @@ import { test } from "node:test";
 const marketplacePath = "templates/codex/.agents/plugins/marketplace.json";
 const pluginManifestPath = "templates/codex/plugins/codex-nams-hooks/.codex-plugin/plugin.json";
 const pluginHooksPath = "templates/codex/plugins/codex-nams-hooks/hooks/hooks.json";
+const fallbackHooksPath = "templates/codex/hooks.json";
 const pluginRoot = "${PLUGIN_ROOT}";
 
 test("Codex repo marketplace template exposes nams-hooks as available", async () => {
@@ -75,6 +76,18 @@ test("Codex plugin hook template invokes the bundled CLI through plugin root", a
     command: `node ${pluginRoot}/bin/cli.js run codex --event AfterTool`,
     statusMessage: "NAMS tool metadata",
   });
+  assert.doesNotMatch(JSON.stringify(template.hooks.UserPromptSubmit), /workspaces|InstallConfigure/);
+});
+
+test("Codex fallback hook template keeps first prompt memory-only", async () => {
+  const template = JSON.parse(await readFile(fallbackHooksPath, "utf8"));
+
+  assert.deepEqual(codexHookFor(template, "UserPromptSubmit"), {
+    type: "command",
+    command: "nams-hooks run codex --event BeforeAgent",
+    statusMessage: "NAMS memory recall",
+  });
+  assert.doesNotMatch(JSON.stringify(template.hooks.UserPromptSubmit), /workspaces|InstallConfigure/);
 });
 
 function codexHookFor(template: any, eventName: string): Record<string, string> {

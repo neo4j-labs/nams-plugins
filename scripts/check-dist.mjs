@@ -153,8 +153,8 @@ function assertClaudePluginUserConfig(plugin) {
   }
 
   const workspaceId = plugin.userConfig?.NAMS_WORKSPACE_ID;
-  if (workspaceId?.type !== "string" || workspaceId.title !== "NAMS workspace ID" || workspaceId.required !== true) {
-    throw new Error("Claude plugin manifest must require a NAMS_WORKSPACE_ID userConfig value.");
+  if (workspaceId?.type !== "string" || workspaceId.title !== "NAMS workspace ID" || workspaceId.required === true) {
+    throw new Error("Claude plugin manifest must define an optional NAMS_WORKSPACE_ID userConfig value.");
   }
   if (workspaceId.sensitive === true) {
     throw new Error("Claude plugin NAMS_WORKSPACE_ID must be non-sensitive.");
@@ -162,10 +162,10 @@ function assertClaudePluginUserConfig(plugin) {
 
   const baseUrl = plugin.userConfig?.NAMS_BASE_URL;
   if (baseUrl?.type !== "string" || baseUrl.title !== "NAMS base URL" || baseUrl.default !== "https://memory.neo4jlabs.com") {
-    throw new Error("Claude plugin manifest must expose optional NAMS_BASE_URL with the default NAMS endpoint.");
+    throw new Error("Claude plugin manifest must define the standard NAMS_BASE_URL userConfig default.");
   }
   if (baseUrl.sensitive === true || baseUrl.required === true) {
-    throw new Error("Claude plugin NAMS_BASE_URL must be optional and non-sensitive.");
+    throw new Error("Claude plugin NAMS_BASE_URL must be non-sensitive and optional because the template supplies a default.");
   }
 }
 

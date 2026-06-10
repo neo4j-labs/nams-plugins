@@ -40,6 +40,16 @@ test("initializes reasoning step id map for new session state", async () => {
   assert.deepEqual(state.reasoningStepIdsByHash, {});
 });
 
+test("initializes workspace as undefined for new session state", async () => {
+  const state = createInitialSessionState({
+    platform: "gemini",
+    sessionId: "session-1",
+    projectDirectory: "/tmp/project",
+  });
+
+  assert.equal(state.workspace, undefined);
+});
+
 test("persists session state under user-local .nams/state using timestamped session filenames", async () => {
   const homeDir = await mkdtemp(path.join(tmpdir(), "nams-home-"));
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-state-"));
@@ -71,6 +81,38 @@ test("persists session state under user-local .nams/state using timestamped sess
     assert.deepEqual(JSON.parse(await readFile(savedPath, "utf8")), state);
     assert.equal(await fileMode(savedPath), 0o600);
     assert.deepEqual(await loadSessionState("gemini", "session/1"), state);
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("preserves selected workspace state when saving and loading session state", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "nams-home-"));
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-state-"));
+  try {
+    useRuntimeHome(homeDir);
+    const state: SessionState = {
+      harness: "gemini",
+      harnessSessionId: "session-1",
+      sessionKey: "session-1",
+      projectDirectory: projectDir,
+      createdAt: "2026-05-11T12:00:00.000Z",
+      workspace: {
+        id: "workspace-1",
+        source: "runtime-single-workspace",
+        selectedAt: "2026-05-11T12:01:00.000Z",
+      },
+      seenAssistantMessageHashes: [],
+      seenTranscriptEntryIds: [],
+      seenReasoningStepHashes: [],
+      seenToolCallIds: [],
+      reasoningStepIdsByHash: {},
+    };
+
+    await saveSessionState("gemini", state.sessionKey, state);
+
+    assert.deepEqual(await loadSessionState("gemini", state.sessionKey), state);
   } finally {
     await rm(homeDir, { recursive: true, force: true });
     await rm(projectDir, { recursive: true, force: true });

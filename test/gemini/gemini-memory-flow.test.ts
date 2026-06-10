@@ -117,11 +117,11 @@ test("creates Gemini conversation, recalls memory, and stores first BeforeAgent 
 
     const { lines } = await readSingleSessionLog(projectDir);
     assert.equal(lines[0].kind, "hook.event");
-    const configDiagnostics = lines.filter(
-      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS config loaded",
+    const workspaceDiagnostics = lines.filter(
+      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS workspace loaded from config",
     );
-    assert.equal(configDiagnostics.length, 1);
-    assert.deepEqual(configDiagnostics[0].payload.configSources, {
+    assert.equal(workspaceDiagnostics.length, 1);
+    assert.deepEqual(workspaceDiagnostics[0].payload.configSources, {
       apiKey: "env:NAMS_API_KEY",
       workspaceId: "env:NAMS_WORKSPACE_ID",
       baseUrl: "env:NAMS_BASE_URL",
@@ -349,7 +349,7 @@ test("Gemini BeforeAgent continues when NAMS_API_KEY is missing", async () => {
     assert.deepEqual(diagnostics[0].payload.configSources, {
       apiKey: "missing",
       workspaceId: "missing",
-      baseUrl: "default",
+      baseUrl: "missing",
     });
     assert.doesNotMatch(log, /Bearer|key/);
   } finally {
@@ -357,10 +357,56 @@ test("Gemini BeforeAgent continues when NAMS_API_KEY is missing", async () => {
   }
 });
 
-test("Gemini BeforeAgent continues when NAMS_WORKSPACE_ID is missing", async () => {
+test("Gemini BeforeAgent uses auto-selected workspace when NAMS_WORKSPACE_ID is missing", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
-    const nams = createNamsFetchMock().all({ error: "unexpected NAMS call" }, 500);
+    const selectedWorkspaceId = "workspace-auto";
+    const prompt = "remember this";
+    const nams = createNamsFetchMock()
+      .workspaces({
+        workspaces: [{ id: selectedWorkspaceId, name: "Engineering", role: "owner", status: "active" }],
+      })
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message();
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+    const adapter = new GeminiAdapter();
+    const invocation = {
+      platform: "gemini" as const,
+      event: "BeforeAgent" as const,
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt,
+      },
+    };
+
+    const result = await adapter.beforeAgent(invocation);
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    assert.equal(nams.calls("listMyWorkspaces").length, 1);
+    assert.equal(nams.calls("createConversation").length, 1);
+    const createConversationHeaders = nams.calls("createConversation")[0].options.headers as Record<string, string>;
+    assert.equal(createConversationHeaders["x-workspace-id"], selectedWorkspaceId);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Gemini BeforeAgent notifies and continues when multiple workspaces are available", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
+  try {
+    const nams = createNamsFetchMock().workspaces({
+      workspaces: [
+        { id: "workspace-1", name: "Default", role: "owner", status: "active" },
+        { id: "workspace-2", name: "test2", role: "owner", status: "active" },
+      ],
+    });
     testEnv(projectDir, {
       NAMS_API_KEY: "key",
       NAMS_BASE_URL: "https://memory.example.test",
@@ -378,19 +424,15 @@ test("Gemini BeforeAgent continues when NAMS_WORKSPACE_ID is missing", async () 
       },
     });
 
-    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
-    assert.equal(nams.calls().length, 0);
-
-    const { lines } = await readSingleSessionLog(projectDir);
-    const diagnostics = lines.filter(
-      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS workspaceId missing",
-    );
-    assert.equal(diagnostics.length, 1);
-    assert.deepEqual(diagnostics[0].payload.configSources, {
-      apiKey: "env:NAMS_API_KEY",
-      workspaceId: "missing",
-      baseUrl: "env:NAMS_BASE_URL",
-    });
+    assert.equal(result.stdout.continue, true);
+    assert.equal(result.stdout.suppressOutput, false);
+    assert.equal(Object.hasOwn(result.stdout, "decision"), false);
+    assert.match(String(result.stdout.systemMessage), /NAMS memory is inactive/);
+    assert.match(String(result.stdout.systemMessage), /workspace-1/);
+    assert.match(String(result.stdout.systemMessage), /workspace-2/);
+    assert.match(String(hookSpecificOutput(result).additionalContext), /Multiple NAMS workspaces are available/);
+    assert.equal(nams.calls("listMyWorkspaces").length, 1);
+    assert.equal(nams.calls("createConversation").length, 0);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -424,7 +466,7 @@ test("Gemini BeforeAgent logs invalid config diagnostics without raw JSON conten
         configSources: {
           apiKey: "missing",
           workspaceId: "missing",
-          baseUrl: "default",
+          baseUrl: "missing",
         },
         errorSource: "project:.nams/config.json",
       },
@@ -546,7 +588,7 @@ test("Gemini session log keeps hook events together and includes user prompt fie
     assert.deepEqual(diagnostics[0].payload.configSources, {
       apiKey: "missing",
       workspaceId: "missing",
-      baseUrl: "default",
+      baseUrl: "missing",
     });
     assert.match(log, /"prompt":"raw prompt text"/);
     assert.match(log, /"hook_event_name":"BeforeAgent"/);

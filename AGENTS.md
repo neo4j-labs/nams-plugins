@@ -28,6 +28,7 @@ The runtime must not fetch OpenAPI specs, inspect schemas, or discover endpoints
 - `invocation.event` is typed. Do not infer hook event names from payload fields such as `hook_event_name`, `hookEventName`, or `event`.
 - Use the static adapter registry in `src/platforms/index.ts`; avoid dynamic module discovery.
 - Runtime code and generated release artifacts should use Node built-ins only. Do not add runtime npm dependencies without an explicit design change.
+- Do not hardcode the NAMS service URL in executable source, generators, or generated runtime artifacts. `baseUrl` must come from NAMS configuration such as JSON config, platform user configuration, or `NAMS_BASE_URL`. Configuration templates and documentation may provide the standard production NAMS URL as a default or example value.
 - Development, build, generation, and test tooling may use `devDependencies` when they improve maintainability or confidence and do not become runtime requirements or additional package installs for hook users.
 - TypeScript is the source language. Distribution output is generated JavaScript.
 
@@ -47,6 +48,7 @@ The runtime must not fetch OpenAPI specs, inspect schemas, or discover endpoints
 ## Configuration And State
 
 - Project-level installation is the default.
+- `apiKey` and `baseUrl` are required for NAMS requests. `workspaceId` is required for memory requests unless the harness path supports workspace auto-resolution before memory starts.
 - `.nams/.env` has priority. Real environment variables are fallback values.
 - Do not rely on agent harnesses as mutable session stores. Use harness IDs as keys and persist local mapping state under `.nams/state/`.
 - `.nams/`, `.nams/state/`, `.nams/logs/`, and generated local artifacts must stay out of normal source changes.

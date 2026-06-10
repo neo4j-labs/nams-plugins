@@ -112,15 +112,80 @@ test("OpenCode chat.message creates conversation, recalls memory, and stores use
     assert.equal(state.pendingMemoryContext.messageId, "user-1");
 
     const { lines } = await readSingleSessionLog(projectDir);
-    const configDiagnostics = lines.filter(
-      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS config loaded",
+    const workspaceDiagnostics = lines.filter(
+      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS workspace loaded from config",
     );
-    assert.equal(configDiagnostics.length, 1);
-    assert.deepEqual(configDiagnostics[0].payload.configSources, {
+    assert.equal(workspaceDiagnostics.length, 1);
+    assert.deepEqual(workspaceDiagnostics[0].payload.configSources, {
       apiKey: "env:NAMS_API_KEY",
       workspaceId: "env:NAMS_WORKSPACE_ID",
       baseUrl: "env:NAMS_BASE_URL",
     });
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("OpenCode chat.message uses auto-selected workspace when NAMS_WORKSPACE_ID is missing", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
+  try {
+    const selectedWorkspaceId = "workspace-auto";
+    const prompt = "Remember fixture tests.";
+    const nams = createNamsFetchMock()
+      .workspaces({
+        workspaces: [{ id: selectedWorkspaceId, name: "Engineering", role: "owner", status: "active" }],
+      })
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message();
+    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
+    const adapter = new OpenCodeAdapter();
+    const invocation = {
+      platform: "opencode" as const,
+      event: "BeforeAgent" as const,
+      processCwd: projectDir,
+      rawPayload: chatMessagePayload(projectDir, "session-1", "user-1", prompt),
+    };
+
+    const result = await adapter.beforeAgent(invocation);
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    assert.equal(nams.calls("listMyWorkspaces").length, 1);
+    assert.equal(nams.calls("createConversation").length, 1);
+    const createConversationHeaders = nams.calls("createConversation")[0].options.headers as Record<string, string>;
+    assert.equal(createConversationHeaders["x-workspace-id"], selectedWorkspaceId);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("OpenCode chat.message reports inactive memory when multiple workspaces are available", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-opencode-flow-"));
+  try {
+    createNamsFetchMock().workspaces({
+      workspaces: [
+        { id: "workspace-1", name: "Engineering", role: "owner", status: "active" },
+        { id: "workspace-2", name: "Research", role: "member", status: "active" },
+      ],
+    });
+    testEnv(projectDir, { NAMS_API_KEY: "key", NAMS_BASE_URL: "https://memory.example.test" });
+    const adapter = new OpenCodeAdapter();
+
+    const result = await adapter.beforeAgent({
+      platform: "opencode",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: chatMessagePayload(projectDir, "session-1", "user-1", "Resolve workspace before memory."),
+    });
+
+    assert.equal(result.stdout.continue, true);
+    assert.equal(result.stdout.namsMemoryReady, undefined);
+    assert.equal(result.stdout.namsWorkspaceSelectionRequired, true);
+    assert.match(String(result.stdout.reason), /NAMS memory is inactive for this turn/);
+    assert.match(String(result.stdout.reason), /No memory messages were stored/);
+    assert.match(String(result.stdout.reason), /workspaces configure opencode/);
+    assert.match(String(result.stdout.reason), /Research/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -200,7 +265,7 @@ test("OpenCode BeforeAgent continues when NAMS_API_KEY is missing", async () => 
     assert.deepEqual(diagnostics[0].payload.configSources, {
       apiKey: "missing",
       workspaceId: "missing",
-      baseUrl: "default",
+      baseUrl: "missing",
     });
     assert.doesNotMatch(log, /Bearer|key/);
   } finally {
@@ -232,7 +297,7 @@ test("OpenCode BeforeAgent logs invalid config diagnostics without raw JSON cont
         configSources: {
           apiKey: "missing",
           workspaceId: "missing",
-          baseUrl: "default",
+          baseUrl: "missing",
         },
         errorSource: "project:.nams/config.json",
       },

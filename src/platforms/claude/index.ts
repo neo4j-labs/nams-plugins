@@ -1,8 +1,6 @@
-import type { HookInvocation, HookResult, PlatformAdapter } from "../../interfaces.js";
-import { loadNamsConfig } from "../../runtime/config.js";
+import type { HookInvocation, HookResult, MemoryPlatformAdapter } from "../../interfaces.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
 import {
-  appendNamsConfigDiagnostic,
   appendNamsFailureDiagnostic,
   appendRawPlatformLog,
 } from "../../runtime/logging.js";
@@ -11,10 +9,16 @@ import {
   createNamsMemoryService,
 } from "../../runtime/memory-service.js";
 import { createInitialSessionState, loadSessionState, saveSessionState } from "../../runtime/session-state.js";
+import {
+  loadEffectiveNamsConfigForMemory,
+  resolveWorkspaceForMemory,
+  type WorkspaceResolutionResult,
+} from "../../runtime/workspace-resolution.js";
+import { formatWorkspaceSelectionNotice } from "../workspace-selection.js";
 import { discoverClaudeNamsConfig } from "./config.js";
 import { parseClaudePayload } from "./payload.js";
 
-export class ClaudeAdapter implements PlatformAdapter {
+export class ClaudeAdapter implements MemoryPlatformAdapter {
   async startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
     const payloadInfo = parseClaudePayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({
@@ -48,13 +52,17 @@ export class ClaudeAdapter implements PlatformAdapter {
       return allowOutput();
     }
 
-    const configResult = await loadNamsConfig(payloadInfo.projectDirectory, discoverClaudeNamsConfig);
-    await appendNamsConfigDiagnostic(invocation, state, configResult);
-    if (!configResult.ok) {
+    const workspaceResult = await resolveWorkspaceForMemory({
+      invocation,
+      state,
+      projectDirectory: payloadInfo.projectDirectory,
+      discoverConfig: discoverClaudeNamsConfig,
+    });
+    if (workspaceResult.status !== "ready") {
       await saveSessionState(invocation.platform, state.sessionKey, state);
-      return allowOutput();
+      return workspaceResultOutput(workspaceResult);
     }
-    const config = configResult.config;
+    const config = workspaceResult.config;
 
     let additionalContext: string | undefined;
     try {
@@ -126,9 +134,13 @@ export class ClaudeAdapter implements PlatformAdapter {
       return allowOutput();
     }
 
-    const configResult = await loadNamsConfig(payloadInfo.projectDirectory, discoverClaudeNamsConfig);
-    await appendNamsConfigDiagnostic(invocation, state, configResult);
-    if (!configResult.ok) {
+    const config = await loadEffectiveNamsConfigForMemory(
+      invocation,
+      state,
+      payloadInfo.projectDirectory,
+      discoverClaudeNamsConfig,
+    );
+    if (config === undefined) {
       await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
@@ -140,7 +152,7 @@ export class ClaudeAdapter implements PlatformAdapter {
 
     try {
       if (!alreadySeen) {
-        const memory = createNamsMemoryService(configResult.config, invocation, state);
+        const memory = createNamsMemoryService(config, invocation, state);
         await memory.storeAssistantMessage(state.conversationId, response);
       }
     } catch {
@@ -178,9 +190,13 @@ export class ClaudeAdapter implements PlatformAdapter {
       return allowOutput();
     }
 
-    const configResult = await loadNamsConfig(payloadInfo.projectDirectory, discoverClaudeNamsConfig);
-    await appendNamsConfigDiagnostic(invocation, state, configResult);
-    if (!configResult.ok) {
+    const config = await loadEffectiveNamsConfigForMemory(
+      invocation,
+      state,
+      payloadInfo.projectDirectory,
+      discoverClaudeNamsConfig,
+    );
+    if (config === undefined) {
       await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
@@ -193,7 +209,7 @@ export class ClaudeAdapter implements PlatformAdapter {
         payloadInfo.toolInput,
       );
       if (!hasSeenAny(state.seenToolCallIds, toolCallKeys.lookupKeys)) {
-        const memory = createNamsMemoryService(configResult.config, invocation, state);
+        const memory = createNamsMemoryService(config, invocation, state);
         const reasoningStep = {
           conversationId: state.conversationId,
           reasoning: `Claude Code ran ${payloadInfo.toolName} with the provided tool input.`,
@@ -248,6 +264,24 @@ function allowOutput(additionalContext?: string): HookResult {
         : {}),
     },
   };
+}
+
+function workspaceResultOutput(result: Exclude<WorkspaceResolutionResult, { status: "ready" }>): HookResult {
+  if (result.reason === "selection-required") {
+    const message = formatWorkspaceSelectionNotice("claude", result.workspaces);
+    return {
+      stdout: {
+        continue: true,
+        suppressOutput: false,
+        systemMessage: message,
+        hookSpecificOutput: {
+          hookEventName: "UserPromptSubmit",
+          additionalContext: message,
+        },
+      },
+    };
+  }
+  return allowOutput();
 }
 
 function claudeToolCallDedupeKeys(

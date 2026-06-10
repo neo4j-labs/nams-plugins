@@ -13,8 +13,7 @@ The hook runner owns deterministic memory persistence. Agents receive recalled c
 ## Source Inputs
 
 - Behavioral reference: `docs/nams-skill.md`
-- NAMS OpenAPI contract: `https://memory.neo4jlabs.com/openapi.json`
-- Local OpenAPI copy: `docs/nams-openapi.json`
+- Pinned NAMS OpenAPI contract: `docs/nams-openapi.json`
 - Claude Code hooks reference: `https://code.claude.com/docs/en/hooks`
 - Claude Code plugin marketplace reference: `https://code.claude.com/docs/en/plugin-marketplaces`
 - Gemini CLI hooks reference: `https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/writing-hooks.md`
@@ -233,7 +232,7 @@ Gemini hook templates live under `templates/gemini/` on `devel`. The release art
 node "${extensionPath}/bin/cli.js" run gemini --event SessionStart
 ```
 
-Claude Code users can add the generated release tree as a plugin marketplace and install the `nams-hooks` plugin. Claude loads the plugin's standard `hooks/hooks.json` automatically, so `.claude-plugin/plugin.json` must not point its `hooks` field at that file. The plugin manifest declares user configuration for a required sensitive `NAMS_API_KEY`, a required non-sensitive `NAMS_WORKSPACE_ID`, and an optional `NAMS_BASE_URL` defaulting to `https://memory.neo4jlabs.com`. Plugin hooks call the bundled compiled runtime through `${CLAUDE_PLUGIN_ROOT}/bin/cli.js`, so Claude plugin installs do not require a global `nams-hooks` executable:
+Claude Code users can add the generated release tree as a plugin marketplace and install the `nams-hooks` plugin. Claude loads the plugin's standard `hooks/hooks.json` automatically, so `.claude-plugin/plugin.json` must not point its `hooks` field at that file. The plugin manifest declares user configuration for a required sensitive `NAMS_API_KEY`, a required non-sensitive `NAMS_WORKSPACE_ID`, and a non-sensitive `NAMS_BASE_URL` with the standard service URL as its configuration default. Plugin hooks call the bundled compiled runtime through `${CLAUDE_PLUGIN_ROOT}/bin/cli.js`, so Claude plugin installs do not require a global `nams-hooks` executable:
 
 ```bash
 claude plugin marketplace add kubamarchwicki/nams-hooks@latest
@@ -281,7 +280,7 @@ Supported JSON keys:
 
 - `apiKey`: NAMS workspace API key, sent as `Authorization: Bearer <key>`.
 - `workspaceId`: NAMS workspace identifier for memory requests.
-- `baseUrl`: optional NAMS base URL, defaulting to `https://memory.neo4jlabs.com`.
+- `baseUrl`: NAMS base URL, defaulting to `https://memory.neo4jlabs.com` when provided by standard configuration examples or platform configuration templates. The runtime and generated client must not hardcode a production service URL.
 
 Example:
 
@@ -313,13 +312,10 @@ Supported final environment overrides:
 Required:
 
 - `apiKey`, from either JSON config or `NAMS_API_KEY`.
-- `workspaceId`, from JSON config, Claude plugin user configuration, or `NAMS_WORKSPACE_ID`.
-
-Optional:
-
 - `baseUrl`, from JSON config, Claude plugin user configuration, or `NAMS_BASE_URL`.
+- `workspaceId`, from JSON config, Claude plugin user configuration, or `NAMS_WORKSPACE_ID`, unless a harness-specific workspace-resolution phase selects one before memory starts.
 
-Final environment overrides are limited to `NAMS_API_KEY`, `NAMS_WORKSPACE_ID` and `NAMS_BASE_URL` unless a future design explicitly adds more. The runtime records sanitized `configSources` diagnostics in the session log, for example `apiKey: "env:NAMS_API_KEY"`, `workspaceId: "env:NAMS_WORKSPACE_ID"`, `workspaceId: "platform:claude:CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID"`, `baseUrl: "project:.nams/config.json"`, or `baseUrl: "default"`. It never logs secret values or full config objects.
+Final environment overrides are limited to `NAMS_API_KEY`, `NAMS_WORKSPACE_ID` and `NAMS_BASE_URL` unless a future design explicitly adds more. The runtime records sanitized `configSources` diagnostics in the session log, for example `apiKey: "env:NAMS_API_KEY"`, `workspaceId: "env:NAMS_WORKSPACE_ID"`, `workspaceId: "platform:claude:CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID"`, `baseUrl: "project:.nams/config.json"`, or `baseUrl: "missing"`. It never logs secret values or full config objects.
 
 `.env` files are not part of the target configuration model. Secrets remain outside committed harness configs. The installer ensures project `.nams/config.json` stays local and gitignored when it creates or modifies a project override.
 

@@ -4,54 +4,97 @@ import process from "node:process";
 import {
   isHookEvent,
   isPlatform,
+  isWorkspaceHookEvent,
   type HookEvent,
   type HookInvocation,
   type HookResult,
+  type MemoryPlatformAdapter,
   type Platform,
-  type PlatformAdapter,
+  type WorkspaceHookEvent,
+  type WorkspaceHookInvocation,
+  type WorkspaceHookResult,
+  type WorkspacePlatformAdapter,
 } from "./interfaces.js";
-import { getPlatformAdapter } from "./platforms/index.js";
+import { getMemoryPlatformAdapter, getWorkspacePlatformAdapter } from "./platforms/index.js";
 import { readJsonPayload } from "./runtime/stdin.js";
 
-interface RunArgs {
-  platform: Platform;
-  event: HookEvent;
-}
+type CliArgs =
+  | { command: "run"; platform: Platform; event: HookEvent }
+  | { command: "workspaces"; platform: Platform; event: WorkspaceHookEvent }
+  | { command: "workspace-configure"; platform: Platform; scope: "project" | "user"; workspaceId?: string };
 
 async function main(argv: string[]): Promise<number> {
-  const args = parseRunArgs(argv);
+  const args = parseArgs(argv);
   if (args === null) {
-    process.stderr.write(
-      "Usage: nams-hooks run <gemini|claude|codex|opencode> --event <SessionStart|BeforeAgent|AfterAgent|AfterTool>\n",
-    );
+    process.stderr.write(usage());
     return 1;
   }
 
+  if (args.command === "workspace-configure") {
+    const result = await routeWorkspaceEvent(getWorkspacePlatformAdapter(args.platform), {
+      platform: args.platform,
+      event: "InstallConfigure",
+      rawPayload: {
+        scope: args.scope,
+        ...(args.workspaceId !== undefined ? { workspaceId: args.workspaceId } : {}),
+      },
+      processCwd: process.cwd(),
+    });
+    return writeWorkspaceConfigureResult(result);
+  }
+
   const rawPayload = await readJsonPayload();
-  const adapter = getPlatformAdapter(args.platform);
-  const result = await routeEvent(adapter, {
-    platform: args.platform,
-    event: args.event,
-    rawPayload,
-    processCwd: process.cwd(),
-  });
+  const result =
+    args.command === "run"
+      ? await routeEvent(getMemoryPlatformAdapter(args.platform), {
+          platform: args.platform,
+          event: args.event,
+          rawPayload,
+          processCwd: process.cwd(),
+        })
+      : await routeWorkspaceEvent(getWorkspacePlatformAdapter(args.platform), {
+          platform: args.platform,
+          event: args.event,
+          rawPayload,
+          processCwd: process.cwd(),
+        });
   process.stdout.write(`${JSON.stringify(result.stdout)}\n`);
   return 0;
 }
 
-function parseRunArgs(argv: string[]): RunArgs | null {
+function parseArgs(argv: string[]): CliArgs | null {
   const [command, platformArg, eventFlag, eventArg] = argv;
-  if (command !== "run" || eventFlag !== "--event") {
-    return null;
+  if (command === "workspaces" && platformArg === "configure") {
+    const platform = argv[2];
+    const scopeFlagIndex = argv.indexOf("--scope");
+    const workspaceFlagIndex = argv.indexOf("--workspace-id");
+    const scope = scopeFlagIndex >= 0 ? argv[scopeFlagIndex + 1] : undefined;
+    const workspaceId = workspaceFlagIndex >= 0 ? argv[workspaceFlagIndex + 1] : undefined;
+    if (isPlatform(platform) && (scope === "project" || scope === "user")) {
+      return {
+        command: "workspace-configure",
+        platform,
+        scope,
+        ...(workspaceId !== undefined && workspaceId.trim() !== "" ? { workspaceId } : {}),
+      };
+    }
   }
-  if (!isPlatform(platformArg) || !isHookEvent(eventArg)) {
-    return null;
+  if (command === "run" && eventFlag === "--event" && isPlatform(platformArg) && isHookEvent(eventArg)) {
+    return { command: "run", platform: platformArg, event: eventArg };
   }
-  return { platform: platformArg, event: eventArg };
+  if (
+    command === "workspaces" &&
+    eventFlag === "--event" &&
+    isPlatform(platformArg) &&
+    isWorkspaceHookEvent(eventArg)
+  ) {
+    return { command: "workspaces", platform: platformArg, event: eventArg };
+  }
+  return null;
 }
 
 async function routeEvent(
-  adapter: PlatformAdapter,
+  adapter: MemoryPlatformAdapter,
   invocation: HookInvocation,
 ): Promise<HookResult> {
   switch (invocation.event) {
@@ -66,8 +109,37 @@ async function routeEvent(
   }
 }
 
+async function routeWorkspaceEvent(
+  adapter: WorkspacePlatformAdapter,
+  invocation: WorkspaceHookInvocation,
+): Promise<WorkspaceHookResult> {
+  switch (invocation.event) {
+    case "BeforeAgent":
+      return adapter.beforeAgent?.({ ...invocation, event: "BeforeAgent" }) ?? allowHook();
+    case "InstallConfigure":
+      return adapter.installConfigure?.({ ...invocation, event: "InstallConfigure" }) ?? allowHook();
+  }
+}
+
 function allowHook(): HookResult {
   return { stdout: { continue: true, suppressOutput: true } };
+}
+
+function writeWorkspaceConfigureResult(result: WorkspaceHookResult): number {
+  const exitCode = typeof result.stdout.exitCode === "number" ? result.stdout.exitCode : 0;
+  const message = typeof result.stdout.message === "string" ? result.stdout.message : JSON.stringify(result.stdout);
+  const stream = exitCode === 0 ? process.stdout : process.stderr;
+  stream.write(`${message}\n`);
+  return exitCode;
+}
+
+function usage(): string {
+  return [
+    "Usage: nams-hooks run <gemini|claude|codex|opencode> --event <SessionStart|BeforeAgent|AfterAgent|AfterTool>",
+    "       nams-hooks workspaces <gemini|claude|codex|opencode> --event <BeforeAgent|InstallConfigure>",
+    "       nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope <project|user> [--workspace-id ID]",
+    "",
+  ].join("\n");
 }
 
 main(process.argv.slice(2))

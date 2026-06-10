@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { test } from "node:test";
 import { projectFiles } from "archunit";
@@ -11,6 +11,32 @@ interface ArchRule {
 interface SourceFile {
   path: string;
   content: string;
+}
+
+async function readProjectFiles(folders: string[]): Promise<SourceFile[]> {
+  const files: SourceFile[] = [];
+  for (const folder of folders) {
+    await walk(folder);
+  }
+  return files;
+
+  async function walk(currentPath: string): Promise<void> {
+    const entries = await readdir(currentPath, { withFileTypes: true });
+    for (const entry of entries) {
+      const entryPath = path.join(currentPath, entry.name);
+      if (entry.isDirectory()) {
+        await walk(entryPath);
+        continue;
+      }
+      if (!/\.(?:ts|js|mjs|json)$/.test(entry.name)) {
+        continue;
+      }
+      files.push({
+        path: entryPath,
+        content: await readFile(entryPath, "utf8"),
+      });
+    }
+  }
 }
 
 async function assertNoViolations(rule: ArchRule): Promise<void> {
@@ -46,6 +72,10 @@ function importsConcreteAdapter(file: SourceFile): boolean {
     "src/platforms/claude/index.ts",
     "src/platforms/codex/index.ts",
     "src/platforms/opencode/index.ts",
+    "src/platforms/gemini/workspaces.ts",
+    "src/platforms/claude/workspaces.ts",
+    "src/platforms/codex/workspaces.ts",
+    "src/platforms/opencode/workspaces.ts",
   ]);
 
   return importedSourcePaths(file.path, file.content).some((importedPath) => concreteAdapters.has(importedPath));
@@ -90,6 +120,22 @@ test("generated client does not import project runtime modules", async () => {
   await assertNoGeneratedImportsFrom("scripts");
 });
 
+test("runtime and generated-client source do not hardcode production NAMS service URL", async () => {
+  const forbiddenHost = ["memory", "neo4jlabs", "com"].join(".");
+  const files = [
+    ...(await readProjectFiles(["src"])),
+    {
+      path: "scripts/generate-nams-client.mjs",
+      content: await readFile("scripts/generate-nams-client.mjs", "utf8"),
+    },
+  ];
+  const violations = files
+    .filter((file) => file.content.includes(forbiddenHost))
+    .map((file) => file.path);
+
+  assert.deepEqual(violations, []);
+});
+
 test("only the platform registry imports all concrete adapters", async () => {
   await assertNoViolations(
     projectFiles()
@@ -105,7 +151,7 @@ test("only the platform registry imports all concrete adapters", async () => {
 test("platform adapters do not accept test-only runtime dependencies", async () => {
   const content = await readFile("src/interfaces.ts", "utf8");
 
-  assert.equal(/\bPlatformAdapterOptions\b/.test(content), false);
+  assert.equal(/\bMemoryPlatformAdapterOptions\b/.test(content), false);
   assert.equal(/\bfetch\?: typeof fetch\b/.test(content), false);
   assert.equal(/\bruntimeEnvironment\?:/.test(content), false);
   assert.equal(/\benv\?:/.test(content), false);
@@ -114,10 +160,34 @@ test("platform adapters do not accept test-only runtime dependencies", async () 
     const filePath = `src/platforms/${platform}/index.ts`;
     const platformContent = await readFile(filePath, "utf8");
 
-    assert.equal(/\bPlatformAdapterOptions\b/.test(platformContent), false);
+    assert.equal(/\bMemoryPlatformAdapterOptions\b/.test(platformContent), false);
     assert.equal(/\bprivate readonly options\b|\bthis\.options\b/.test(platformContent), false);
     assert.equal(/\bfetch\b/.test(platformContent), false);
   }
+});
+
+test("memory platform adapter contract is named explicitly", async () => {
+  const interfaceContent = await readFile("src/interfaces.ts", "utf8");
+  const registryContent = await readFile("src/platforms/index.ts", "utf8");
+
+  assert.match(interfaceContent, /\bexport interface MemoryPlatformAdapter\b/);
+  assert.doesNotMatch(interfaceContent, /\bexport interface PlatformAdapter\b/);
+  assert.match(registryContent, /\bgetMemoryPlatformAdapter\b/);
+  assert.doesNotMatch(registryContent, /\bgetPlatformAdapter\b/);
+});
+
+test("workspace adapter registry is static", async () => {
+  const content = await readFile("src/platforms/index.ts", "utf8");
+
+  assert.match(content, /\bgetWorkspacePlatformAdapter\b/);
+  assert.equal(/\bimport\(|readdir|dynamic\b/.test(content), false);
+});
+
+test("workspace resolution runtime does not format platform hook output", async () => {
+  const content = await readFile("src/runtime/workspace-resolution.ts", "utf8");
+
+  assert.doesNotMatch(content, /\bdecision\b|\bhookSpecificOutput\b|\bsystemMessage\b|\bnamsWorkspaceSelectionRequired\b/);
+  assert.doesNotMatch(content, /\bgemini\b|\bclaude\b|\bcodex\b|\bopencode\b/);
 });
 
 test("platform session-start contract names local session initialization", async () => {

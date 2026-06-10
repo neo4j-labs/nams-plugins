@@ -9,6 +9,7 @@ test("Claude template maps native hooks to NAMS events", async () => {
   assert.equal(commandFor(template, "UserPromptSubmit"), "nams-hooks run claude --event BeforeAgent");
   assert.equal(commandFor(template, "PostToolUse"), "nams-hooks run claude --event AfterTool");
   assert.equal(commandFor(template, "Stop"), "nams-hooks run claude --event AfterAgent");
+  assert.doesNotMatch(JSON.stringify(template.hooks.UserPromptSubmit), /workspaces|InstallConfigure/);
 });
 
 test("Claude plugin template invokes the bundled CLI through plugin root", async () => {
@@ -18,6 +19,7 @@ test("Claude plugin template invokes the bundled CLI through plugin root", async
   assert.deepEqual(pluginCommandFor(template, "UserPromptSubmit"), ["node", "${CLAUDE_PLUGIN_ROOT}/bin/cli.js", "run", "claude", "--event", "BeforeAgent"]);
   assert.deepEqual(pluginCommandFor(template, "PostToolUse"), ["node", "${CLAUDE_PLUGIN_ROOT}/bin/cli.js", "run", "claude", "--event", "AfterTool"]);
   assert.deepEqual(pluginCommandFor(template, "Stop"), ["node", "${CLAUDE_PLUGIN_ROOT}/bin/cli.js", "run", "claude", "--event", "AfterAgent"]);
+  assert.doesNotMatch(JSON.stringify(template.hooks.UserPromptSubmit), /workspaces|InstallConfigure/);
 });
 
 test("Claude marketplace template exposes the nams-hooks plugin source", async () => {
@@ -48,9 +50,9 @@ test("Claude plugin manifest template declares user config without standard hook
   assert.deepEqual(template.userConfig.NAMS_WORKSPACE_ID, {
     type: "string",
     title: "NAMS workspace ID",
-    description: "Neo4j Agent Memory Service workspace ID.",
-    required: true,
+    description: "Optional workspace ID for Neo4j Agent Memory Service. If omitted, nams-hooks auto-selects a single available workspace before memory starts.",
   });
+  assert.equal(Object.hasOwn(template.userConfig.NAMS_WORKSPACE_ID, "required"), false);
   assert.deepEqual(template.userConfig.NAMS_BASE_URL, {
     type: "string",
     title: "NAMS base URL",
