@@ -97,8 +97,7 @@ live in the same repository and marketplace.
 The implementation should update identity-bearing source files only:
 
 - `package.json`
-  - Change `name` from `@neo4j-labs/nams-hooks` to
-    `@neo4j-labs/nams-plugins`.
+  - Change the package name to `@neo4j-labs/nams-plugins`.
   - Keep `bin.nams-hooks` pointing at the compiled CLI.
 - Claude marketplace template
   - Change marketplace `name` to `nams-plugins`.
@@ -211,11 +210,12 @@ Tests and package checks should enforce the naming split:
 Primary verification remains:
 
 ```bash
+npm run check
 npm run package:check
 ```
 
-That target runs the default check suite, builds `dist/`, verifies generated
-plugin artifacts, and dry-runs package contents.
+`npm run check` runs the default check suite. `npm run package:check` builds
+`dist/`, verifies generated plugin artifacts, and dry-runs package contents.
 
 ## Documentation Update Rules
 
@@ -224,9 +224,7 @@ Documentation should describe the new naming model consistently:
 - Use `nams-plugins` for repository, release, package, and marketplace identity.
 - Use `nams-hooks` for the current plugin, CLI, runtime command, and hook
   product behavior.
-- Do not document old install commands using `kubamarchwicki/nams-hooks`,
-  `kubamarchwicki/nams-plugins`, `neo4j-labs/nams-hooks`, or
-  `neo4j-nams-hooks`.
+- Do not document legacy repository, package, or marketplace install commands.
 - Existing historical specs may keep old names when they describe the state at
   the time they were written, but active source-of-truth architecture and user
   docs should point to the new identity.

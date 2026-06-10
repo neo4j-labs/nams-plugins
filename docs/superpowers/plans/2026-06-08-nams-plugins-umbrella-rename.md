@@ -112,7 +112,8 @@ Run:
 node --import=tsx --test test/package-metadata.test.ts test/claude-template.test.js test/codex-template.test.ts
 ```
 
-Expected: FAIL. The failures should mention the current old values, including `@neo4j-labs/nams-hooks`, `neo4j-nams-hooks`, or `https://github.com/neo4j-labs/nams-hooks`.
+Expected: FAIL. The failures should mention the current legacy package,
+marketplace, or repository values.
 
 ### Task 2: Update Package And Marketplace Metadata
 
@@ -437,12 +438,7 @@ hooks when Codex asks for hook review.
 
 - [ ] **Step 6: Update DEVELOPMENT Claude local install command**
 
-In `DEVELOPMENT.md`, replace:
-
-```bash
-claude plugin install nams-hooks@neo4j-nams-hooks
-```
-
+In `DEVELOPMENT.md`, replace the legacy Claude marketplace install command
 with:
 
 ```bash
@@ -451,7 +447,9 @@ claude plugin install nams-hooks@nams-plugins
 
 - [ ] **Step 7: Update DEVELOPMENT global package references**
 
-In `DEVELOPMENT.md`, replace global npm package examples that install or locate `@neo4j-labs/nams-hooks` with `@neo4j-labs/nams-plugins`, while keeping the executable command `nams-hooks`.
+In `DEVELOPMENT.md`, replace legacy global npm package examples with
+`@neo4j-labs/nams-plugins`, while keeping the executable command
+`nams-hooks`.
 
 Use this replacement in examples:
 
@@ -470,7 +468,7 @@ cp "$(npm root -g)/@neo4j-labs/nams-plugins/templates/codex/hooks.json" .codex/h
 Run:
 
 ```bash
-rg -n "kubamarchwicki/nams-hooks|kubamarchwicki/nams-plugins|neo4j-labs/nams-hooks|neo4j-nams-hooks|@neo4j-labs/nams-hooks" README.md INSTALL.md DEVELOPMENT.md
+rg -n "<legacy identity regex>" README.md INSTALL.md DEVELOPMENT.md
 ```
 
 Expected: no output.
@@ -548,7 +546,9 @@ the installable plugin remains `nams-hooks`.
 
 - [ ] **Step 5: Update Codex marketplace design details**
 
-In `docs/superpowers/specs/2026-06-04-codex-self-contained-marketplace-design.md`, replace references that say the marketplace is named `neo4j-nams-hooks` with `nams-plugins`. Replace repository metadata examples with:
+In `docs/superpowers/specs/2026-06-04-codex-self-contained-marketplace-design.md`,
+replace legacy marketplace names with `nams-plugins`. Replace repository
+metadata examples with:
 
 ```json
 "repository": "https://github.com/neo4j-labs/nams-plugins"
@@ -571,7 +571,7 @@ Keep plugin name examples as:
 Run:
 
 ```bash
-rg -n "kubamarchwicki/nams-hooks|kubamarchwicki/nams-plugins|neo4j-labs/nams-hooks|neo4j-nams-hooks|@neo4j-labs/nams-hooks" docs/superpowers/specs/2026-05-10-nams-hooks-design.md docs/superpowers/specs/2026-06-04-codex-self-contained-marketplace-design.md
+rg -n "<legacy identity regex>" docs/superpowers/specs/2026-05-10-nams-hooks-design.md docs/superpowers/specs/2026-06-04-codex-self-contained-marketplace-design.md
 ```
 
 Expected: no output.
@@ -623,7 +623,7 @@ dist/plugins/codex-nams-hooks/.codex-plugin/plugin.json: {"name":"nams-hooks","r
 Run:
 
 ```bash
-rg -n "kubamarchwicki/nams-hooks|kubamarchwicki/nams-plugins|neo4j-labs/nams-hooks|neo4j-nams-hooks|@neo4j-labs/nams-hooks" README.md INSTALL.md DEVELOPMENT.md docs/superpowers/specs/2026-05-10-nams-hooks-design.md docs/superpowers/specs/2026-06-04-codex-self-contained-marketplace-design.md package.json package-lock.json templates test scripts
+rg -n "<legacy identity regex>" README.md INSTALL.md DEVELOPMENT.md docs/superpowers/specs/2026-05-10-nams-hooks-design.md docs/superpowers/specs/2026-06-04-codex-self-contained-marketplace-design.md package.json package-lock.json templates test scripts
 ```
 
 Expected: no output.

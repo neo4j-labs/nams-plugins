@@ -86,14 +86,14 @@ bundles the compiled runtime, hook configuration, and credential prompts.
 Add the release marketplace and install the plugin:
 
 ```bash
-claude plugin marketplace add kubamarchwicki/nams-hooks@latest
-claude plugin install nams-hooks@neo4j-nams-hooks
+claude plugin marketplace add neo4j-labs/nams-plugins@latest
+claude plugin install nams-hooks@nams-plugins
 ```
 
 After installation, configure and reload the plugin inside Claude Code:
 
 ```text
-/plugin configure nams-hooks@neo4j-nams-hooks
+/plugin configure nams-hooks@nams-plugins
 /reload-plugins
 ```
 
@@ -122,11 +122,11 @@ bundles the compiled runtime and hook configuration.
 Add the release marketplace:
 
 ```bash
-codex plugin marketplace add kubamarchwicki/nams-hooks@latest
+codex plugin marketplace add neo4j-labs/nams-plugins@latest
 codex plugin marketplace list
 ```
 
-Restart Codex, open `/plugins`, select the `neo4j-nams-hooks` marketplace, and
+Restart Codex, open `/plugins`, select the `nams-plugins` marketplace, and
 install `NAMS Hooks`. Then use `/hooks` to review and trust the plugin-bundled
 hooks when Codex asks for hook review.
 
@@ -142,7 +142,7 @@ The extension bundles the compiled runtime and hook configuration.
 Install the release extension:
 
 ```bash
-gemini extensions install https://github.com/kubamarchwicki/nams-hooks --ref latest
+gemini extensions install https://github.com/neo4j-labs/nams-plugins --ref latest
 ```
 
 The Gemini extension declares these settings:
