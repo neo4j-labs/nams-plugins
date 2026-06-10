@@ -1,5 +1,5 @@
 {
-  "name": "neo4j-nams-hooks",
+  "name": "nams-plugins",
   "metadata": {
     "description": "Neo4j Agent Memory Service hooks for Codex.",
     "version": "0.1.0"
@@ -23,7 +23,7 @@
       "author": {
         "name": "Neo4j Labs"
       },
-      "repository": "https://github.com/neo4j-labs/nams-hooks",
+      "repository": "https://github.com/neo4j-labs/nams-plugins",
       "license": "Apache-2.0",
       "keywords": [
         "memory",

@@ -5,7 +5,7 @@
   "author": {
     "name": "Neo4j Labs"
   },
-  "repository": "https://github.com/neo4j-labs/nams-hooks",
+  "repository": "https://github.com/neo4j-labs/nams-plugins",
   "license": "Apache-2.0",
   "keywords": [
     "memory",

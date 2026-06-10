@@ -1,5 +1,5 @@
 {
-  "name": "@neo4j-labs/nams-hooks",
+  "name": "@neo4j-labs/nams-plugins",
   "version": "0.1.0",
   "description": "Neo4j Agent Memory Service hooks for agent harnesses.",
   "type": "module",
