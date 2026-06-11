@@ -72,7 +72,7 @@ Session scope includes filesystem preflights before listing workspaces:
 | Platform | Shared session command implemented? | User-invoked command can run shell? | Current-session id available? | Fit | Notes |
 | --- | --- | --- | --- | --- | --- |
 | Claude Code | Yes | Yes | Yes | Best | Plugin skills/custom commands are slash-invocable under the plugin namespace. `UserPromptExpansion` hooks can intercept the command before Claude sees it and receive `session_id` plus raw `command_args`. |
-| OpenCode | Yes | Yes | Yes | Best with plugin shim | Custom commands support shell output. Plugins can intercept command execution, and OpenCode source shows `command.execute.before` receives `command`, `sessionID`, and `arguments`. The current shim does not yet intercept a user command. |
+| OpenCode | Yes | Yes | Yes | Best with plugin shim | The plugin shim intercepts `command.execute.before`, preserves `/nams-hooks workspaces use <workspace-id-or-name>`, and runs the shared configure command. |
 | Gemini CLI | Yes | Yes | Partial | Good with bridge | Custom commands support shell injection, and hooks expose `GEMINI_SESSION_ID`. The custom-command shell execution path appears to set only the general `GEMINI_CLI=1` identity variable, so a session-id bridge is still needed for slash-command UX. |
 | Codex | Yes | Partial | Payload-dependent | Prompt-helper only | Codex hooks run shell commands and workspace notices now include parsed session IDs when available. Custom prompts expand into model instructions rather than deterministic pre-shell command execution. |
 
@@ -115,13 +115,13 @@ an argv array. The exact argument parsing should avoid treating the words
 
 ### OpenCode
 
-OpenCode is also a strong fit, but the best implementation is probably in the
-existing OpenCode plugin shim instead of a plain Markdown command.
+OpenCode is also a strong fit. Tier 1 support lives in the existing OpenCode
+plugin shim instead of a plain Markdown command.
 
 OpenCode custom commands support arguments and shell output injection with
 inline shell snippets such as `` !`npm test` ``. OpenCode plugins can run
-commands through Bun's shell API and subscribe to events. The current NAMS
-OpenCode shim already runs `nams-hooks` from plugin hooks.
+commands through Bun's shell API and subscribe to events. The NAMS OpenCode shim
+already runs `nams-hooks` from plugin hooks.
 
 OpenCode source defines a `command.executed` event with `name`, `sessionID`,
 `arguments`, and `messageID`. Source also shows a pre-prompt plugin trigger:
@@ -134,19 +134,19 @@ plugin.trigger(
 )
 ```
 
-That is the ideal place to intercept a command like:
+The shim intercepts this command:
 
 ```text
 /nams-hooks workspaces use <workspace-id-or-name>
 ```
 
-The plugin can call:
+The plugin calls:
 
 ```bash
 nams-hooks workspaces configure opencode --scope session --session-id <sessionID> --workspace <workspace-id-or-name>
 ```
 
-and replace or annotate the command output without starting a normal model turn.
+and reports the result without starting a normal model turn.
 
 ### Gemini CLI
 
@@ -222,15 +222,29 @@ Behavior:
 
 ## Remaining UX Work
 
-1. Add Claude Code UX first.
+After Tier 1, Claude Code exposes the namespaced plugin command:
 
-2. Add OpenCode UX through the plugin shim, likely using
-   `command.execute.before`.
+```text
+/nams-hooks:nams-hooks workspaces use <workspace-id-or-name>
+```
 
-3. Add Gemini UX only after deciding how to bridge `GEMINI_SESSION_ID` into the
-   custom command path.
+OpenCode exposes the direct plugin shim command:
 
-4. Leave Codex as project/user config plus possible prompt-helper UX for now.
+```text
+/nams-hooks workspaces use <workspace-id-or-name>
+```
+
+The explicit configure command remains documented for all platforms, scripts,
+and troubleshooting:
+
+```bash
+nams-hooks workspaces configure <platform> --scope session --session-id <session-id> --workspace <workspace-id-or-name>
+```
+
+Gemini CLI slash-command support remains designed but deferred until the current
+session ID can be resolved deterministically from a custom command. Codex remains
+on explicit shell configuration because it does not currently expose a
+deterministic `/nams-hooks workspaces use` command path.
 
 The runtime notices emitted by supported adapters now point users at the session
 command when multiple NAMS workspaces are available. When the adapter can parse
