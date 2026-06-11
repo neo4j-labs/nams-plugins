@@ -13,6 +13,8 @@ const geminiExtensionPath = path.join(root, "dist", "gemini-extension.json");
 const claudeMarketplacePath = path.join(root, "dist", ".claude-plugin", "marketplace.json");
 const claudePluginManifestPath = path.join(root, "dist", "plugins", "nams-hooks", ".claude-plugin", "plugin.json");
 const claudePluginHooksPath = path.join(root, "dist", "plugins", "nams-hooks", "hooks", "hooks.json");
+const claudePluginSkillPath = path.join(root, "dist", "plugins", "nams-hooks", "skills", "nams-hooks", "SKILL.md");
+const claudePluginSkillScriptPath = path.join(root, "dist", "plugins", "nams-hooks", "skills", "nams-hooks", "scripts", "workspace-use.mjs");
 const claudePluginCliPath = path.join(root, "dist", "plugins", "nams-hooks", "bin", "cli.js");
 const codexMarketplacePath = path.join(root, "dist", ".agents", "plugins", "marketplace.json");
 const codexPluginManifestPath = path.join(root, "dist", "plugins", "codex-nams-hooks", ".codex-plugin", "plugin.json");
@@ -51,6 +53,8 @@ async function verifyClaudePluginFiles() {
   await access(claudeMarketplacePath);
   await access(claudePluginManifestPath);
   await access(claudePluginHooksPath);
+  await access(claudePluginSkillPath);
+  await access(claudePluginSkillScriptPath);
   await assertExecutable(claudePluginCliPath);
 
   const packageJson = JSON.parse(await readFile(rootPackagePath, "utf8"));
@@ -282,6 +286,8 @@ function claudePackedFiles(packageDir) {
     `${prefix}.claude-plugin/marketplace.json`,
     `${prefix}plugins/nams-hooks/.claude-plugin/plugin.json`,
     `${prefix}plugins/nams-hooks/hooks/hooks.json`,
+    `${prefix}plugins/nams-hooks/skills/nams-hooks/SKILL.md`,
+    `${prefix}plugins/nams-hooks/skills/nams-hooks/scripts/workspace-use.mjs`,
     `${prefix}plugins/nams-hooks/bin/cli.js`,
   ];
 }
