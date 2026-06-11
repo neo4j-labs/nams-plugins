@@ -23,6 +23,39 @@ export const NamsHooks = async ({ client, directory, project, worktree }) => {
       await run("SessionStart", { hook: "event", event });
     },
 
+    "command.execute.before": async (input) => {
+      const parsed = parseWorkspaceUseCommand(input);
+      if (parsed === undefined) {
+        return undefined;
+      }
+
+      if (parsed.selector === "") {
+        await showCommandResult(client, {
+          code: 1,
+          stdout: "",
+          stderr: "Usage: /nams-hooks workspaces use <workspace-id-or-name>",
+        });
+        return { stop: true };
+      }
+
+      const sessionId = typeof input?.sessionID === "string" ? input.sessionID.trim() : "";
+      if (sessionId === "") {
+        await showCommandResult(client, {
+          code: 1,
+          stdout: "",
+          stderr: [
+            "OpenCode session id is unavailable.",
+            `Configure manually after replacing <session-id>: nams-hooks workspaces configure opencode --scope session --session-id <session-id> --workspace ${parsed.selector}`,
+          ].join("\n"),
+        });
+        return { stop: true };
+      }
+
+      const result = await invokeWorkspaceConfigure(sessionId, parsed.selector);
+      await showCommandResult(client, result);
+      return { stop: true };
+    },
+
     "chat.message": async (input, output) => {
       const memoryResult = await run("BeforeAgent", { hook: "chat.message", input, output });
       if (memoryResult?.namsWorkspaceSelectionRequired === true) {
@@ -69,6 +102,54 @@ export const NamsHooks = async ({ client, directory, project, worktree }) => {
 };
 
 export default NamsHooks;
+
+async function invokeWorkspaceConfigure(sessionId, workspaceSelector) {
+  return await new Promise((resolve) => {
+    const child = spawn(
+      command,
+      [
+        "workspaces",
+        "configure",
+        "opencode",
+        "--scope",
+        "session",
+        "--session-id",
+        sessionId,
+        "--workspace",
+        workspaceSelector,
+      ],
+      {
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+
+    function finish(value) {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve(value);
+    }
+
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", (error) => {
+      finish({ code: 1, stdout, stderr: error.message });
+    });
+    child.on("close", (code) => {
+      finish({ code: code ?? 1, stdout, stderr });
+    });
+  });
+}
 
 async function invokeNams(event, payload) {
   return await new Promise((resolve, reject) => {
@@ -144,6 +225,60 @@ async function showWarning(client, message) {
         message,
         variant: "warning",
         duration: 30000,
+      },
+    });
+  } catch {}
+}
+
+function parseWorkspaceUseCommand(input) {
+  if (input?.command !== "nams-hooks") {
+    return undefined;
+  }
+
+  const parts = commandArgumentParts(input?.arguments);
+  if (parts[0] !== "workspaces" || parts[1] !== "use") {
+    return undefined;
+  }
+
+  return { selector: workspaceSelectorFromArguments(input?.arguments) };
+}
+
+function commandArgumentParts(argumentValue) {
+  if (Array.isArray(argumentValue)) {
+    return argumentValue.map((part) => String(part).trim());
+  }
+  if (typeof argumentValue === "string") {
+    const trimmed = argumentValue.trim();
+    return trimmed === "" ? [] : trimmed.split(/\s+/);
+  }
+  return [];
+}
+
+function workspaceSelectorFromArguments(argumentValue) {
+  if (Array.isArray(argumentValue)) {
+    return argumentValue
+      .slice(2)
+      .map((part) => String(part))
+      .join(" ")
+      .trim();
+  }
+  if (typeof argumentValue === "string") {
+    const match = argumentValue.match(/^\s*workspaces\s+use(?:\s+([\s\S]*?))?\s*$/);
+    return match?.[1]?.trim() ?? "";
+  }
+  return "";
+}
+
+async function showCommandResult(client, result) {
+  const success = result.code === 0;
+  const message = (success ? result.stdout : result.stderr || result.stdout).trim();
+  try {
+    await client?.tui?.showToast?.({
+      body: {
+        title: success ? "NAMS workspace selected" : "NAMS workspace selection failed",
+        message: message || (success ? "Workspace configured." : "Workspace selection failed."),
+        variant: success ? "success" : "danger",
+        duration: success ? 10000 : 30000,
       },
     });
   } catch {}
