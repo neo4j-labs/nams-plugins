@@ -73,6 +73,109 @@ test("configured workspace skips workspace listing and is not preflight validate
   }
 });
 
+test("session-selected workspace overrides NAMS_WORKSPACE_ID", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-workspace-resolution-"));
+  try {
+    const nams = createNamsFetchMock().all({ error: "unexpected workspace listing" }, 500);
+    useEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "configured-workspace",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+    const state = createInitialSessionState({
+      platform: "gemini",
+      sessionId: "session-1",
+      projectDirectory: projectDir,
+    });
+    state.workspace = {
+      id: "session-workspace",
+      source: "session-selection",
+      selectedAt: "2026-06-10T15:30:00.000Z",
+    };
+
+    const result = await resolveWorkspaceForMemory({
+      invocation: invocation(projectDir),
+      state,
+      projectDirectory: projectDir,
+    });
+
+    assert.equal(result.status, "ready");
+    assert.equal(result.config.workspaceId, "session-workspace");
+    assert.deepEqual(state.workspace, {
+      id: "session-workspace",
+      source: "session-selection",
+      selectedAt: "2026-06-10T15:30:00.000Z",
+    });
+
+    const config = await loadEffectiveNamsConfigForMemory(invocation(projectDir), state, projectDir);
+
+    assert.deepEqual(config, {
+      apiKey: "key",
+      workspaceId: "session-workspace",
+      baseUrl: "https://memory.example.test",
+    });
+    assert.deepEqual(state.workspace, {
+      id: "session-workspace",
+      source: "session-selection",
+      selectedAt: "2026-06-10T15:30:00.000Z",
+    });
+    assert.equal(nams.calls("listMyWorkspaces").length, 0);
+
+    const { lines } = await readSingleSessionLog(path.join(projectDir, "home"), "gemini");
+    assert.ok(
+      lines.some((entry) => {
+        return (
+          entry.kind === "diagnostic" &&
+          entry.payload.message === "NAMS workspace loaded from session state" &&
+          JSON.stringify(entry.payload.workspace) ===
+            JSON.stringify({ id: "session-workspace", source: "session-selection" })
+        );
+      }),
+    );
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("configured workspace overrides runtime auto-selected session state", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-workspace-resolution-"));
+  try {
+    const nams = createNamsFetchMock().all({ error: "unexpected workspace listing" }, 500);
+    useEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "configured-workspace",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+    const state = createInitialSessionState({
+      platform: "gemini",
+      sessionId: "session-1",
+      projectDirectory: projectDir,
+    });
+    state.workspace = {
+      id: "session-workspace",
+      source: "runtime-single-workspace",
+      selectedAt: "2026-06-10T15:30:00.000Z",
+    };
+
+    const result = await resolveWorkspaceForMemory({
+      invocation: invocation(projectDir),
+      state,
+      projectDirectory: projectDir,
+    });
+
+    assert.equal(result.status, "ready");
+    assert.equal(result.config.workspaceId, "configured-workspace");
+    assert.deepEqual(state.workspace, {
+      id: "configured-workspace",
+      source: "config",
+      selectedAt: state.workspace?.selectedAt,
+    });
+    assert.equal(nams.calls("listMyWorkspaces").length, 0);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("single listed workspace auto-selects by cardinality", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-workspace-resolution-"));
   try {

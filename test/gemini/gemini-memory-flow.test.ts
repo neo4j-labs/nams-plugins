@@ -428,6 +428,10 @@ test("Gemini BeforeAgent notifies and continues when multiple workspaces are ava
     assert.equal(result.stdout.suppressOutput, false);
     assert.equal(Object.hasOwn(result.stdout, "decision"), false);
     assert.match(String(result.stdout.systemMessage), /NAMS memory is inactive/);
+    assert.match(
+      String(result.stdout.systemMessage),
+      /nams-hooks workspaces configure gemini --scope session --session-id session-1 --workspace <workspace-id-or-name>/,
+    );
     assert.match(String(result.stdout.systemMessage), /workspace-1/);
     assert.match(String(result.stdout.systemMessage), /workspace-2/);
     assert.match(String(hookSpecificOutput(result).additionalContext), /Multiple NAMS workspaces are available/);

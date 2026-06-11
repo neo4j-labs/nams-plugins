@@ -65,7 +65,7 @@ export class GeminiAdapter implements MemoryPlatformAdapter {
     });
     if (workspaceResult.status !== "ready") {
       await saveSessionState(invocation.platform, state.sessionKey, state);
-      return workspaceResultOutput(workspaceResult);
+      return workspaceResultOutput(workspaceResult, payloadInfo.sessionId);
     }
     const config = workspaceResult.config;
 
@@ -267,9 +267,12 @@ function allowOutput(additionalContext?: string): HookResult {
   };
 }
 
-function workspaceResultOutput(result: Exclude<WorkspaceResolutionResult, { status: "ready" }>): HookResult {
+function workspaceResultOutput(
+  result: Exclude<WorkspaceResolutionResult, { status: "ready" }>,
+  sessionId?: string,
+): HookResult {
   if (result.reason === "selection-required") {
-    const message = formatWorkspaceSelectionNotice("gemini", result.workspaces);
+    const message = formatWorkspaceSelectionNotice("gemini", result.workspaces, sessionId);
     return {
       stdout: {
         continue: true,

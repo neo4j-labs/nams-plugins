@@ -26,7 +26,7 @@
 - `src/generated/nams-client.ts`: generated output only. No hand edits.
 - `scripts/generate-nams-client.mjs`: generator should keep `NamsWorkspaceClient` separate and keep workspace infrastructure endpoints out of `NamsClient`. No planned change.
 - `test/workspace-resolution.test.ts`: rename and strengthen tests around configured workspace precedence and cardinality-only auto-selection/selection-required behavior.
-- `test/cli-workspaces.test.ts`: add configure-command coverage for the workspace-key happy path where one workspace is returned and `--workspace-id` is omitted.
+- `test/cli-workspaces.test.ts`: add configure-command coverage for the workspace-key happy path where one workspace is returned and `--workspace` is omitted.
 - `test/nams-workspace-client-generator.test.ts`: keep existing assertions that workspace listing omits `X-Workspace-Id`; no planned change unless final review finds missing coverage.
 - `README.md`: explain workspace keys, admin keys, and cardinality-only behavior briefly.
 - `INSTALL.md`: explain key scopes in the workspace-selection setup section and clarify Gemini/OpenCode runtime auto-resolution.
@@ -201,7 +201,7 @@ Expected: commit succeeds. If `src/runtime/workspace-resolution.ts` was unchange
 - Modify: `test/cli-workspaces.test.ts`
 - Inspect only: `src/runtime/workspace-configuration.ts`
 
-- [x] **Step 1: Add a configure test for omitted `--workspace-id` with one listed workspace**
+- [x] **Step 1: Add a configure test for omitted `--workspace` with one listed workspace**
 
 In `test/cli-workspaces.test.ts`, add this test after `workspaces configure codex writes project config for explicit workspace`:
 
@@ -245,15 +245,15 @@ Run:
 npm run build && node --import=tsx --test test/cli-workspaces.test.ts
 ```
 
-Expected: all CLI workspace tests pass. If the new test fails because omitted `--workspace-id` is not auto-selected, update `src/runtime/workspace-configuration.ts` so `selectWorkspace` keeps this exact behavior:
+Expected: all CLI workspace tests pass. If the new test fails because omitted `--workspace` is not auto-selected, update `src/runtime/workspace-configuration.ts` so `selectWorkspace` keeps this exact behavior:
 
 ```ts
 function selectWorkspace(
   workspaces: Array<WorkspaceSummary & { id: string }>,
-  workspaceId: string | undefined,
+  workspace: string | undefined,
 ): (WorkspaceSummary & { id: string }) | undefined {
-  if (workspaceId !== undefined) {
-    return workspaces.find((workspace) => workspace.id === workspaceId);
+  if (workspace !== undefined) {
+    return workspaces.find((candidate) => candidate.id === workspace);
   }
   return workspaces.length === 1 ? workspaces[0] : undefined;
 }
@@ -298,7 +298,7 @@ configured workspace ID before memory requests run.
 Replace:
 
 ```md
-If you omit `--workspace-id`, the configure command writes the workspace
+If you omit `--workspace`, the configure command writes the workspace
 automatically only when NAMS returns a single valid workspace. When NAMS returns
 multiple valid workspaces, the command prints the available choices and exits
 without changing config.
@@ -307,11 +307,11 @@ without changing config.
 with:
 
 ```md
-If you omit `--workspace-id`, the configure command writes the workspace
+If you omit `--workspace`, the configure command writes the workspace
 automatically only when NAMS returns a single valid workspace. This is the
 normal path for workspace keys. When NAMS returns multiple valid workspaces,
 which is common for admin keys, the command prints the available choices and
-exits without changing config until you pass one ID explicitly.
+exits without changing config until you pass one explicit selector.
 ```
 
 In the Gemini settings list, replace:

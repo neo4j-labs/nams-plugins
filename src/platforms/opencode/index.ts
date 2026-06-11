@@ -66,7 +66,7 @@ export class OpenCodeAdapter implements MemoryPlatformAdapter {
     });
     if (workspaceResult.status !== "ready") {
       await saveSessionState(invocation.platform, state.sessionKey, state);
-      return workspaceResultOutput(workspaceResult);
+      return workspaceResultOutput(workspaceResult, payloadInfo.sessionId);
     }
     const config = workspaceResult.config;
 
@@ -276,14 +276,17 @@ function allowOutput(): HookResult {
   return { stdout: { continue: true, suppressOutput: true } };
 }
 
-function workspaceResultOutput(result: Exclude<WorkspaceResolutionResult, { status: "ready" }>): HookResult {
+function workspaceResultOutput(
+  result: Exclude<WorkspaceResolutionResult, { status: "ready" }>,
+  sessionId?: string,
+): HookResult {
   if (result.reason === "selection-required") {
     return {
       stdout: {
         continue: true,
         suppressOutput: true,
         namsWorkspaceSelectionRequired: true,
-        reason: formatWorkspaceSelectionNotice("opencode", result.workspaces),
+        reason: formatWorkspaceSelectionNotice("opencode", result.workspaces, sessionId),
       },
     };
   }

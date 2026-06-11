@@ -17,7 +17,7 @@ For local development, generated artifact testing, and `./dist` workflows, see
 
 ## Runtime Configuration
 
-Runtime configuration is JSON-first: `~/.nams/config.json`, optional project `.nams/config.json`, optional platform discovery such as Claude plugin user configuration, then final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. `apiKey` and `baseUrl` are required for NAMS requests. When `workspaceId` is omitted, nams-hooks calls `GET /v1/users/me/workspaces` before memory creation. If exactly one valid workspace is returned, that workspace is stored in session state and reused by later memory hooks. If multiple valid workspaces are returned, configure one explicitly with `nams-hooks workspaces configure ... --workspace-id <workspace-id>`. Runtime state and logs are user-local under per-platform directories in `~/.nams/state/` and `~/.nams/logs/`.
+Runtime configuration is JSON-first: `~/.nams/config.json`, optional project `.nams/config.json`, optional platform discovery such as Claude plugin user configuration, then final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. `apiKey` and `baseUrl` are required for NAMS requests. When `workspaceId` is omitted, nams-hooks calls `GET /v1/users/me/workspaces` before memory creation. If exactly one valid workspace is returned, that workspace is stored in session state and reused by later memory hooks. If multiple valid workspaces are returned, memory stays inactive for that turn until you select one explicitly. The quickest fix is a session-scoped selection; hook notices include the current session ID when the harness exposes it, so usually only `--workspace <workspace-id-or-name>` needs editing. Runtime state and logs are user-local under per-platform directories in `~/.nams/state/` and `~/.nams/logs/`.
 
 The portable configuration path is a user-local config file:
 
@@ -62,21 +62,38 @@ returns exactly one valid workspace. When NAMS returns multiple valid
 workspaces, hooks notify that memory is inactive for the turn, continue agent
 execution, and skip memory writes until you configure a workspace explicitly.
 
-To configure a specific project workspace for Codex, run:
+Workspace selection has three lifetimes:
+
+- `session`: writes the selected workspace into one harness session state file.
+- `project`: writes durable project configuration in `<project>/.nams/config.json`.
+- `user`: writes durable user configuration in `~/.nams/config.json`.
+
+For multi-workspace inactive memory notices, the recommended quick fix is a
+session selection. For example:
 
 ```bash
-nams-hooks workspaces configure codex --scope project --workspace-id 11111111-1111-1111-1111-111111111111
+nams-hooks workspaces configure opencode --scope session --session-id session-1 --workspace Engineering
+```
+
+For every scope, `--workspace` accepts either an exact workspace ID or an exact
+workspace name. If multiple workspaces have the same name, pass the workspace
+ID.
+
+To configure a durable project workspace for Codex, run:
+
+```bash
+nams-hooks workspaces configure codex --scope project --workspace Engineering
 ```
 
 Replace `codex` with `gemini`, `opencode`, or `claude` to configure a different
 platform path. Use `--scope user` to write `~/.nams/config.json` instead of the
 project `.nams/config.json`.
 
-If you omit `--workspace-id`, the configure command writes the workspace
+If you omit `--workspace`, the configure command writes the workspace
 automatically only when NAMS returns a single valid workspace. This is the
 normal path for workspace keys. When NAMS returns multiple valid workspaces,
 which is common for admin keys, the command prints the available choices and
-exits without changing config until you pass one ID explicitly.
+exits without changing config until you pass an explicit selection.
 
 ## Claude Code
 

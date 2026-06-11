@@ -648,7 +648,7 @@ Keep `NAMS_BASE_URL.default` as `https://memory.neo4jlabs.com`; that default bel
 In `README.md` and `INSTALL.md`, update workspace-selection language so it says:
 
 ```md
-When `workspaceId` is omitted, nams-hooks calls `GET /v1/users/me/workspaces` before memory creation. If exactly one valid workspace is returned, that workspace is stored in session state and reused by later memory hooks. If multiple valid workspaces are returned, configure one explicitly with `nams-hooks workspaces configure ... --workspace-id <workspace-id>`.
+When `workspaceId` is omitted, nams-hooks calls `GET /v1/users/me/workspaces` before memory creation. If exactly one valid workspace is returned, that workspace is stored in session state and reused by later memory hooks. If multiple valid workspaces are returned, memory stays inactive for that turn until the user selects a workspace explicitly. The quickest fix is `nams-hooks workspaces configure <platform> --scope session --session-id <session-id> --workspace <workspace-id-or-name>`.
 ```
 
 In `docs/superpowers/specs/2026-06-05-nams-workspace-resolution-hook-design.md`, add an amendment note after the platform matrix:
