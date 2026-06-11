@@ -61,6 +61,9 @@ memory persistence.
   writing project or user config.
 - Design behavior for all supported platforms while implementing only the
   deterministic first tier initially.
+- Update existing documentation, README/installation docs, and user-facing hook
+  or system messages where relevant to include the slash command while keeping
+  the explicit bash configure command available.
 - Preserve zero runtime npm dependencies in generated release artifacts.
 - Avoid printing API keys, bearer tokens, raw config contents, or backend error
   details.
@@ -359,8 +362,9 @@ The next implementation plan should implement only Tier 1:
 
 - Claude Code command asset and template tests.
 - OpenCode plugin command interception and template tests.
-- Documentation updates that describe the Tier 1 slash UX and the Gemini/Codex
-  limitations.
+- Documentation, README/installation docs, and relevant user-facing hook or
+  system message updates that describe the Tier 1 slash UX, keep the explicit
+  bash configure command, and explain the Gemini/Codex limitations.
 
 Gemini and Codex should remain designed but deferred until a later plan. This
 keeps the cross-platform product direction visible without expanding behavior
