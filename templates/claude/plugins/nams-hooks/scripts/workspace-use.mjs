@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const commandName = "nams-hooks:nams-hooks";
 const usage = `Usage: /${commandName} workspaces use <workspace-id-or-name>`;
+const cliTimeoutMs = 30_000;
 
 const input = await readHookInput();
 if (input.hook_event_name !== "UserPromptExpansion" || input.command_name !== commandName) {
@@ -22,7 +23,7 @@ const sessionId = stringValue(input.session_id).trim() || stringValue(process.en
 if (sessionId.length === 0) {
   block([
     "Claude session id is unavailable; cannot configure a session workspace automatically.",
-    `Run manually: nams-hooks workspaces configure claude --scope session --session-id <session-id> --workspace ${selector}`,
+    `Run manually: nams-hooks workspaces configure claude --scope session --session-id <session-id> --workspace ${shellQuote(selector)}`,
   ].join("\n"));
 }
 
@@ -82,6 +83,21 @@ function runCli(args) {
     });
     let stdout = "";
     let stderr = "";
+    let settled = false;
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+    }, cliTimeoutMs);
+
+    function finish(result) {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
+      resolve(result);
+    }
 
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
@@ -92,10 +108,14 @@ function runCli(args) {
       stderr += chunk;
     });
     child.on("error", (error) => {
-      resolve({ status: 1, stdout, stderr, error });
+      finish({ status: 1, stdout, stderr, error });
     });
-    child.on("exit", (code) => {
-      resolve({ status: code ?? 1, stdout, stderr });
+    child.on("close", (code) => {
+      if (timedOut) {
+        finish({ status: 1, stdout, stderr, error: new Error(`Timed out after ${cliTimeoutMs}ms`) });
+        return;
+      }
+      finish({ status: code ?? 1, stdout, stderr });
     });
   });
 }
@@ -107,4 +127,11 @@ function block(reason) {
 
 function stringValue(value) {
   return typeof value === "string" ? value : "";
+}
+
+function shellQuote(value) {
+  if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(value)) {
+    return value;
+  }
+  return `'${value.replaceAll("'", "'\\''")}'`;
 }

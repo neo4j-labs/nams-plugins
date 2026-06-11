@@ -90,6 +90,9 @@ test("Claude plugin template packages slash workspace command hook", async () =>
   assert.match(script, /workspaces/);
   assert.match(script, /configure/);
   assert.match(script, /claude/);
+  assert.match(script, /cliTimeoutMs = 30_000/);
+  assert.match(script, /setTimeout/);
+  assert.match(script, /shellQuote/);
 });
 
 test("Claude slash workspace helper delegates to bundled cli without shell expansion", async () => {
@@ -149,6 +152,7 @@ test("Claude slash workspace helper blocks missing selector and session id", asy
     assert.equal(JSON.parse(missingSelector.stdout).decision, "block");
     assert.match(JSON.parse(missingSelector.stdout).reason, /Usage: \/nams-hooks:nams-hooks workspaces use <workspace-id-or-name>/);
 
+    const selector = "Engineering Team; $(echo unsafe)";
     const missingSession = spawnSync(process.execPath, [fixture.scriptPath], {
       cwd: fixture.pluginDir,
       env: {
@@ -157,14 +161,50 @@ test("Claude slash workspace helper blocks missing selector and session id", asy
       },
       input: JSON.stringify(userPromptExpansionInput({
         session_id: "",
-        command_args: "workspaces use Engineering",
+        command_args: `workspaces use ${selector}`,
       })),
       encoding: "utf8",
     });
     assert.equal(missingSession.status, 0);
     assert.equal(JSON.parse(missingSession.stdout).decision, "block");
     assert.match(JSON.parse(missingSession.stdout).reason, /Claude session id is unavailable/);
-    assert.match(JSON.parse(missingSession.stdout).reason, /--session-id <session-id> --workspace Engineering/);
+    assert.match(
+      JSON.parse(missingSession.stdout).reason,
+      /--session-id <session-id> --workspace 'Engineering Team; \$\(echo unsafe\)'/,
+    );
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("Claude slash workspace helper reports bundled cli timeout", async () => {
+  const fixture = await createClaudeSkillFixture();
+  try {
+    const helperSource = (await readFile(claudeWorkspaceScriptPath, "utf8"))
+      .replace("const cliTimeoutMs = 30_000;", "const cliTimeoutMs = 50;");
+    await writeFile(fixture.scriptPath, helperSource, "utf8");
+    await chmod(fixture.scriptPath, 0o755);
+    await writeFile(fixture.cliPath, [
+      "#!/usr/bin/env node",
+      "await new Promise((resolve) => setTimeout(resolve, 5000));",
+      "process.stdout.write('late\\n');",
+      "",
+    ].join("\n"), "utf8");
+    await chmod(fixture.cliPath, 0o755);
+
+    const result = spawnSync(process.execPath, [fixture.scriptPath], {
+      cwd: fixture.pluginDir,
+      input: JSON.stringify(userPromptExpansionInput({
+        session_id: "claude-session-1",
+        command_args: "workspaces use Engineering",
+      })),
+      encoding: "utf8",
+      timeout: 2000,
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).decision, "block");
+    assert.match(JSON.parse(result.stdout).reason, /Timed out after 50ms/);
   } finally {
     await fixture.cleanup();
   }
@@ -198,6 +238,7 @@ function userPromptExpansionInput(overrides: Record<string, unknown> = {}): Reco
 async function createClaudeSkillFixture(): Promise<{
   pluginDir: string;
   scriptPath: string;
+  cliPath: string;
   callsPath: string;
   cleanup: () => Promise<void>;
 }> {
@@ -227,6 +268,7 @@ async function createClaudeSkillFixture(): Promise<{
   return {
     pluginDir,
     scriptPath,
+    cliPath,
     callsPath,
     cleanup: () => rm(root, { recursive: true, force: true }),
   };
