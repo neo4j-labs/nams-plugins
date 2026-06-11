@@ -7,9 +7,13 @@ landed.
 
 This note tracks the implemented session-scoped workspace configure command and
 which currently supported `nams-hooks` platforms expose a user-invoked command
-surface that could wrap it, for example:
+surface that can wrap it. Tier 1 user-facing forms are:
 
 ```text
+# Claude Code plugin command
+/nams-hooks:nams-hooks workspaces use <workspace-id-or-name>
+
+# OpenCode plugin shim command
 /nams-hooks workspaces use <workspace-id-or-name>
 ```
 
