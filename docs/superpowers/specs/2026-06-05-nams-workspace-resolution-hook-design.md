@@ -167,7 +167,7 @@ For multi-workspace users, the workspace hook should prefer Gemini's structured 
   "continue": true,
   "suppressOutput": false,
   "hookSpecificOutput": {
-    "additionalContext": "NAMS memory is inactive for this turn.\nNo memory messages were stored. Multiple NAMS workspaces are available, and no workspaceId is configured.\nConfigure a session workspace before memory can resume: nams-hooks workspaces configure gemini --scope session --session-id <session-id> --workspace <workspace-id-or-name>\nAvailable NAMS workspaces:\n1. Engineering (owner, active) - 11111111-1111-1111-1111-111111111111\n2. Research (member, active) - 22222222-2222-2222-2222-222222222222"
+    "additionalContext": "NAMS memory is inactive for this turn.\nNo memory messages were stored. Multiple NAMS workspaces are available, and no workspaceId is configured.\nConfigure a session workspace before memory can resume: nams-hooks workspaces configure gemini --scope session --session-id session-1 --workspace <workspace-id-or-name>\nAvailable NAMS workspaces:\n1. Engineering (owner, active) - 11111111-1111-1111-1111-111111111111\n2. Research (member, active) - 22222222-2222-2222-2222-222222222222"
   }
 }
 ```

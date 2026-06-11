@@ -184,7 +184,10 @@ test("OpenCode chat.message reports inactive memory when multiple workspaces are
     assert.equal(result.stdout.namsWorkspaceSelectionRequired, true);
     assert.match(String(result.stdout.reason), /NAMS memory is inactive for this turn/);
     assert.match(String(result.stdout.reason), /No memory messages were stored/);
-    assert.match(String(result.stdout.reason), /workspaces configure opencode/);
+    assert.match(
+      String(result.stdout.reason),
+      /nams-hooks workspaces configure opencode --scope session --session-id session-1 --workspace <workspace-id-or-name>/,
+    );
     assert.match(String(result.stdout.reason), /Research/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });

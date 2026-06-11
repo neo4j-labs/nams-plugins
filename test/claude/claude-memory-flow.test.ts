@@ -224,7 +224,7 @@ test("Claude BeforeAgent skips memory when multiple listed workspaces require se
     assert.match(String(result.stdout.systemMessage), /NAMS memory is inactive for this turn/);
     assert.match(
       String(result.stdout.systemMessage),
-      /nams-hooks workspaces configure claude --scope session --session-id <session-id> --workspace <workspace-id-or-name>/,
+      /nams-hooks workspaces configure claude --scope session --session-id session-1 --workspace <workspace-id-or-name>/,
     );
     assert.equal(Object.hasOwn(result.stdout, "additionalContext"), false);
     assert.equal(hookSpecificOutput(result).hookEventName, "UserPromptSubmit");
@@ -233,7 +233,7 @@ test("Claude BeforeAgent skips memory when multiple listed workspaces require se
     assert.match(hookSpecificOutput(result).additionalContext, /Multiple NAMS workspaces are available/);
     assert.match(
       hookSpecificOutput(result).additionalContext,
-      /nams-hooks workspaces configure claude --scope session --session-id <session-id> --workspace <workspace-id-or-name>/,
+      /nams-hooks workspaces configure claude --scope session --session-id session-1 --workspace <workspace-id-or-name>/,
     );
     assert.match(hookSpecificOutput(result).additionalContext, /workspace-2/);
     assert.equal(nams.calls("listMyWorkspaces").length, 1);

@@ -223,11 +223,16 @@ diagnostic context only and must not be persisted to session state.
 ## User-Facing Notices
 
 When memory is inactive because multiple workspaces are available, platform
-notices should recommend the session-scoped command as the quickest fix:
+notices should recommend the session-scoped command as the quickest fix. When
+the hook payload exposes a harness session ID, the notice should render the
+concrete value so the user only needs to replace the workspace selector:
 
 ```bash
-nams-hooks workspaces configure <platform> --scope session --session-id <session-id> --workspace <workspace-id-or-name>
+nams-hooks workspaces configure <platform> --scope session --session-id session-1 --workspace <workspace-id-or-name>
 ```
+
+If a platform does not expose a usable session ID, the notice should keep
+`<session-id>` as a fallback placeholder.
 
 The current project/user configure command remains useful when the user wants a
 durable default rather than a current-session selection.

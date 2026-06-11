@@ -871,7 +871,8 @@ git commit -m "fix: prefer session workspace selections" -m "Co-authored-by: Cod
 In `src/platforms/workspace-selection.ts`, replace the configure line with:
 
 ```ts
-`Configure a session workspace before memory can resume: nams-hooks workspaces configure ${platform} --scope session --session-id <session-id> --workspace <workspace-id-or-name>`,
+const commandSessionId = sessionId?.trim() || "<session-id>";
+`Configure a session workspace before memory can resume: nams-hooks workspaces configure ${platform} --scope session --session-id ${commandSessionId} --workspace <workspace-id-or-name>`,
 ```
 
 Do not add slash-command text in this task. Slash-command implementation and related notices are postponed.
@@ -884,14 +885,16 @@ Run:
 rg -n -- "workspaces configure .*--workspace-id|--workspace-id <workspace-id>" test src README.md INSTALL.md docs
 ```
 
-Update the matching test expectations to look for the session command. In tests that use regex, use this pattern:
+Update the matching test expectations to look for the session command. In
+adapter flow tests where the payload includes a concrete session ID, use that
+value. In tests that use regex, use this pattern:
 
 ```ts
-/nams-hooks workspaces configure .* --scope session --session-id <session-id> --workspace <workspace-id-or-name>/
+/nams-hooks workspaces configure .* --scope session --session-id session-1 --workspace <workspace-id-or-name>/
 ```
 
-In `test/opencode/opencode-template.test.ts`, replace any legacy project-scope
-notice expectation with:
+In `test/opencode/opencode-template.test.ts`, the template still relays the
+runtime-provided reason and may keep a placeholder fixture:
 
 ```ts
 "Configure a session workspace before memory can resume: nams-hooks workspaces configure opencode --scope session --session-id <session-id> --workspace <workspace-id-or-name>",
@@ -902,7 +905,7 @@ notice expectation with:
 In `README.md`, update the runtime configuration paragraph so the multi-workspace sentence says:
 
 ```md
-If multiple valid workspaces are returned, choose one for the active session with `nams-hooks workspaces configure <platform> --scope session --session-id <session-id> --workspace <workspace-id-or-name>`, or write a durable project/user default with `nams-hooks workspaces configure <platform> --scope project --workspace <workspace-id-or-name>`.
+If multiple valid workspaces are returned, nams-hooks shows a session-scoped command. When the hook exposes a session ID, the command includes it directly, for example `nams-hooks workspaces configure <platform> --scope session --session-id session-1 --workspace <workspace-id-or-name>`. You can also write a durable project/user default with `nams-hooks workspaces configure <platform> --scope project --workspace <workspace-id-or-name>`.
 ```
 
 Keep the surrounding paragraph intact unless line wrapping requires small edits.
