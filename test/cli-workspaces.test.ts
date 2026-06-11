@@ -216,6 +216,35 @@ test("workspaces configure codex writes project config for explicit workspace", 
   }
 });
 
+test("workspaces configure project scope rejects workspace selector before dispatch", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-"));
+  try {
+    await withWorkspaceServer(
+      async (baseUrl, requests) => {
+        const result = await runCli(
+          ["workspaces", "configure", "codex", "--scope", "project", "--workspace", "workspace-only"],
+          {},
+          runtimeEnv(path.join(projectDir, "home"), baseUrl),
+          projectDir,
+        );
+
+        assert.equal(result.code, 1);
+        assert.equal(result.stdout, "");
+        assert.match(result.stderr, /Usage:/);
+        assert.equal(requests.length, 0);
+        await assert.rejects(readFile(path.join(projectDir, ".nams", "config.json"), "utf8"), {
+          code: "ENOENT",
+        });
+      },
+      {
+        workspaces: [{ id: "workspace-only", name: "Engineering", role: "owner", status: "active" }],
+      },
+    );
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("workspaces configure opencode session scope writes selected workspace by exact id", async () => {
   const projectDir = await realpath(await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-")));
   const homeDir = path.join(projectDir, "home");
@@ -502,6 +531,105 @@ test("workspaces configure opencode session scope requires home before listing w
   }
 });
 
+test("workspaces configure opencode session scope rejects symlinked state parent before listing workspaces", async () => {
+  const projectDir = await realpath(await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-")));
+  const homeDir = path.join(projectDir, "home");
+  const stateTarget = path.join(projectDir, "state-target");
+  try {
+    await mkdir(path.join(homeDir, ".nams"), { recursive: true });
+    await mkdir(stateTarget, { recursive: true });
+    await symlink(stateTarget, path.join(homeDir, ".nams", "state"));
+
+    await withWorkspaceServer(async (baseUrl, requests) => {
+      const result = await runCli(
+        [
+          "workspaces",
+          "configure",
+          "opencode",
+          "--scope",
+          "session",
+          "--session-id",
+          "session-1",
+          "--workspace",
+          "workspace-1",
+        ],
+        {},
+        runtimeEnv(homeDir, baseUrl),
+        projectDir,
+      );
+
+      assert.equal(result.code, 1);
+      assert.equal(result.stdout, "");
+      assert.match(result.stderr, /symbolic link|session state path/i);
+      assert.equal(requests.length, 0);
+      await assert.rejects(stat(path.join(stateTarget, "opencode")), { code: "ENOENT" });
+    });
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("workspaces configure opencode session scope rejects unsafe existing state file before listing workspaces", async () => {
+  const projectDir = await realpath(await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-")));
+  const homeDir = path.join(projectDir, "home");
+  try {
+    const stateDir = path.join(homeDir, ".nams", "state", "opencode");
+    const statePath = path.join(
+      stateDir,
+      `session-2026-05-11T120000.000Z--${sha256("session-1")}.json`,
+    );
+    const targetPath = path.join(projectDir, "target-state.json");
+    await mkdir(stateDir, { recursive: true });
+    await writeFile(
+      targetPath,
+      `${JSON.stringify(
+        {
+          harness: "opencode",
+          harnessSessionId: "session-1",
+          sessionKey: "session-1",
+          projectDirectory: projectDir,
+          createdAt: "2026-05-11T12:00:00.000Z",
+          seenAssistantMessageHashes: [],
+          seenTranscriptEntryIds: [],
+          seenReasoningStepHashes: [],
+          seenToolCallIds: [],
+          reasoningStepIdsByHash: {},
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await symlink(targetPath, statePath);
+
+    await withWorkspaceServer(async (baseUrl, requests) => {
+      const result = await runCli(
+        [
+          "workspaces",
+          "configure",
+          "opencode",
+          "--scope",
+          "session",
+          "--session-id",
+          "session-1",
+          "--workspace",
+          "workspace-1",
+        ],
+        {},
+        runtimeEnv(homeDir, baseUrl),
+        projectDir,
+      );
+
+      assert.equal(result.code, 1);
+      assert.equal(result.stdout, "");
+      assert.match(result.stderr, /symbolic link|unsafe session state/i);
+      assert.equal(requests.length, 0);
+    });
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("workspaces configure opencode session scope rejects symlinked project config before loading config", async () => {
   const projectDir = await realpath(await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-")));
   const homeDir = path.join(projectDir, "home");
@@ -622,6 +750,42 @@ test("workspaces configure opencode session scope reports unknown workspace sele
       {
         workspaces: [{ id: "workspace-1", name: "Engineering", role: "owner", status: "active" }],
       },
+    );
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("workspaces configure opencode session scope reports no valid workspaces for explicit selector", async () => {
+  const projectDir = await realpath(await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-")));
+  const homeDir = path.join(projectDir, "home");
+  try {
+    await withWorkspaceServer(
+      async (baseUrl) => {
+        const result = await runCli(
+          [
+            "workspaces",
+            "configure",
+            "opencode",
+            "--scope",
+            "session",
+            "--session-id",
+            "session-1",
+            "--workspace",
+            "workspace-1",
+          ],
+          {},
+          runtimeEnv(homeDir, baseUrl),
+          projectDir,
+        );
+
+        assert.equal(result.code, 2);
+        assert.equal(result.stdout, "");
+        assert.match(result.stderr, /No NAMS workspaces were returned/);
+        assert.doesNotMatch(result.stderr, /was not found/);
+        assert.deepEqual(await sessionStateFiles(homeDir, "opencode"), []);
+      },
+      { workspaces: [] },
     );
   } finally {
     await rm(projectDir, { recursive: true, force: true });

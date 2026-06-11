@@ -44,7 +44,7 @@
 **Files:**
 - Modify: `test/cli-workspaces.test.ts`
 
-- [ ] **Step 1: Add helpers for reading session state written by the child CLI**
+- [x] **Step 1: Add helpers for reading session state written by the child CLI**
 
 In `test/cli-workspaces.test.ts`, add this import beside the existing imports:
 
@@ -66,7 +66,7 @@ async function readOnlySessionState(homeDir: string, platform: "gemini" | "claud
 }
 ```
 
-- [ ] **Step 2: Add failing test for writing a session workspace by ID**
+- [x] **Step 2: Add failing test for writing a session workspace by ID**
 
 Add this test after `workspaces configure codex writes project config for explicit workspace`:
 
@@ -131,7 +131,7 @@ test("workspaces configure session writes selected workspace by id", async () =>
 });
 ```
 
-- [ ] **Step 3: Add failing test for preserving existing session state**
+- [x] **Step 3: Add failing test for preserving existing session state**
 
 Add this test after the ID test:
 
@@ -216,7 +216,7 @@ test("workspaces configure session preserves existing session fields", async () 
 });
 ```
 
-- [ ] **Step 4: Add failing test for exact workspace name selection**
+- [x] **Step 4: Add failing test for exact workspace name selection**
 
 Add this test after the preservation test:
 
@@ -264,7 +264,7 @@ test("workspaces configure session accepts an exact workspace name", async () =>
 });
 ```
 
-- [ ] **Step 5: Add failing tests for missing session ID, unknown selector, and ambiguous name**
+- [x] **Step 5: Add failing tests for missing session ID, unknown selector, and ambiguous name**
 
 Add these tests after the exact-name test:
 
@@ -373,7 +373,7 @@ test("workspaces configure session rejects ambiguous workspace names without wri
 });
 ```
 
-- [ ] **Step 6: Run tests to verify failure**
+- [x] **Step 6: Run tests to verify failure**
 
 Run:
 
@@ -393,7 +393,7 @@ Expected: FAIL. The parser currently rejects `--scope session`, so at least the 
 - Modify: `src/runtime/workspace-configuration.ts`
 - Test: `test/cli-workspaces.test.ts`
 
-- [ ] **Step 1: Add `session-selection` to session state sources**
+- [x] **Step 1: Add `session-selection` to session state sources**
 
 In `src/runtime/session-state.ts`, replace the `SessionWorkspaceSource` type with:
 
@@ -405,7 +405,7 @@ export type SessionWorkspaceSource =
   | "session-selection";
 ```
 
-- [ ] **Step 2: Extend CLI args and usage**
+- [x] **Step 2: Extend CLI args and usage**
 
 In `src/cli.ts`, replace the `workspace-configure` union member with:
 
@@ -463,7 +463,7 @@ In `usage()`, replace the configure line with:
 "       nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope <project|user|session> [--workspace-id ID] [--session-id ID] [--workspace ID_OR_NAME]",
 ```
 
-- [ ] **Step 3: Extend workspace configuration input parsing**
+- [x] **Step 3: Extend workspace configuration input parsing**
 
 In `src/runtime/workspace-configuration.ts`, add these imports:
 
@@ -517,7 +517,7 @@ function nonBlankString(value: unknown): string | undefined {
 }
 ```
 
-- [ ] **Step 4: Implement selector resolution and session state writing**
+- [x] **Step 4: Implement selector resolution and session state writing**
 
 In `src/runtime/workspace-configuration.ts`, add these types below `ConfigureInput`:
 
@@ -601,7 +601,7 @@ function isSessionConfigureInput(input: ConfigureInput): input is SessionConfigu
 }
 ```
 
-- [ ] **Step 5: Route session scope separately from JSON config writing**
+- [x] **Step 5: Route session scope separately from JSON config writing**
 
 In `configureWorkspaceSelection`, after parsing `configureInput`, replace the existing project/user-only validation and selection block with this structure:
 
@@ -698,7 +698,7 @@ function sessionWorkspaceSelectionFailureMessage(
 
 Delete or stop using the old `selectWorkspace` helper after `selectWorkspaceById` is in place.
 
-- [ ] **Step 6: Run targeted CLI tests**
+- [x] **Step 6: Run targeted CLI tests**
 
 Run:
 
@@ -708,7 +708,7 @@ npm run build && node --import=tsx --test test/cli-workspaces.test.ts
 
 Expected: PASS for `test/cli-workspaces.test.ts`.
 
-- [ ] **Step 7: Commit Task 2**
+- [x] **Step 7: Commit Task 2**
 
 ```bash
 git add src/cli.ts src/runtime/session-state.ts src/runtime/workspace-configuration.ts test/cli-workspaces.test.ts
@@ -723,7 +723,7 @@ git commit -m "feat: configure session workspace selection" -m "Co-authored-by: 
 - Modify: `src/runtime/workspace-resolution.ts`
 - Modify: `test/workspace-resolution.test.ts`
 
-- [ ] **Step 1: Add failing precedence tests**
+- [x] **Step 1: Add failing precedence tests**
 
 In `test/workspace-resolution.test.ts`, add this test after `configured workspace skips workspace listing and is not preflight validated`:
 
@@ -805,7 +805,7 @@ test("configured workspace overrides runtime auto-selected session state", async
 });
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run:
 
@@ -815,7 +815,7 @@ node --import=tsx --test test/workspace-resolution.test.ts
 
 Expected: FAIL before implementation. The first new test should currently return `env-workspace` instead of `session-workspace`.
 
-- [ ] **Step 3: Reorder resolver precedence by session workspace source**
+- [x] **Step 3: Reorder resolver precedence by session workspace source**
 
 In `src/runtime/workspace-resolution.ts`, inside `resolveWorkspaceForMemory`, insert this block immediately after `const config = connectionResult.config;` and before the existing `if (config.workspaceId !== undefined)` block:
 
@@ -837,7 +837,7 @@ if (input.state.workspace?.source === "session-selection") {
 
 Leave the existing configured-workspace branch below this new block. Leave the existing later `if (input.state.workspace !== undefined)` branch in place so non-session state such as `runtime-single-workspace` is reused only when no configured workspace exists.
 
-- [ ] **Step 4: Run targeted resolver tests**
+- [x] **Step 4: Run targeted resolver tests**
 
 Run:
 
@@ -847,7 +847,7 @@ node --import=tsx --test test/workspace-resolution.test.ts
 
 Expected: PASS for `test/workspace-resolution.test.ts`.
 
-- [ ] **Step 5: Commit Task 3**
+- [x] **Step 5: Commit Task 3**
 
 ```bash
 git add src/runtime/workspace-resolution.ts test/workspace-resolution.test.ts
@@ -867,7 +867,7 @@ git commit -m "fix: prefer session workspace selections" -m "Co-authored-by: Cod
 - Modify: `README.md`
 - Modify: `INSTALL.md`
 
-- [ ] **Step 1: Update the shared multi-workspace notice**
+- [x] **Step 1: Update the shared multi-workspace notice**
 
 In `src/platforms/workspace-selection.ts`, replace the configure line with:
 
@@ -877,7 +877,7 @@ In `src/platforms/workspace-selection.ts`, replace the configure line with:
 
 Do not add slash-command text in this task. Slash-command implementation and related notices are postponed.
 
-- [ ] **Step 2: Update tests that assert the old project-scope command**
+- [x] **Step 2: Update tests that assert the old project-scope command**
 
 Run:
 
@@ -898,7 +898,7 @@ notice expectation with:
 "Configure a session workspace before memory can resume: nams-hooks workspaces configure opencode --scope session --session-id <session-id> --workspace <workspace-id-or-name>",
 ```
 
-- [ ] **Step 3: Update README runtime configuration summary**
+- [x] **Step 3: Update README runtime configuration summary**
 
 In `README.md`, update the runtime configuration paragraph so the multi-workspace sentence says:
 
@@ -908,7 +908,7 @@ If multiple valid workspaces are returned, choose one for the active session wit
 
 Keep the surrounding paragraph intact unless line wrapping requires small edits.
 
-- [ ] **Step 4: Update INSTALL workspace selection section**
+- [x] **Step 4: Update INSTALL workspace selection section**
 
 In `INSTALL.md`, add this paragraph under "Workspace Selection" after the explanation of multiple valid workspaces:
 
@@ -924,7 +924,7 @@ nams-hooks workspaces configure opencode --scope session --session-id session-1 
 
 Keep the existing project-scope example as the durable project default example.
 
-- [ ] **Step 5: Run targeted notice/docs tests**
+- [x] **Step 5: Run targeted notice/docs tests**
 
 Run:
 
@@ -934,7 +934,7 @@ npm run build && node --import=tsx --test test/opencode/opencode-template.test.t
 
 Expected: PASS for the listed tests.
 
-- [ ] **Step 6: Commit Task 4**
+- [x] **Step 6: Commit Task 4**
 
 ```bash
 git add src/platforms/workspace-selection.ts test/opencode/opencode-template.test.ts test/claude/claude-memory-flow.test.ts test/codex/codex-memory-flow.test.ts test/gemini/gemini-memory-flow.test.ts README.md INSTALL.md
@@ -951,7 +951,7 @@ If `test/gemini/gemini-memory-flow.test.ts` did not change, omit it from `git ad
 - No new source files.
 - Verify all files changed by Tasks 1-4.
 
-- [ ] **Step 1: Run full verification**
+- [x] **Step 1: Run full verification**
 
 Run:
 
@@ -961,7 +961,7 @@ npm run check
 
 Expected: PASS. This runs OpenAPI freshness checks, TypeScript build, and the full test suite.
 
-- [ ] **Step 2: Inspect changed files**
+- [x] **Step 2: Inspect changed files**
 
 Run:
 
@@ -972,7 +972,7 @@ git diff --stat HEAD~3..HEAD
 
 Expected: worktree clean after the task commits. Diff stat should include only the files listed in this plan.
 
-- [ ] **Step 3: Final branch status**
+- [x] **Step 3: Final branch status**
 
 Run:
 

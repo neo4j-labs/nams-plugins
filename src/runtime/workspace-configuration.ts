@@ -1,4 +1,5 @@
-import { lstat } from "node:fs/promises";
+import { lstat, readdir } from "node:fs/promises";
+import path from "node:path";
 import { NamsWorkspaceClient, type WorkspaceSummary } from "../generated/nams-client.js";
 import type { WorkspaceHookInvocation, WorkspaceHookResult } from "../interfaces.js";
 import { configDiagnosticPayload, loadNamsConnectionConfig } from "./config.js";
@@ -7,7 +8,9 @@ import {
   writeNamsJsonConfig,
   type NamsConfigWriteScope,
 } from "./config-writer.js";
+import { sha256 } from "./hashing.js";
 import { sessionStateDirectory } from "./paths.js";
+import { ensurePrivateDirectory } from "./permissions.js";
 import { createInitialSessionState, loadSessionState, saveSessionState } from "./session-state.js";
 
 interface ConfigureInput {
@@ -81,7 +84,12 @@ async function configureSessionWorkspaceSelection(
     return configureOutput(1, "NAMS workspace configure --scope session requires --session-id.");
   }
 
-  const preflightResult = await preflightSessionStateDestination(invocation.platform);
+  const initialState = createInitialSessionState({
+    platform: invocation.platform,
+    sessionId: configureInput.sessionId,
+    projectDirectory,
+  });
+  const preflightResult = await preflightSessionStateDestination(invocation.platform, initialState.sessionKey);
   if (preflightResult !== undefined) {
     return preflightResult;
   }
@@ -109,11 +117,6 @@ async function configureSessionWorkspaceSelection(
     return configureOutput(2, sessionWorkspaceSelectionFailureMessage(workspaces, selection));
   }
 
-  const initialState = createInitialSessionState({
-    platform: invocation.platform,
-    sessionId: configureInput.sessionId,
-    projectDirectory,
-  });
   const state = (await loadSessionState(invocation.platform, initialState.sessionKey)) ?? initialState;
   state.workspace = {
     id: selection.workspace.id,
@@ -130,6 +133,7 @@ async function configureSessionWorkspaceSelection(
 
 async function preflightSessionStateDestination(
   platform: WorkspaceHookInvocation<"InstallConfigure">["platform"],
+  sessionKey: string,
 ): Promise<WorkspaceHookResult | undefined> {
   let stateDirectory: string;
   try {
@@ -140,17 +144,55 @@ async function preflightSessionStateDestination(
   }
 
   try {
-    const stateDirectoryStat = await lstat(stateDirectory);
-    if (!stateDirectoryStat.isDirectory()) {
-      return configureOutput(1, "NAMS session state path is unavailable; existing path must be a directory.");
-    }
+    await assertExistingSessionStateDirectoriesSafe(stateDirectory);
+    await ensurePrivateDirectory(stateDirectory);
+    await assertExistingSessionStateFilesSafe(stateDirectory, sessionKey);
     return undefined;
   } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      return undefined;
-    }
     const message = error instanceof Error ? error.message : "NAMS session state path is unavailable";
     return configureOutput(1, message);
+  }
+}
+
+async function assertExistingSessionStateDirectoriesSafe(stateDirectory: string): Promise<void> {
+  for (const directoryPath of [
+    path.dirname(path.dirname(stateDirectory)),
+    path.dirname(stateDirectory),
+    stateDirectory,
+  ]) {
+    try {
+      const directory = await lstat(directoryPath);
+      if (directory.isSymbolicLink()) {
+        throw new Error("NAMS session state path must not contain symbolic links");
+      }
+      if (!directory.isDirectory()) {
+        throw new Error("NAMS session state path is unavailable; existing path must be a directory.");
+      }
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
+async function assertExistingSessionStateFilesSafe(stateDirectory: string, sessionKey: string): Promise<void> {
+  const suffix = `--${sha256(sessionKey)}.json`;
+  const filenames = await readdir(stateDirectory);
+  for (const filename of filenames) {
+    if (!filename.startsWith("session-") || !filename.endsWith(suffix)) {
+      continue;
+    }
+    const stateFile = await lstat(path.join(stateDirectory, filename));
+    if (stateFile.isSymbolicLink()) {
+      throw new Error("NAMS session state file must not be a symbolic link");
+    }
+    if (!stateFile.isFile() || stateFile.nlink > 1) {
+      throw new Error(
+        "NAMS session state path is unsafe; existing state must be a regular file without hard links",
+      );
+    }
   }
 }
 
@@ -266,6 +308,10 @@ function sessionWorkspaceSelectionFailureMessage(
   workspaces: ValidWorkspace[],
   selection: Exclude<SessionWorkspaceSelectionResult, { status: "selected" }>,
 ): string {
+  if (workspaces.length === 0) {
+    return "No NAMS workspaces were returned. Check that your NAMS account has access to at least one workspace.";
+  }
+
   if (selection.status === "not-found") {
     return [
       `Requested NAMS workspace was not found: ${selection.selector}`,
@@ -279,10 +325,6 @@ function sessionWorkspaceSelectionFailureMessage(
       "Matching workspaces:",
       ...workspaceChoices(selection.matches),
     ].join("\n");
-  }
-
-  if (workspaces.length === 0) {
-    return "No NAMS workspaces were returned. Check that your NAMS account has access to at least one workspace.";
   }
 
   return [

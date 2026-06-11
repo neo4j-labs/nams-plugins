@@ -83,6 +83,9 @@ function parseArgs(argv: string[]): CliArgs | null {
       return null;
     }
     if (isPlatform(platform) && (scope === "project" || scope === "user" || scope === "session")) {
+      if (scope !== "session" && workspace !== undefined) {
+        return null;
+      }
       return {
         command: "workspace-configure",
         platform,
@@ -160,7 +163,8 @@ function usage(): string {
   return [
     "Usage: nams-hooks run <gemini|claude|codex|opencode> --event <SessionStart|BeforeAgent|AfterAgent|AfterTool>",
     "       nams-hooks workspaces <gemini|claude|codex|opencode> --event <BeforeAgent|InstallConfigure>",
-    "       nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope <project|user|session> [--workspace-id ID] [--workspace ID_OR_NAME] [--session-id ID]",
+    "       nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope <project|user> [--workspace-id ID]",
+    "       nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope session --session-id ID [--workspace ID_OR_NAME] [--workspace-id ID]",
     "",
   ].join("\n");
 }
