@@ -65,18 +65,18 @@ selection as a later design. This is that design for the shared CLI command.
 
 ## Command Model
 
-Extend the existing configure command to accept a third scope:
+Extend the existing configure command to accept one coherent workspace selector
+across all supported scopes:
 
 ```bash
-nams-hooks workspaces configure <platform> --scope session --session-id <session-id> --workspace <workspace-id-or-name>
+nams-hooks workspaces configure <platform> --scope <project|user|session> [--session-id <session-id>] --workspace <workspace-id-or-name>
 ```
 
-`project` and `user` keep their current behavior and write JSON config. `session`
-writes only local session state under `~/.nams/state/<platform>/`.
+`project` and `user` write JSON config. `session` writes only local session
+state under `~/.nams/state/<platform>/`.
 
-For session scope:
+For all scopes:
 
-- `--session-id` is required.
 - `--workspace` accepts either a workspace ID or an exact workspace name.
 - `--workspace` is optional only when NAMS returns exactly one valid
   workspace.
@@ -84,12 +84,10 @@ For session scope:
   one returned workspace name.
 - duplicate workspace names are ambiguous and must fail with the available
   choices instead of guessing.
-- the selected workspace is written to the resolved session state.
 
-The existing `--workspace-id` flag may remain supported for `project` and
-`user` scopes, and may be accepted as a compatibility alias for session scope
-when the value is known to be an ID. New user-facing session-selection docs
-should prefer `--workspace`.
+For session scope, `--session-id` is required and the selected workspace is
+written to the resolved session state. The legacy `--workspace-id` flag is not
+part of this command surface; users should pass IDs through `--workspace`.
 
 Future platform wrappers should call this same session-scoped configure command
 after supplying the current platform and session ID. They must not duplicate
@@ -240,6 +238,9 @@ Add or update tests before implementation:
 
 - CLI accepts `--scope session --session-id`.
 - CLI rejects session scope without `--session-id`.
+- CLI rejects replaced `--workspace-id` configure arguments.
+- Project, user, and session scopes all accept `--workspace` as an exact ID or
+  exact name selector.
 - Session configure writes `state.workspace.source = "session-selection"`.
 - Session configure preserves existing session fields while replacing only
   `workspace`.

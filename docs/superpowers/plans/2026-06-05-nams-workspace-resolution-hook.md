@@ -22,7 +22,7 @@
 - `scripts/generate-nams-client.mjs`: add endpoint metadata for `GET /v1/users/me/workspaces`, generate both the workspace-scoped `NamsClient` and the workspace-infrastructure `NamsWorkspaceClient`, and keep runtime OpenAPI-free.
 - `src/generated/nams-client.ts`: generated output only. It may contain both generated client classes, but `NamsClient` and `NamsWorkspaceClient` must expose separate endpoint tables and constructor invariants. Do not hand-edit except through the generator.
 - `src/interfaces.ts`: rename the existing memory hook adapter contract to `MemoryPlatformAdapter`, then add workspace hook event types, invocation/result interfaces, and `WorkspacePlatformAdapter` without changing memory hook event inference.
-- `src/cli.ts`: parse workspace hook commands such as `nams-hooks workspaces gemini --event BeforeAgent` and configure commands such as `nams-hooks workspaces configure codex --scope project --workspace-id 11111111-1111-1111-1111-111111111111`.
+- `src/cli.ts`: parse workspace hook commands such as `nams-hooks workspaces gemini --event BeforeAgent` and configure commands such as `nams-hooks workspaces configure codex --scope project --workspace 11111111-1111-1111-1111-111111111111`.
 - `src/platforms/index.ts`: expose a static workspace adapter registry beside the renamed memory adapter registry.
 - `src/platforms/gemini/workspaces.ts`: Gemini-specific workspace hook output, including `decision: "deny"` for multi-workspace blocking.
 - `src/platforms/opencode/workspaces.ts`: OpenCode workspace phase result for the plugin shim, single-workspace auto-resolution, and multi-workspace configuration-required output.
@@ -2288,7 +2288,7 @@ test("workspace configure writes selected project workspace", async () => {
         "codex",
         "--scope",
         "project",
-        "--workspace-id",
+        "--workspace",
         "workspace-2",
       ],
       {
@@ -2505,7 +2505,7 @@ function validWorkspaces(workspaces: WorkspaceSummary[] | undefined): Array<Work
 
 function workspaceSelectionMessage(workspaces: Array<WorkspaceSummary & { id: string }>): string {
   return [
-    "NAMS workspace selection required. Re-run with --workspace-id and one of these IDs:",
+    "NAMS workspace selection required. Re-run with --workspace and one of these workspaces:",
     ...workspaces.map((workspace) => `- ${workspace.name ?? "(unnamed workspace)"} (${workspace.role ?? "unknown-role"}, ${workspace.status ?? "unknown-status"}) - ${workspace.id}`),
   ].join("\n");
 }
@@ -2527,7 +2527,7 @@ function configureOutput(exitCode: number, message: string): WorkspaceHookResult
 In `src/cli.ts`, add a CLI args variant:
 
 ```ts
-| { command: "workspace-configure"; platform: Platform; scope: "project" | "user"; workspaceId?: string }
+| { command: "workspace-configure"; platform: Platform; scope: "project" | "user"; workspace?: string }
 ```
 
 Extend `parseArgs`:
@@ -2536,15 +2536,15 @@ Extend `parseArgs`:
 if (command === "workspaces" && platformArg === "configure") {
   const platform = argv[2];
   const scopeFlagIndex = argv.indexOf("--scope");
-  const workspaceFlagIndex = argv.indexOf("--workspace-id");
+  const workspaceFlagIndex = argv.indexOf("--workspace");
   const scope = scopeFlagIndex >= 0 ? argv[scopeFlagIndex + 1] : undefined;
-  const workspaceId = workspaceFlagIndex >= 0 ? argv[workspaceFlagIndex + 1] : undefined;
+  const workspace = workspaceFlagIndex >= 0 ? argv[workspaceFlagIndex + 1] : undefined;
   if (isPlatform(platform) && (scope === "project" || scope === "user")) {
     return {
       command: "workspace-configure",
       platform,
       scope,
-      ...(workspaceId !== undefined && workspaceId.trim() !== "" ? { workspaceId } : {}),
+      ...(workspace !== undefined && workspace.trim() !== "" ? { workspace } : {}),
     };
   }
 }
@@ -2616,10 +2616,10 @@ Gemini can auto-select a single available workspace before memory starts when `N
 To configure a workspace explicitly, run:
 
 ```bash
-nams-hooks workspaces configure codex --scope project --workspace-id 11111111-1111-1111-1111-111111111111
+nams-hooks workspaces configure codex --scope project --workspace 11111111-1111-1111-1111-111111111111
 ```
 
-Replace `codex` with the target harness name when configuring another platform, and replace the sample UUID with the workspace ID from your NAMS workspace list. For user-level defaults, use `--scope user`. If `--workspace-id` is omitted and your account has exactly one workspace, the command writes that workspace automatically. If your account has multiple workspaces, the command prints the available choices and exits without writing until you pass one ID explicitly.
+Replace `codex` with the target harness name when configuring another platform, and replace the sample UUID with the workspace ID or exact workspace name from your NAMS workspace list. For user-level defaults, use `--scope user`. If `--workspace` is omitted and your account has exactly one workspace, the command writes that workspace automatically. If your account has multiple workspaces, the command prints the available choices and exits without writing until you pass one explicit selector.
 ````
 
 - [x] **Step 8: Verify and commit**

@@ -185,13 +185,13 @@ test("workspaces rejects unsupported workspace events with usage", async () => {
   }
 });
 
-test("workspaces configure codex writes project config for explicit workspace", async () => {
+test("workspaces configure codex writes project config for explicit workspace selector", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-"));
   try {
     await withWorkspaceServer(
       async (baseUrl) => {
         const result = await runCli(
-          ["workspaces", "configure", "codex", "--scope", "project", "--workspace-id", "workspace-2"],
+          ["workspaces", "configure", "codex", "--scope", "project", "--workspace", "Research"],
           {},
           runtimeEnv(path.join(projectDir, "home"), baseUrl),
           projectDir,
@@ -216,13 +216,45 @@ test("workspaces configure codex writes project config for explicit workspace", 
   }
 });
 
-test("workspaces configure project scope rejects workspace selector before dispatch", async () => {
+test("workspaces configure user scope writes config for explicit workspace selector", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-"));
+  const homeDir = path.join(projectDir, "home");
+  try {
+    await withWorkspaceServer(
+      async (baseUrl) => {
+        const result = await runCli(
+          ["workspaces", "configure", "codex", "--scope", "user", "--workspace", "workspace-2"],
+          {},
+          runtimeEnv(homeDir, baseUrl),
+          projectDir,
+        );
+
+        assert.equal(result.code, 0, result.stderr);
+        assert.match(result.stdout, /workspace-2/);
+        assert.equal(result.stderr, "");
+        assert.deepEqual(JSON.parse(await readFile(path.join(homeDir, ".nams", "config.json"), "utf8")), {
+          workspaceId: "workspace-2",
+        });
+      },
+      {
+        workspaces: [
+          { id: "workspace-1", name: "Engineering", role: "owner", status: "active" },
+          { id: "workspace-2", name: "Research", role: "member", status: "active" },
+        ],
+      },
+    );
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("workspaces configure rejects legacy workspace-id flag before dispatch", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-"));
   try {
     await withWorkspaceServer(
       async (baseUrl, requests) => {
         const result = await runCli(
-          ["workspaces", "configure", "codex", "--scope", "project", "--workspace", "workspace-only"],
+          ["workspaces", "configure", "codex", "--scope", "project", "--workspace-id", "workspace-only"],
           {},
           runtimeEnv(path.join(projectDir, "home"), baseUrl),
           projectDir,
@@ -231,6 +263,38 @@ test("workspaces configure project scope rejects workspace selector before dispa
         assert.equal(result.code, 1);
         assert.equal(result.stdout, "");
         assert.match(result.stderr, /Usage:/);
+        assert.doesNotMatch(result.stderr, /--workspace-id/);
+        assert.match(result.stderr, /--workspace WORKSPACE_NAME_OR_ID/);
+        assert.equal(requests.length, 0);
+        await assert.rejects(readFile(path.join(projectDir, ".nams", "config.json"), "utf8"), {
+          code: "ENOENT",
+        });
+      },
+      {
+        workspaces: [{ id: "workspace-only", name: "Engineering", role: "owner", status: "active" }],
+      },
+    );
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("workspaces configure rejects legacy workspace-id equals flag before dispatch", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-"));
+  try {
+    await withWorkspaceServer(
+      async (baseUrl, requests) => {
+        const result = await runCli(
+          ["workspaces", "configure", "codex", "--scope", "project", "--workspace-id=workspace-only"],
+          {},
+          runtimeEnv(path.join(projectDir, "home"), baseUrl),
+          projectDir,
+        );
+
+        assert.equal(result.code, 1);
+        assert.equal(result.stdout, "");
+        assert.match(result.stderr, /Usage:/);
+        assert.doesNotMatch(result.stderr, /--workspace-id/);
         assert.equal(requests.length, 0);
         await assert.rejects(readFile(path.join(projectDir, ".nams", "config.json"), "utf8"), {
           code: "ENOENT",
@@ -880,7 +944,7 @@ test("workspaces configure rejects symlinked project config before loading confi
 
     await withWorkspaceServer(async (baseUrl, requests) => {
       const result = await runCli(
-        ["workspaces", "configure", "codex", "--scope", "project", "--workspace-id", "workspace-1"],
+        ["workspaces", "configure", "codex", "--scope", "project", "--workspace", "workspace-1"],
         {},
         runtimeEnv(path.join(projectDir, "home"), baseUrl),
         projectDir,
@@ -912,7 +976,7 @@ test("workspaces configure rejects hard-linked project config before loading con
 
     await withWorkspaceServer(async (baseUrl, requests) => {
       const result = await runCli(
-        ["workspaces", "configure", "codex", "--scope", "project", "--workspace-id", "workspace-1"],
+        ["workspaces", "configure", "codex", "--scope", "project", "--workspace", "workspace-1"],
         {},
         runtimeEnv(path.join(projectDir, "home"), baseUrl),
         projectDir,
@@ -944,7 +1008,7 @@ test("workspaces configure user scope rejects unsafe project config before loadi
 
     await withWorkspaceServer(async (baseUrl, requests) => {
       const result = await runCli(
-        ["workspaces", "configure", "codex", "--scope", "user", "--workspace-id", "workspace-1"],
+        ["workspaces", "configure", "codex", "--scope", "user", "--workspace", "workspace-1"],
         {},
         runtimeEnv(path.join(projectDir, "home"), baseUrl),
         projectDir,
@@ -967,7 +1031,7 @@ test("workspaces configure user scope requires home before listing workspaces", 
   try {
     await withWorkspaceServer(async (baseUrl, requests) => {
       const result = await runCli(
-        ["workspaces", "configure", "codex", "--scope", "user", "--workspace-id", "workspace-1"],
+        ["workspaces", "configure", "codex", "--scope", "user", "--workspace", "workspace-1"],
         {},
         runtimeEnvWithoutHome(baseUrl),
         projectDir,
@@ -989,7 +1053,7 @@ test("workspaces configure failure reports sanitized stderr and writes no config
     await withWorkspaceServer(
       async (baseUrl) => {
         const result = await runCli(
-          ["workspaces", "configure", "codex", "--scope", "project", "--workspace-id", "workspace-2"],
+          ["workspaces", "configure", "codex", "--scope", "project", "--workspace", "workspace-2"],
           {},
           runtimeEnv(path.join(projectDir, "home"), baseUrl),
           projectDir,
@@ -1036,13 +1100,13 @@ test("workspaces configure reports when no valid workspaces are returned", async
   }
 });
 
-test("workspaces configure reports requested workspace ID not found", async () => {
+test("workspaces configure reports requested workspace selector not found", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-"));
   try {
     await withWorkspaceServer(
       async (baseUrl) => {
         const result = await runCli(
-          ["workspaces", "configure", "codex", "--scope", "project", "--workspace-id", "workspace-missing"],
+          ["workspaces", "configure", "codex", "--scope", "project", "--workspace", "workspace-missing"],
           {},
           runtimeEnv(path.join(projectDir, "home"), baseUrl),
           projectDir,
@@ -1050,11 +1114,44 @@ test("workspaces configure reports requested workspace ID not found", async () =
 
         assert.equal(result.code, 2);
         assert.equal(result.stdout, "");
-        assert.match(result.stderr, /Requested NAMS workspace ID was not found: workspace-missing/);
+        assert.match(result.stderr, /Requested NAMS workspace was not found: workspace-missing/);
         assert.match(result.stderr, /workspace-1/);
       },
       {
         workspaces: [{ id: "workspace-1", name: "Engineering", role: "owner", status: "active" }],
+      },
+    );
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("workspaces configure reports ambiguous workspace names for durable scopes", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-"));
+  try {
+    await withWorkspaceServer(
+      async (baseUrl) => {
+        const result = await runCli(
+          ["workspaces", "configure", "codex", "--scope", "project", "--workspace", "Engineering"],
+          {},
+          runtimeEnv(path.join(projectDir, "home"), baseUrl),
+          projectDir,
+        );
+
+        assert.equal(result.code, 2);
+        assert.equal(result.stdout, "");
+        assert.match(result.stderr, /Requested NAMS workspace name is ambiguous: Engineering/);
+        assert.match(result.stderr, /workspace-1/);
+        assert.match(result.stderr, /workspace-2/);
+        await assert.rejects(readFile(path.join(projectDir, ".nams", "config.json"), "utf8"), {
+          code: "ENOENT",
+        });
+      },
+      {
+        workspaces: [
+          { id: "workspace-1", name: "Engineering", role: "owner", status: "active" },
+          { id: "workspace-2", name: "Engineering", role: "member", status: "active" },
+        ],
       },
     );
   } finally {

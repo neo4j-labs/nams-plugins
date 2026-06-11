@@ -15,14 +15,13 @@ import { createInitialSessionState, loadSessionState, saveSessionState } from ".
 
 interface ConfigureInput {
   scope: NamsConfigWriteScope | "session";
-  workspaceId?: string;
   workspace?: string;
   sessionId?: string;
 }
 
 type ValidWorkspace = WorkspaceSummary & { id: string };
 
-type SessionWorkspaceSelectionResult =
+type WorkspaceSelectionResult =
   | { status: "selected"; workspace: ValidWorkspace }
   | { status: "not-found"; selector: string }
   | { status: "ambiguous-name"; selector: string; matches: ValidWorkspace[] }
@@ -58,20 +57,20 @@ export async function configureWorkspaceSelection(
     );
   }
 
-  const selectedWorkspace = selectConfigWorkspace(workspaces, configureInput.workspaceId);
-  if (selectedWorkspace === undefined) {
-    return configureOutput(2, configWorkspaceSelectionFailureMessage(workspaces, configureInput.workspaceId));
+  const selection = selectWorkspace(workspaces, configureInput.workspace);
+  if (selection.status !== "selected") {
+    return configureOutput(2, workspaceSelectionFailureMessage(workspaces, selection));
   }
 
   const result = await writeNamsJsonConfig({
     projectDirectory,
     scope: configureInput.scope,
-    workspaceId: selectedWorkspace.id,
+    workspaceId: selection.workspace.id,
   });
 
   return configureOutput(
     0,
-    `NAMS workspace configured for ${invocation.platform}: ${selectedWorkspace.id}\nUpdated ${result.path}`,
+    `NAMS workspace configured for ${invocation.platform}: ${selection.workspace.id}\nUpdated ${result.path}`,
   );
 }
 
@@ -112,9 +111,9 @@ async function configureSessionWorkspaceSelection(
     );
   }
 
-  const selection = selectSessionWorkspace(workspaces, configureInput.workspace ?? configureInput.workspaceId);
+  const selection = selectWorkspace(workspaces, configureInput.workspace);
   if (selection.status !== "selected") {
-    return configureOutput(2, sessionWorkspaceSelectionFailureMessage(workspaces, selection));
+    return configureOutput(2, workspaceSelectionFailureMessage(workspaces, selection));
   }
 
   const state = (await loadSessionState(invocation.platform, initialState.sessionKey)) ?? initialState;
@@ -231,31 +230,19 @@ function parseConfigureInput(rawPayload: Record<string, unknown>): ConfigureInpu
     return undefined;
   }
 
-  const workspaceId = optionalString(rawPayload.workspaceId);
   const workspace = optionalString(rawPayload.workspace);
   const sessionId = optionalString(rawPayload.sessionId);
   return {
     scope,
-    ...(workspaceId !== undefined ? { workspaceId } : {}),
     ...(workspace !== undefined ? { workspace } : {}),
     ...(sessionId !== undefined ? { sessionId } : {}),
   };
 }
 
-function selectConfigWorkspace(
-  workspaces: ValidWorkspace[],
-  workspaceId: string | undefined,
-): ValidWorkspace | undefined {
-  if (workspaceId !== undefined) {
-    return workspaces.find((workspace) => workspace.id === workspaceId);
-  }
-  return workspaces.length === 1 ? workspaces[0] : undefined;
-}
-
-function selectSessionWorkspace(
+function selectWorkspace(
   workspaces: ValidWorkspace[],
   selector: string | undefined,
-): SessionWorkspaceSelectionResult {
+): WorkspaceSelectionResult {
   if (selector === undefined) {
     return workspaces.length === 1
       ? { status: "selected", workspace: workspaces[0] }
@@ -283,30 +270,9 @@ function validWorkspaces(workspaces: WorkspaceSummary[] | undefined): ValidWorks
   });
 }
 
-function configWorkspaceSelectionFailureMessage(
+function workspaceSelectionFailureMessage(
   workspaces: ValidWorkspace[],
-  workspaceId: string | undefined,
-): string {
-  if (workspaceId !== undefined) {
-    return [
-      `Requested NAMS workspace ID was not found: ${workspaceId}`,
-      ...(workspaces.length > 0 ? ["Available workspaces:", ...workspaceChoices(workspaces)] : []),
-    ].join("\n");
-  }
-
-  if (workspaces.length === 0) {
-    return "No NAMS workspaces were returned. Check that your NAMS account has access to at least one workspace.";
-  }
-
-  return [
-    "NAMS workspace selection required. Re-run with --workspace-id and one of these IDs:",
-    ...workspaceChoices(workspaces),
-  ].join("\n");
-}
-
-function sessionWorkspaceSelectionFailureMessage(
-  workspaces: ValidWorkspace[],
-  selection: Exclude<SessionWorkspaceSelectionResult, { status: "selected" }>,
+  selection: Exclude<WorkspaceSelectionResult, { status: "selected" }>,
 ): string {
   if (workspaces.length === 0) {
     return "No NAMS workspaces were returned. Check that your NAMS account has access to at least one workspace.";
@@ -328,7 +294,7 @@ function sessionWorkspaceSelectionFailureMessage(
   }
 
   return [
-    "NAMS workspace selection required. Re-run with --workspace or --workspace-id and one of these workspaces:",
+    "NAMS workspace selection required. Re-run with --workspace and one of these workspaces:",
     ...workspaceChoices(workspaces),
   ].join("\n");
 }

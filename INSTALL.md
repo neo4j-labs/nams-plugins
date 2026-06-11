@@ -75,25 +75,25 @@ session selection. For example:
 nams-hooks workspaces configure opencode --scope session --session-id session-1 --workspace Engineering
 ```
 
-For `--scope session`, `--workspace` accepts either an exact workspace ID or an
-exact workspace name. If multiple workspaces have the same name, pass the
-workspace ID.
+For every scope, `--workspace` accepts either an exact workspace ID or an exact
+workspace name. If multiple workspaces have the same name, pass the workspace
+ID.
 
 To configure a durable project workspace for Codex, run:
 
 ```bash
-nams-hooks workspaces configure codex --scope project --workspace-id 11111111-1111-1111-1111-111111111111
+nams-hooks workspaces configure codex --scope project --workspace Engineering
 ```
 
 Replace `codex` with `gemini`, `opencode`, or `claude` to configure a different
 platform path. Use `--scope user` to write `~/.nams/config.json` instead of the
 project `.nams/config.json`.
 
-If you omit `--workspace` and `--workspace-id`, the configure command writes the
-workspace automatically only when NAMS returns a single valid workspace. This is
-the normal path for workspace keys. When NAMS returns multiple valid
-workspaces, which is common for admin keys, the command prints the available
-choices and exits without changing config until you pass an explicit selection.
+If you omit `--workspace`, the configure command writes the workspace
+automatically only when NAMS returns a single valid workspace. This is the
+normal path for workspace keys. When NAMS returns multiple valid workspaces,
+which is common for admin keys, the command prints the available choices and
+exits without changing config until you pass an explicit selection.
 
 ## Claude Code
 

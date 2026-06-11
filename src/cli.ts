@@ -25,7 +25,6 @@ type CliArgs =
       command: "workspace-configure";
       platform: Platform;
       scope: "project" | "user" | "session";
-      workspaceId?: string;
       workspace?: string;
       sessionId?: string;
     };
@@ -43,7 +42,6 @@ async function main(argv: string[]): Promise<number> {
       event: "InstallConfigure",
       rawPayload: {
         scope: args.scope,
-        ...(args.workspaceId !== undefined ? { workspaceId: args.workspaceId } : {}),
         ...(args.workspace !== undefined ? { workspace: args.workspace } : {}),
         ...(args.sessionId !== undefined ? { sessionId: args.sessionId } : {}),
       },
@@ -76,21 +74,16 @@ function parseArgs(argv: string[]): CliArgs | null {
   if (command === "workspaces" && platformArg === "configure") {
     const platform = argv[2];
     const scope = flagValue(argv, "--scope");
-    const workspaceId = flagValue(argv, "--workspace-id");
     const workspace = flagValue(argv, "--workspace");
     const sessionId = flagValue(argv, "--session-id");
-    if (scope === null || workspaceId === null || workspace === null || sessionId === null) {
+    if (hasLegacyWorkspaceIdFlag(argv) || scope === null || workspace === null || sessionId === null) {
       return null;
     }
     if (isPlatform(platform) && (scope === "project" || scope === "user" || scope === "session")) {
-      if (scope !== "session" && workspace !== undefined) {
-        return null;
-      }
       return {
         command: "workspace-configure",
         platform,
         scope,
-        ...(workspaceId !== undefined && workspaceId.trim() !== "" ? { workspaceId } : {}),
         ...(workspace !== undefined && workspace.trim() !== "" ? { workspace } : {}),
         ...(sessionId !== undefined && sessionId.trim() !== "" ? { sessionId } : {}),
       };
@@ -117,6 +110,10 @@ function flagValue(argv: string[], flag: string): string | undefined | null {
   }
   const value = argv[flagIndex + 1];
   return value !== undefined && !value.startsWith("--") ? value : null;
+}
+
+function hasLegacyWorkspaceIdFlag(argv: string[]): boolean {
+  return argv.some((arg) => arg === "--workspace-id" || arg.startsWith("--workspace-id="));
 }
 
 async function routeEvent(
@@ -163,8 +160,8 @@ function usage(): string {
   return [
     "Usage: nams-hooks run <gemini|claude|codex|opencode> --event <SessionStart|BeforeAgent|AfterAgent|AfterTool>",
     "       nams-hooks workspaces <gemini|claude|codex|opencode> --event <BeforeAgent|InstallConfigure>",
-    "       nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope <project|user> [--workspace-id ID]",
-    "       nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope session --session-id ID [--workspace ID_OR_NAME] [--workspace-id ID]",
+    "       nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope <project|user> [--workspace WORKSPACE_NAME_OR_ID]",
+    "       nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope session --session-id ID [--workspace WORKSPACE_NAME_OR_ID]",
     "",
   ].join("\n");
 }

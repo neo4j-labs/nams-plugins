@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement `nams-hooks workspaces configure opencode --scope session --session-id <current-session-id> --workspace <workspace-id-or-name>` as a shared session-scoped workspace selection command.
+**Goal:** Implement `nams-hooks workspaces configure <platform> --scope <project|user|session> [--session-id <current-session-id>] --workspace <workspace-id-or-name>` with `--workspace` as the shared selector for session, project, and user workspace selection.
 
-**Architecture:** Extend the existing `workspaces configure` command instead of adding a parallel command. The CLI parses `--scope session`, `--session-id`, and `--workspace`, then delegates to the existing workspace adapter; shared runtime validates the workspace selector against `GET /v1/users/me/workspaces` and writes only session state. Runtime memory resolution treats `source: "session-selection"` as the highest-priority workspace source, while older auto-selected session state remains weaker than explicit config.
+**Architecture:** Extend the existing `workspaces configure` command instead of adding a parallel command. The CLI parses `--scope`, optional `--session-id`, and `--workspace`, then delegates to the existing workspace adapter; shared runtime validates the workspace selector against `GET /v1/users/me/workspaces` and writes either durable JSON config or session state according to scope. Runtime memory resolution treats `source: "session-selection"` as the highest-priority workspace source, while older auto-selected session state remains weaker than explicit config.
 
 **Tech Stack:** TypeScript, Node built-ins, generated NAMS clients, local JSON session state under `~/.nams/state/`, Node `node:test`, existing HTTP/fetch test helpers.
 
@@ -27,7 +27,7 @@
 
 ## File Structure
 
-- `src/cli.ts`: parse `--scope session`, `--session-id`, and `--workspace`; preserve existing `project`/`user` `--workspace-id` behavior.
+- `src/cli.ts`: parse `--scope`, `--session-id`, and `--workspace`; reject the replaced `--workspace-id` flag.
 - `src/runtime/session-state.ts`: add `session-selection` to the session workspace source union.
 - `src/runtime/workspace-configuration.ts`: validate session-scope input, resolve workspace by exact ID or exact name, write session state, and keep project/user JSON config behavior intact.
 - `src/runtime/workspace-resolution.ts`: treat `state.workspace.source === "session-selection"` as the strongest memory workspace source; leave `runtime-single-workspace` state behind config.
@@ -425,7 +425,6 @@ In the `args.command === "workspace-configure"` branch, replace the `rawPayload`
 ```ts
 rawPayload: {
   scope: args.scope,
-  ...(args.workspaceId !== undefined ? { workspaceId: args.workspaceId } : {}),
   ...(args.workspace !== undefined ? { workspace: args.workspace } : {}),
   ...(args.sessionId !== undefined ? { sessionId: args.sessionId } : {}),
 },
@@ -437,19 +436,19 @@ In `parseArgs`, replace the `workspaces configure` block with:
 if (command === "workspaces" && platformArg === "configure") {
   const platform = argv[2];
   const scopeFlagIndex = argv.indexOf("--scope");
-  const workspaceIdFlagIndex = argv.indexOf("--workspace-id");
   const workspaceFlagIndex = argv.indexOf("--workspace");
   const sessionFlagIndex = argv.indexOf("--session-id");
   const scope = scopeFlagIndex >= 0 ? argv[scopeFlagIndex + 1] : undefined;
-  const workspaceId = workspaceIdFlagIndex >= 0 ? argv[workspaceIdFlagIndex + 1] : undefined;
   const workspace = workspaceFlagIndex >= 0 ? argv[workspaceFlagIndex + 1] : undefined;
   const sessionId = sessionFlagIndex >= 0 ? argv[sessionFlagIndex + 1] : undefined;
+  if (argv.some((arg) => arg === "--workspace-id" || arg.startsWith("--workspace-id="))) {
+    return null;
+  }
   if (isPlatform(platform) && (scope === "project" || scope === "user" || scope === "session")) {
     return {
       command: "workspace-configure",
       platform,
       scope,
-      ...(workspaceId !== undefined && workspaceId.trim() !== "" ? { workspaceId } : {}),
       ...(workspace !== undefined && workspace.trim() !== "" ? { workspace } : {}),
       ...(sessionId !== undefined && sessionId.trim() !== "" ? { sessionId } : {}),
     };
@@ -460,7 +459,7 @@ if (command === "workspaces" && platformArg === "configure") {
 In `usage()`, replace the configure line with:
 
 ```ts
-"       nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope <project|user|session> [--workspace-id ID] [--session-id ID] [--workspace ID_OR_NAME]",
+"       nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope <project|user|session> [--session-id ID] [--workspace ID_OR_NAME]",
 ```
 
 - [x] **Step 3: Extend workspace configuration input parsing**
@@ -882,7 +881,7 @@ Do not add slash-command text in this task. Slash-command implementation and rel
 Run:
 
 ```bash
-rg -n -- "workspaces configure .*--scope project --workspace-id|--workspace-id <workspace-id>" test src README.md INSTALL.md docs
+rg -n -- "workspaces configure .*--workspace-id|--workspace-id <workspace-id>" test src README.md INSTALL.md docs
 ```
 
 Update the matching test expectations to look for the session command. In tests that use regex, use this pattern:
@@ -903,7 +902,7 @@ notice expectation with:
 In `README.md`, update the runtime configuration paragraph so the multi-workspace sentence says:
 
 ```md
-If multiple valid workspaces are returned, choose one for the active session with `nams-hooks workspaces configure <platform> --scope session --session-id <session-id> --workspace <workspace-id-or-name>`, or write a durable project/user default with `nams-hooks workspaces configure ... --scope project|user`.
+If multiple valid workspaces are returned, choose one for the active session with `nams-hooks workspaces configure <platform> --scope session --session-id <session-id> --workspace <workspace-id-or-name>`, or write a durable project/user default with `nams-hooks workspaces configure <platform> --scope project --workspace <workspace-id-or-name>`.
 ```
 
 Keep the surrounding paragraph intact unless line wrapping requires small edits.
@@ -922,7 +921,7 @@ nams-hooks workspaces configure opencode --scope session --session-id session-1 
 `--workspace` accepts either an exact workspace ID or an exact workspace name. If more than one workspace has the same name, use the workspace ID.
 ````
 
-Keep the existing project-scope example as the durable project default example.
+Use the same `--workspace` selector in the durable project default example.
 
 - [x] **Step 5: Run targeted notice/docs tests**
 

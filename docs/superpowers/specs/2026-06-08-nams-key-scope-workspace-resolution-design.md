@@ -108,7 +108,7 @@ The explicit configure command validates workspace selection because its purpose
 is to write durable config:
 
 ```bash
-nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope <project|user> [--workspace-id <id>]
+nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope <project|user> [--workspace <workspace-id-or-name>]
 ```
 
 The command should:
@@ -116,10 +116,11 @@ The command should:
 1. Load connection config with `apiKey` and `baseUrl`.
 2. Call `GET /v1/users/me/workspaces` with no `X-Workspace-Id`.
 3. Filter to valid workspace summaries with nonblank IDs.
-4. If `--workspace-id` is provided, require it to match one returned workspace.
-5. If `--workspace-id` is omitted and exactly one valid workspace is returned,
+4. If `--workspace` is provided, require it to match one returned workspace ID
+   or exactly one returned workspace name.
+5. If `--workspace` is omitted and exactly one valid workspace is returned,
    write that workspace ID automatically.
-6. If `--workspace-id` is omitted and multiple valid workspaces are returned,
+6. If `--workspace` is omitted and multiple valid workspaces are returned,
    print the available choices and exit without writing config.
 7. If no valid workspaces are returned or the request fails, exit without
    writing config and show a sanitized error.
@@ -170,9 +171,9 @@ Implementation should add or update tests for cardinality-only behavior:
 - A single listed workspace auto-selects, regardless of key scope.
 - Multiple listed workspaces require explicit selection/configuration.
 - `workspaces configure` writes the only returned workspace when
-  `--workspace-id` is omitted.
-- `workspaces configure` requires `--workspace-id` when multiple valid
-  workspaces are returned.
+  `--workspace` is omitted.
+- `workspaces configure` requires `--workspace` when multiple valid workspaces
+  are returned.
 - `NamsWorkspaceClient` still omits `X-Workspace-Id` for
   `GET /v1/users/me/workspaces`.
 
