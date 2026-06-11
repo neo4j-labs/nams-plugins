@@ -286,11 +286,17 @@ function workspaceResultOutput(
         continue: true,
         suppressOutput: true,
         namsWorkspaceSelectionRequired: true,
-        reason: formatWorkspaceSelectionNotice("opencode", result.workspaces, sessionId),
+        reason: formatWorkspaceSelectionNotice("opencode", result.workspaces, sessionId, opencodeSlashCommandLines()),
       },
     };
   }
   return allowOutput();
+}
+
+function opencodeSlashCommandLines(): string[] {
+  return [
+    "In OpenCode sessions with the NAMS command installed, you can select a workspace with: /nams-hooks workspaces use <workspace-id-or-name>",
+  ];
 }
 
 async function consumePendingContext(

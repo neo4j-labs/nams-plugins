@@ -7,7 +7,10 @@ import { test } from "node:test";
 
 const claudeCommandPath = "templates/claude/plugins/nams-hooks/commands/nams-hooks.md";
 const claudeWorkspaceScriptPath = "templates/claude/plugins/nams-hooks/scripts/workspace-use.mjs";
+const claudeBaselineCommandPath = "templates/claude/.claude/commands/nams-hooks.md";
+const claudeBaselineWorkspaceScriptPath = "templates/claude/.claude/scripts/workspace-use.mjs";
 const claudeWorkspaceCommandName = "nams-hooks:nams-hooks";
+const claudeBaselineCommandName = "nams-hooks";
 
 test("Claude template maps native hooks to NAMS events", async () => {
   const template = JSON.parse(await readFile("templates/claude/.claude/settings.local.json", "utf8"));
@@ -95,6 +98,32 @@ test("Claude plugin template packages slash workspace command hook", async () =>
   assert.match(script, /shellQuote/);
 });
 
+test("Claude baseline template packages slash workspace command hook", async () => {
+  const command = await readFile(claudeBaselineCommandPath, "utf8");
+  const script = await readFile(claudeBaselineWorkspaceScriptPath, "utf8");
+  const template = JSON.parse(await readFile("templates/claude/.claude/settings.local.json", "utf8"));
+
+  assert.match(command, /argument-hint: workspaces use <workspace-id-or-name>/);
+  assert.match(command, /disable-model-invocation: true/);
+  assert.match(command, /\/nams-hooks workspaces use <workspace-id-or-name>/);
+  assert.doesNotMatch(command, /!\s*`/);
+  assert.doesNotMatch(command, /\$ARGUMENTS/);
+
+  assert.equal(commandFor(template, "UserPromptExpansion"), "node .claude/scripts/workspace-use.mjs");
+  assert.equal(pluginMatcherFor(template, "UserPromptExpansion"), "^nams-hooks$");
+  assert.match(script, /UserPromptExpansion/);
+  assert.match(script, /command_args/);
+  assert.match(script, /session_id/);
+  assert.match(script, /CLAUDE_SESSION_ID/);
+  assert.match(script, /nams-hooks/);
+  assert.match(script, /workspaces/);
+  assert.match(script, /configure/);
+  assert.match(script, /claude/);
+  assert.match(script, /cliTimeoutMs = 30_000/);
+  assert.match(script, /setTimeout/);
+  assert.match(script, /shellQuote/);
+});
+
 test("Claude slash workspace helper delegates to bundled cli without shell expansion", async () => {
   const fixture = await createClaudeSkillFixture();
   try {
@@ -106,6 +135,50 @@ test("Claude slash workspace helper delegates to bundled cli without shell expan
     const result = spawnSync(process.execPath, [fixture.scriptPath], {
       cwd: fixture.pluginDir,
       input: JSON.stringify(userPromptExpansionInput({
+        session_id: "claude-session-1",
+        command_args: `workspaces   use ${selector}`,
+      })),
+      encoding: "utf8",
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stderr, "");
+    assert.equal(JSON.parse(result.stdout).decision, "block");
+    assert.match(JSON.parse(result.stdout).reason, /configured/i);
+    const calls = JSON.parse(await readFile(fixture.callsPath, "utf8"));
+    assert.deepEqual(calls, [[
+      "workspaces",
+      "configure",
+      "claude",
+      "--scope",
+      "session",
+      "--session-id",
+      "claude-session-1",
+      "--workspace",
+      selector,
+    ]]);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("Claude baseline slash workspace helper delegates through nams-hooks without shell expansion", async () => {
+  const fixture = await createClaudeBaselineFixture();
+  try {
+    const helperSource = await readFile(claudeBaselineWorkspaceScriptPath, "utf8");
+    await writeFile(fixture.scriptPath, helperSource, "utf8");
+    await chmod(fixture.scriptPath, 0o755);
+
+    const selector = "Engineering Team; $(echo unsafe) \"quoted\" `ticks`";
+    const result = spawnSync(process.execPath, [fixture.scriptPath], {
+      cwd: fixture.projectDir,
+      env: {
+        ...process.env,
+        PATH: `${fixture.binDir}${path.delimiter}${process.env.PATH ?? ""}`,
+      },
+      input: JSON.stringify(userPromptExpansionInput({
+        command_name: claudeBaselineCommandName,
+        prompt: `/${claudeBaselineCommandName}`,
         session_id: "claude-session-1",
         command_args: `workspaces   use ${selector}`,
       })),
@@ -269,6 +342,45 @@ async function createClaudeSkillFixture(): Promise<{
     pluginDir,
     scriptPath,
     cliPath,
+    callsPath,
+    cleanup: () => rm(root, { recursive: true, force: true }),
+  };
+}
+
+async function createClaudeBaselineFixture(): Promise<{
+  projectDir: string;
+  binDir: string;
+  scriptPath: string;
+  callsPath: string;
+  cleanup: () => Promise<void>;
+}> {
+  const root = await mkdtemp(path.join(os.tmpdir(), "nams-claude-baseline-"));
+  const projectDir = path.join(root, "project");
+  const binDir = path.join(root, "bin");
+  const scriptDir = path.join(projectDir, ".claude", "scripts");
+  const callsPath = path.join(root, "calls.json");
+  const cliPath = path.join(binDir, "nams-hooks");
+  const scriptPath = path.join(scriptDir, "workspace-use.mjs");
+
+  await mkdir(binDir, { recursive: true });
+  await mkdir(scriptDir, { recursive: true });
+  await writeFile(callsPath, "[]", "utf8");
+  await writeFile(cliPath, [
+    "#!/usr/bin/env node",
+    "import { readFile, writeFile } from 'node:fs/promises';",
+    `const callsPath = ${JSON.stringify(callsPath)};`,
+    "const calls = JSON.parse(await readFile(callsPath, 'utf8'));",
+    "calls.push(process.argv.slice(2));",
+    "await writeFile(callsPath, JSON.stringify(calls), 'utf8');",
+    "process.stdout.write('configured\\n');",
+    "",
+  ].join("\n"), "utf8");
+  await chmod(cliPath, 0o755);
+
+  return {
+    projectDir,
+    binDir,
+    scriptPath,
     callsPath,
     cleanup: () => rm(root, { recursive: true, force: true }),
   };

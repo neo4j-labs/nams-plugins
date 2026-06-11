@@ -10,6 +10,9 @@ which currently supported `nams-hooks` platforms expose a user-invoked command
 surface that can wrap it. Tier 1 user-facing forms are:
 
 ```text
+# Claude Code project template command
+/nams-hooks workspaces use <workspace-id-or-name>
+
 # Claude Code plugin command
 /nams-hooks:nams-hooks workspaces use <workspace-id-or-name>
 
@@ -84,9 +87,15 @@ Session scope includes filesystem preflights before listing workspaces:
 
 ### Claude Code
 
-Claude Code is a strong fit for this feature, with one important packaging
-constraint: plugin commands are namespaced by plugin name. The Claude plugin
-therefore exposes the command as:
+Claude Code is a strong fit for this feature. The project template exposes the
+direct command:
+
+```text
+/nams-hooks workspaces use <workspace-id-or-name>
+```
+
+The Claude plugin has one important packaging constraint: plugin commands are
+namespaced by plugin name. The Claude plugin therefore exposes the command as:
 
 ```text
 /nams-hooks:nams-hooks workspaces use <workspace-id-or-name>
@@ -226,7 +235,13 @@ Behavior:
 
 ## Remaining UX Work
 
-After Tier 1, Claude Code exposes the namespaced plugin command:
+After Tier 1, Claude Code project-template installs expose the direct command:
+
+```text
+/nams-hooks workspaces use <workspace-id-or-name>
+```
+
+Claude Code plugin installs expose the namespaced command:
 
 ```text
 /nams-hooks:nams-hooks workspaces use <workspace-id-or-name>

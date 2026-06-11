@@ -13,6 +13,7 @@ agent session:
 /nams-hooks workspaces use <workspace-id-or-name>
 ```
 
+For project-template Claude Code installs, this direct command is available.
 For marketplace-installed Claude Code plugins, Claude namespaces plugin
 commands by plugin name. The Claude plugin therefore exposes the command as:
 
@@ -163,10 +164,15 @@ documented current-session substitution.
 
 ### Claude Code
 
-Package a Claude slash-invocable command/skill asset with the Claude plugin.
-Claude Code treats custom commands and skills as the same command surface for
-this purpose, but plugin commands are namespaced by plugin name. The user
-invokes:
+Package a Claude slash-invocable command asset with both the baseline Claude
+template and the Claude plugin. Claude Code treats custom commands and skills as
+the same command surface for this purpose. The project-template user invokes:
+
+```text
+/nams-hooks workspaces use Engineering
+```
+
+Plugin commands are namespaced by plugin name. The plugin user invokes:
 
 ```text
 /nams-hooks:nams-hooks workspaces use Engineering
@@ -178,9 +184,11 @@ autonomously.
 
 The command asset must not interpolate `$ARGUMENTS` into dynamic shell content.
 Claude runs dynamic `!` commands before the command content reaches Claude, and
-`$ARGUMENTS` is the raw user-typed argument string. Instead, the plugin should
-wire a `UserPromptExpansion` hook for the namespaced command and invoke a
-bundled Node helper with exec-form `args`:
+`$ARGUMENTS` is the raw user-typed argument string. Instead, the templates
+should wire `UserPromptExpansion` hooks and invoke Node helpers. The baseline
+template invokes a helper from `.claude/scripts/` that delegates to
+`nams-hooks` from `PATH`; the plugin invokes a bundled helper with exec-form
+`args`:
 
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/scripts/workspace-use.mjs
@@ -189,7 +197,7 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/workspace-use.mjs
 The helper should read the `UserPromptExpansion` JSON from stdin, obtain the
 current session ID from `session_id` with a safe `${CLAUDE_SESSION_ID}`
 fallback, normalize `workspaces use <selector>` from `command_args`, and spawn
-`bin/cli.js` with an argv array. The helper should preserve all text after
+the shared CLI with an argv array. The helper should preserve all text after
 `workspaces use` as the selector.
 
 If no session ID is available, the helper blocks the slash expansion without
@@ -343,12 +351,15 @@ The first implementation plan should cover Claude Code and OpenCode.
 
 Claude tests should assert:
 
-- the packaged command asset exists in the Claude plugin template tree;
+- the packaged command asset exists in the baseline Claude template tree and
+  the Claude plugin template tree;
 - the command expects `workspaces use <selector>`;
 - it has no dynamic shell command containing raw `$ARGUMENTS`;
-- a `UserPromptExpansion` hook invokes the bundled helper with exec-form
-  `args`;
-- the helper invokes bundled `bin/cli.js` with `workspaces configure claude`;
+- `UserPromptExpansion` hooks invoke safe Node helpers without shell-expanded
+  selector arguments;
+- the baseline helper invokes `nams-hooks workspaces configure claude`;
+- the plugin helper invokes bundled `bin/cli.js` with
+  `workspaces configure claude`;
 - it passes `--scope session`;
 - it uses `session_id` from the hook input as the primary session ID source; and
 - it passes the workspace selector as one argument.

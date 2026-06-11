@@ -21,6 +21,17 @@
         ]
       }
     ],
+    "UserPromptExpansion": [
+      {
+        "matcher": "^nams-hooks$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/scripts/workspace-use.mjs"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "*",
