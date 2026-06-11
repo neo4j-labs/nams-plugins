@@ -224,7 +224,7 @@ test("Claude BeforeAgent skips memory when multiple listed workspaces require se
     assert.match(String(result.stdout.systemMessage), /NAMS memory is inactive for this turn/);
     assert.match(
       String(result.stdout.systemMessage),
-      /\/nams-hooks workspaces use <workspace-id-or-name>/,
+      /\/nams-hooks:nams-hooks workspaces use <workspace-id-or-name>/,
     );
     assert.match(
       String(result.stdout.systemMessage),
@@ -237,7 +237,7 @@ test("Claude BeforeAgent skips memory when multiple listed workspaces require se
     assert.match(hookSpecificOutput(result).additionalContext, /Multiple NAMS workspaces are available/);
     assert.match(
       hookSpecificOutput(result).additionalContext,
-      /\/nams-hooks workspaces use <workspace-id-or-name>/,
+      /\/nams-hooks:nams-hooks workspaces use <workspace-id-or-name>/,
     );
     assert.match(
       hookSpecificOutput(result).additionalContext,

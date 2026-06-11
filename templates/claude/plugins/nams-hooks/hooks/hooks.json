@@ -35,6 +35,20 @@
         ]
       }
     ],
+    "UserPromptExpansion": [
+      {
+        "matcher": "^nams-hooks:nams-hooks$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/scripts/workspace-use.mjs"
+            ]
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "*",

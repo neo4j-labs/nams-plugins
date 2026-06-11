@@ -23,11 +23,17 @@ export function formatWorkspaceSelectionNotice(
 }
 
 function slashCommandLines(platform: Platform): string[] {
-  if (platform !== "claude" && platform !== "opencode") {
-    return [];
+  if (platform === "claude") {
+    return [
+      "In Claude Code sessions with the nams-hooks plugin installed, you can select a workspace with: /nams-hooks:nams-hooks workspaces use <workspace-id-or-name>",
+    ];
   }
 
-  return [
-    "In Claude Code or OpenCode sessions with the NAMS command installed, you can select a workspace with: /nams-hooks workspaces use <workspace-id-or-name>",
-  ];
+  if (platform === "opencode") {
+    return [
+      "In OpenCode sessions with the NAMS command installed, you can select a workspace with: /nams-hooks workspaces use <workspace-id-or-name>",
+    ];
+  }
+
+  return [];
 }

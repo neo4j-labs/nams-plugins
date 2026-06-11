@@ -13,6 +13,13 @@ agent session:
 /nams-hooks workspaces use <workspace-id-or-name>
 ```
 
+For marketplace-installed Claude Code plugins, Claude namespaces plugin
+commands by plugin name. The Claude plugin therefore exposes the command as:
+
+```text
+/nams-hooks:nams-hooks workspaces use <workspace-id-or-name>
+```
+
 The slash command is a convenience wrapper only. The existing shared command
 remains the source of truth for workspace validation and state mutation:
 
@@ -51,8 +58,9 @@ memory persistence.
 
 ## Goals
 
-- Provide one memorable user-facing command shape:
-  `/nams-hooks workspaces use <workspace-id-or-name>`.
+- Provide one memorable wrapper subcommand,
+  `workspaces use <workspace-id-or-name>`, behind each platform's deterministic
+  command surface.
 - Keep workspace validation, ambiguity handling, and state writes in the
   existing shared configure runtime.
 - Keep platform-specific command mechanics in platform templates or plugin
@@ -81,10 +89,10 @@ memory persistence.
 
 ## UX Contract
 
-The cross-platform user command is:
+The cross-platform wrapper subcommand is:
 
 ```text
-/nams-hooks workspaces use <workspace-id-or-name>
+workspaces use <workspace-id-or-name>
 ```
 
 The wrapper must interpret only this subcommand:
@@ -155,34 +163,38 @@ documented current-session substitution.
 
 ### Claude Code
 
-Package a Claude slash-invocable skill asset with the Claude plugin. Claude Code
-now treats custom commands and skills as the same command surface for this
-purpose, with skills preferred for new reusable commands. The user invokes:
+Package a Claude slash-invocable command/skill asset with the Claude plugin.
+Claude Code treats custom commands and skills as the same command surface for
+this purpose, but plugin commands are namespaced by plugin name. The user
+invokes:
 
 ```text
-/nams-hooks workspaces use Engineering
+/nams-hooks:nams-hooks workspaces use Engineering
 ```
 
 The command should be user-invoked only. If the Claude command format supports a
 model-invocation disable flag, set it so the model does not run this command
 autonomously.
 
-The command must obtain the current session ID from `${CLAUDE_SESSION_ID}` and
-invoke the bundled runtime:
+The command asset must not interpolate `$ARGUMENTS` into dynamic shell content.
+Claude runs dynamic `!` commands before the command content reaches Claude, and
+`$ARGUMENTS` is the raw user-typed argument string. Instead, the plugin should
+wire a `UserPromptExpansion` hook for the namespaced command and invoke a
+bundled Node helper with exec-form `args`:
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/bin/cli.js workspaces configure claude --scope session --session-id ${CLAUDE_SESSION_ID} --workspace <selector>
+node ${CLAUDE_PLUGIN_ROOT}/scripts/workspace-use.mjs
 ```
 
-The implementation should avoid fragile shell parsing. If Claude only supplies
-raw argument text, package a tiny Node built-in-only helper beside the command
-asset to normalize `workspaces use <selector>` and spawn `bin/cli.js` with an
-argv array. The helper should preserve all text after `workspaces use` as the
-selector.
+The helper should read the `UserPromptExpansion` JSON from stdin, obtain the
+current session ID from `session_id` with a safe `${CLAUDE_SESSION_ID}`
+fallback, normalize `workspaces use <selector>` from `command_args`, and spawn
+`bin/cli.js` with an argv array. The helper should preserve all text after
+`workspaces use` as the selector.
 
-If `${CLAUDE_SESSION_ID}` is missing or blank, the command fails without writing
-state and prints a short message that includes the equivalent manual command
-with `<session-id>`.
+If no session ID is available, the helper blocks the slash expansion without
+writing state and prints a short message that includes the equivalent manual
+command with `<session-id>`.
 
 ### OpenCode
 
@@ -262,7 +274,7 @@ validation or state writes.
 
 ## Data Flow
 
-1. The user invokes `/nams-hooks workspaces use <selector>`.
+1. The user invokes the platform command with `workspaces use <selector>`.
 2. The platform wrapper parses `workspaces use` and extracts `<selector>`.
 3. The wrapper obtains the current platform session ID from the platform command
    context or a deterministic local bridge.
@@ -333,9 +345,12 @@ Claude tests should assert:
 
 - the packaged command asset exists in the Claude plugin template tree;
 - the command expects `workspaces use <selector>`;
-- it invokes bundled `bin/cli.js` with `workspaces configure claude`;
+- it has no dynamic shell command containing raw `$ARGUMENTS`;
+- a `UserPromptExpansion` hook invokes the bundled helper with exec-form
+  `args`;
+- the helper invokes bundled `bin/cli.js` with `workspaces configure claude`;
 - it passes `--scope session`;
-- it passes `${CLAUDE_SESSION_ID}` as the session ID source; and
+- it uses `session_id` from the hook input as the primary session ID source; and
 - it passes the workspace selector as one argument.
 
 OpenCode tests should simulate the plugin command event and assert:

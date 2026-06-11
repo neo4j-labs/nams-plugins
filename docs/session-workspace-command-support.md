@@ -71,7 +71,7 @@ Session scope includes filesystem preflights before listing workspaces:
 
 | Platform | Shared session command implemented? | User-invoked command can run shell? | Current-session id available? | Fit | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Claude Code | Yes | Yes | Yes | Best | Skills/custom commands are slash-invocable, support arguments, can substitute `${CLAUDE_SESSION_ID}`, and support dynamic shell execution before Claude sees the skill content. |
+| Claude Code | Yes | Yes | Yes | Best | Plugin skills/custom commands are slash-invocable under the plugin namespace. `UserPromptExpansion` hooks can intercept the command before Claude sees it and receive `session_id` plus raw `command_args`. |
 | OpenCode | Yes | Yes | Yes | Best with plugin shim | Custom commands support shell output. Plugins can intercept command execution, and OpenCode source shows `command.execute.before` receives `command`, `sessionID`, and `arguments`. The current shim does not yet intercept a user command. |
 | Gemini CLI | Yes | Yes | Partial | Good with bridge | Custom commands support shell injection, and hooks expose `GEMINI_SESSION_ID`. The custom-command shell execution path appears to set only the general `GEMINI_CLI=1` identity variable, so a session-id bridge is still needed for slash-command UX. |
 | Codex | Yes | Partial | Payload-dependent | Prompt-helper only | Codex hooks run shell commands and workspace notices now include parsed session IDs when available. Custom prompts expand into model instructions rather than deterministic pre-shell command execution. |
@@ -80,7 +80,13 @@ Session scope includes filesystem preflights before listing workspaces:
 
 ### Claude Code
 
-Claude Code is the cleanest fit for this feature.
+Claude Code is a strong fit for this feature, with one important packaging
+constraint: plugin commands are namespaced by plugin name. The Claude plugin
+therefore exposes the command as:
+
+```text
+/nams-hooks:nams-hooks workspaces use <workspace-id-or-name>
+```
 
 Claude skills can be invoked directly with slash command names, for example
 `/deploy-staging`, and legacy `.claude/commands/*.md` files work similarly.
@@ -89,24 +95,23 @@ named arguments. They also support `${CLAUDE_SESSION_ID}`, documented as the
 current session ID for logging, session-specific files, and correlation.
 
 Claude skill content can include dynamic shell context using inline shell
-snippets such as `` !`git diff HEAD` ``. For a session workspace selector, the
-skill could be explicitly user-invoked and disabled for model invocation, then
-run:
+snippets such as `` !`git diff HEAD` ``, but `$ARGUMENTS` is the raw
+user-typed argument string and must not be interpolated into a shell command.
+The plugin should instead ship a static command/skill asset and handle the
+actual workspace selection in a `UserPromptExpansion` hook. The hook receives
+JSON on stdin with `session_id`, `command_name`, `command_args`,
+`command_source`, and `prompt`, then can block the slash expansion with a
+user-facing JSON response.
 
-```markdown
----
-name: nams-hooks
-description: Select the NAMS workspace for this Claude Code session.
-argument-hint: workspaces use <workspace-id-or-name>
-disable-model-invocation: true
-allowed-tools: Bash(nams-hooks workspaces configure claude *)
----
-
-!`nams-hooks workspaces configure claude --scope session --session-id ${CLAUDE_SESSION_ID} --workspace "$ARGUMENTS"`
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/workspace-use.mjs
 ```
 
-The exact argument parsing should avoid treating the words `workspaces use` as
-part of the workspace name, but the platform surface itself is sufficient.
+The helper should read the hook JSON from stdin, parse
+`workspaces use <selector>` from `command_args`, require a nonblank `session_id`
+or safe `${CLAUDE_SESSION_ID}` fallback, and spawn the bundled `bin/cli.js` with
+an argv array. The exact argument parsing should avoid treating the words
+`workspaces use` as part of the workspace name.
 
 ### OpenCode
 
