@@ -10,7 +10,8 @@ export function formatWorkspaceSelectionNotice(
   return [
     "NAMS memory is inactive for this turn.",
     "No memory messages were stored. Multiple NAMS workspaces are available, and no workspaceId is configured.",
-    `Configure a session workspace before memory can resume: nams-hooks workspaces configure ${platform} --scope session --session-id ${commandSessionId} --workspace <workspace-id-or-name>`,
+    ...slashCommandLines(platform),
+    `Configure a session workspace before memory can resume with the shell command: nams-hooks workspaces configure ${platform} --scope session --session-id ${commandSessionId} --workspace <workspace-id-or-name>`,
     "Available NAMS workspaces:",
     ...workspaces.map((workspace, index) => {
       const name = workspace.name?.trim() || "(unnamed workspace)";
@@ -19,4 +20,14 @@ export function formatWorkspaceSelectionNotice(
       return `${index + 1}. ${name} (${role}, ${status}) - ${workspace.id}`;
     }),
   ].join("\n");
+}
+
+function slashCommandLines(platform: Platform): string[] {
+  if (platform !== "claude" && platform !== "opencode") {
+    return [];
+  }
+
+  return [
+    "In Claude Code or OpenCode sessions with the NAMS command installed, you can select a workspace with: /nams-hooks workspaces use <workspace-id-or-name>",
+  ];
 }

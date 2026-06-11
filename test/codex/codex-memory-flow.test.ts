@@ -279,6 +279,7 @@ test("Codex beforeAgent skips memory when multiple listed workspaces require sel
     assert.match(hookSpecificOutput(result).additionalContext, /NAMS memory is inactive for this turn/);
     assert.match(hookSpecificOutput(result).additionalContext, /No memory messages were stored/);
     assert.match(hookSpecificOutput(result).additionalContext, /Multiple NAMS workspaces are available/);
+    assert.doesNotMatch(hookSpecificOutput(result).additionalContext, /\/nams-hooks workspaces use/);
     assert.match(
       hookSpecificOutput(result).additionalContext,
       /nams-hooks workspaces configure codex --scope session --session-id session-1 --workspace <workspace-id-or-name>/,
