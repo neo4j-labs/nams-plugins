@@ -1,6 +1,10 @@
 import { spawn } from "node:child_process";
 
 const command = process.env.NAMS_HOOKS_COMMAND ?? "nams-hooks";
+const workspaceConfigureTimeoutMs = readPositiveInteger(
+  process.env.NAMS_HOOKS_WORKSPACE_CONFIGURE_TIMEOUT_MS,
+  30000,
+);
 
 export const NamsHooks = async ({ client, directory, project, worktree }) => {
   const pendingWorkspaceSelectionContexts = new Map();
@@ -45,13 +49,13 @@ export const NamsHooks = async ({ client, directory, project, worktree }) => {
           stdout: "",
           stderr: [
             "OpenCode session id is unavailable.",
-            `Configure manually after replacing <session-id>: nams-hooks workspaces configure opencode --scope session --session-id <session-id> --workspace ${parsed.selector}`,
+            `Configure manually after replacing <session-id>: nams-hooks workspaces configure opencode --scope session --session-id <session-id> --workspace ${shellQuote(parsed.selector)}`,
           ].join("\n"),
         });
         return { stop: true };
       }
 
-      const result = await invokeWorkspaceConfigure(sessionId, parsed.selector);
+      const result = await invokeWorkspaceConfigure(sessionId, parsed.selector, directory);
       await showCommandResult(client, result);
       return { stop: true };
     },
@@ -103,8 +107,9 @@ export const NamsHooks = async ({ client, directory, project, worktree }) => {
 
 export default NamsHooks;
 
-async function invokeWorkspaceConfigure(sessionId, workspaceSelector) {
+async function invokeWorkspaceConfigure(sessionId, workspaceSelector, directory) {
   return await new Promise((resolve) => {
+    const cwd = typeof directory === "string" && directory.trim() !== "" ? directory : undefined;
     const child = spawn(
       command,
       [
@@ -119,18 +124,31 @@ async function invokeWorkspaceConfigure(sessionId, workspaceSelector) {
         workspaceSelector,
       ],
       {
+        ...(cwd === undefined ? {} : { cwd }),
         stdio: ["ignore", "pipe", "pipe"],
       },
     );
     let stdout = "";
     let stderr = "";
     let settled = false;
+    let timeout = setTimeout(() => {
+      finish({
+        code: 1,
+        stdout,
+        stderr: `nams-hooks workspace configure timed out after ${workspaceConfigureTimeoutMs}ms`,
+      });
+      child.kill();
+    }, workspaceConfigureTimeoutMs);
 
     function finish(value) {
       if (settled) {
         return;
       }
       settled = true;
+      if (timeout !== undefined) {
+        clearTimeout(timeout);
+        timeout = undefined;
+      }
       resolve(value);
     }
 
@@ -149,6 +167,11 @@ async function invokeWorkspaceConfigure(sessionId, workspaceSelector) {
       finish({ code: code ?? 1, stdout, stderr });
     });
   });
+}
+
+function readPositiveInteger(value, fallback) {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 async function invokeNams(event, payload) {
@@ -267,6 +290,13 @@ function workspaceSelectorFromArguments(argumentValue) {
     return match?.[1]?.trim() ?? "";
   }
   return "";
+}
+
+function shellQuote(value) {
+  if (/^[A-Za-z0-9_/:=-]+$/.test(value)) {
+    return value;
+  }
+  return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
 async function showCommandResult(client, result) {
