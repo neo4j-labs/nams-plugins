@@ -15,7 +15,8 @@ async function main(argv) {
             event: "InstallConfigure",
             rawPayload: {
                 scope: args.scope,
-                ...(args.workspaceId !== undefined ? { workspaceId: args.workspaceId } : {}),
+                ...(args.workspace !== undefined ? { workspace: args.workspace } : {}),
+                ...(args.sessionId !== undefined ? { sessionId: args.sessionId } : {}),
             },
             processCwd: process.cwd(),
         });
@@ -42,16 +43,19 @@ function parseArgs(argv) {
     const [command, platformArg, eventFlag, eventArg] = argv;
     if (command === "workspaces" && platformArg === "configure") {
         const platform = argv[2];
-        const scopeFlagIndex = argv.indexOf("--scope");
-        const workspaceFlagIndex = argv.indexOf("--workspace-id");
-        const scope = scopeFlagIndex >= 0 ? argv[scopeFlagIndex + 1] : undefined;
-        const workspaceId = workspaceFlagIndex >= 0 ? argv[workspaceFlagIndex + 1] : undefined;
-        if (isPlatform(platform) && (scope === "project" || scope === "user")) {
+        const scope = flagValue(argv, "--scope");
+        const workspace = flagValue(argv, "--workspace");
+        const sessionId = flagValue(argv, "--session-id");
+        if (hasLegacyWorkspaceIdFlag(argv) || scope === null || workspace === null || sessionId === null) {
+            return null;
+        }
+        if (isPlatform(platform) && (scope === "project" || scope === "user" || scope === "session")) {
             return {
                 command: "workspace-configure",
                 platform,
                 scope,
-                ...(workspaceId !== undefined && workspaceId.trim() !== "" ? { workspaceId } : {}),
+                ...(workspace !== undefined && workspace.trim() !== "" ? { workspace } : {}),
+                ...(sessionId !== undefined && sessionId.trim() !== "" ? { sessionId } : {}),
             };
         }
     }
@@ -65,6 +69,17 @@ function parseArgs(argv) {
         return { command: "workspaces", platform: platformArg, event: eventArg };
     }
     return null;
+}
+function flagValue(argv, flag) {
+    const flagIndex = argv.indexOf(flag);
+    if (flagIndex < 0) {
+        return undefined;
+    }
+    const value = argv[flagIndex + 1];
+    return value !== undefined && !value.startsWith("--") ? value : null;
+}
+function hasLegacyWorkspaceIdFlag(argv) {
+    return argv.some((arg) => arg === "--workspace-id" || arg.startsWith("--workspace-id="));
 }
 async function routeEvent(adapter, invocation) {
     switch (invocation.event) {
@@ -100,7 +115,8 @@ function usage() {
     return [
         "Usage: nams-hooks run <gemini|claude|codex|opencode> --event <SessionStart|BeforeAgent|AfterAgent|AfterTool>",
         "       nams-hooks workspaces <gemini|claude|codex|opencode> --event <BeforeAgent|InstallConfigure>",
-        "       nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope <project|user> [--workspace-id ID]",
+        "       nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope <project|user> [--workspace WORKSPACE_NAME_OR_ID]",
+        "       nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope session --session-id ID [--workspace WORKSPACE_NAME_OR_ID]",
         "",
     ].join("\n");
 }

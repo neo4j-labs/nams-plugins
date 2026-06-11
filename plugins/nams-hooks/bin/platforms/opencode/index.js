@@ -48,7 +48,7 @@ export class OpenCodeAdapter {
         });
         if (workspaceResult.status !== "ready") {
             await saveSessionState(invocation.platform, state.sessionKey, state);
-            return workspaceResultOutput(workspaceResult);
+            return workspaceResultOutput(workspaceResult, payloadInfo.sessionId);
         }
         const config = workspaceResult.config;
         try {
@@ -232,14 +232,14 @@ export class OpenCodeAdapter {
 function allowOutput() {
     return { stdout: { continue: true, suppressOutput: true } };
 }
-function workspaceResultOutput(result) {
+function workspaceResultOutput(result, sessionId) {
     if (result.reason === "selection-required") {
         return {
             stdout: {
                 continue: true,
                 suppressOutput: true,
                 namsWorkspaceSelectionRequired: true,
-                reason: formatWorkspaceSelectionNotice("opencode", result.workspaces),
+                reason: formatWorkspaceSelectionNotice("opencode", result.workspaces, sessionId),
             },
         };
     }

@@ -1,8 +1,9 @@
-export function formatWorkspaceSelectionNotice(platform, workspaces) {
+export function formatWorkspaceSelectionNotice(platform, workspaces, sessionId) {
+    const commandSessionId = sessionId?.trim() || "<session-id>";
     return [
         "NAMS memory is inactive for this turn.",
         "No memory messages were stored. Multiple NAMS workspaces are available, and no workspaceId is configured.",
-        `Configure an explicit workspace before memory can resume: nams-hooks workspaces configure ${platform} --scope project --workspace-id <workspace-id>`,
+        `Configure a session workspace before memory can resume: nams-hooks workspaces configure ${platform} --scope session --session-id ${commandSessionId} --workspace <workspace-id-or-name>`,
         "Available NAMS workspaces:",
         ...workspaces.map((workspace, index) => {
             const name = workspace.name?.trim() || "(unnamed workspace)";

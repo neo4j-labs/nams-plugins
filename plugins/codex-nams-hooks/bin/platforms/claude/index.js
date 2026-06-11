@@ -42,7 +42,7 @@ export class ClaudeAdapter {
         });
         if (workspaceResult.status !== "ready") {
             await saveSessionState(invocation.platform, state.sessionKey, state);
-            return workspaceResultOutput(workspaceResult);
+            return workspaceResultOutput(workspaceResult, payloadInfo.sessionId);
         }
         const config = workspaceResult.config;
         let additionalContext;
@@ -212,9 +212,9 @@ function allowOutput(additionalContext) {
         },
     };
 }
-function workspaceResultOutput(result) {
+function workspaceResultOutput(result, sessionId) {
     if (result.reason === "selection-required") {
-        const message = formatWorkspaceSelectionNotice("claude", result.workspaces);
+        const message = formatWorkspaceSelectionNotice("claude", result.workspaces, sessionId);
         return {
             stdout: {
                 continue: true,
