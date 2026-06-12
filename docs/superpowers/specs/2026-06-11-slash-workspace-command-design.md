@@ -175,22 +175,20 @@ autonomously.
 The command asset must not interpolate `$ARGUMENTS` into dynamic shell content.
 Claude runs dynamic `!` commands before the command content reaches Claude, and
 `$ARGUMENTS` is the raw user-typed argument string. Instead, the templates
-should wire `UserPromptExpansion` hooks and invoke Node helpers. The baseline
-template invokes a helper from `.claude/scripts/` that delegates to
-`nams-hooks` from `PATH`; the plugin invokes a bundled helper with exec-form
-`args`:
+should wire `UserPromptExpansion` hooks directly to the shared CLI workspace
+runner. The baseline template delegates to `nams-hooks` from `PATH`; the plugin
+invokes the bundled CLI with exec-form `args`:
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/workspace-use.mjs
+node ${CLAUDE_PLUGIN_ROOT}/bin/cli.js workspaces run claude --event UserPromptExpansion
 ```
 
-The helper should read the `UserPromptExpansion` JSON from stdin, obtain the
-current session ID from `session_id` with a safe `${CLAUDE_SESSION_ID}`
-fallback, normalize `use <selector>` from `command_args`, and spawn the shared
-CLI with an argv array. The helper should preserve all text after `use` as the
-selector.
+The workspace runner reads the `UserPromptExpansion` JSON from stdin, obtains
+the current session ID from `session_id`, normalizes `use <selector>` from
+`command_args`, and delegates to the existing session-scoped configure runtime.
+The runner should preserve all text after `use` as the selector.
 
-If no session ID is available, the helper blocks the slash expansion without
+If no session ID is available, the runner blocks the slash expansion without
 writing state and prints a short message that includes the equivalent manual
 command with `<session-id>`.
 
@@ -204,12 +202,18 @@ that can stop or replace normal command execution. The research note identifies
 the source-level `command.execute.before` trigger as the best fit; current
 public docs also list command and TUI command events, so implementation must
 verify the exact trigger against the supported OpenCode plugin API before
-shipping. For command `nams:workspace`, when the supplied arguments begin with
-`use`, the plugin should:
+shipping. For command `nams:workspace`, the plugin should forward the raw
+command event payload to:
+
+```bash
+nams-hooks workspaces run opencode --event CommandExecuteBefore
+```
+
+The shared CLI workspace runner then:
 
 1. derive the selector from the remaining arguments;
 2. require a nonblank `sessionID` from the OpenCode command event;
-3. call `nams-hooks workspaces configure opencode --scope session --session-id
+3. delegate to `nams-hooks workspaces configure opencode --scope session --session-id
    <sessionID> --workspace <selector>`;
 4. surface the command stdout or stderr to the user; and
 5. prevent a normal model turn for this command when the OpenCode plugin API
@@ -345,23 +349,17 @@ Claude tests should assert:
   the Claude plugin template tree;
 - the command expects `use <selector>`;
 - it has no dynamic shell command containing raw `$ARGUMENTS`;
-- `UserPromptExpansion` hooks invoke safe Node helpers without shell-expanded
-  selector arguments;
-- the baseline helper invokes `nams-hooks workspaces configure claude`;
-- the plugin helper invokes bundled `bin/cli.js` with
-  `workspaces configure claude`;
-- it passes `--scope session`;
-- it uses `session_id` from the hook input as the primary session ID source; and
-- it passes the workspace selector as one argument.
+- `UserPromptExpansion` hooks invoke `nams-hooks workspaces run claude --event
+  UserPromptExpansion` or the bundled `bin/cli.js` equivalent; and
+- no separate `workspace-use.mjs` helper is packaged.
 
 OpenCode tests should simulate the plugin command event and assert:
 
-- `/nams:workspace use Engineering` spawns `configure opencode`;
-- the spawned argv includes `--scope session`, `--session-id <sessionID>`, and
-  `--workspace Engineering`;
-- selectors with spaces are preserved;
-- unrelated commands do not run configure;
-- blank selectors fail without invoking NAMS; and
+- `/nams:workspace use Engineering` spawns `workspaces run opencode --event
+  CommandExecuteBefore`;
+- command payloads, including selectors with spaces, are forwarded to the CLI
+  over stdin;
+- unrelated commands do not invoke the workspace runner; and
 - failed CLI output is surfaced to the user.
 
 Existing shared CLI tests already cover workspace selector validation, session

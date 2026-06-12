@@ -4,7 +4,7 @@ export type Platform = (typeof platforms)[number];
 export const hookEvents = ["SessionStart", "BeforeAgent", "AfterAgent", "AfterTool"] as const;
 export type HookEvent = (typeof hookEvents)[number];
 
-export const workspaceHookEvents = ["BeforeAgent", "InstallConfigure"] as const;
+export const workspaceHookEvents = ["BeforeAgent", "InstallConfigure", "UserPromptExpansion", "CommandExecuteBefore"] as const;
 export type WorkspaceHookEvent = (typeof workspaceHookEvents)[number];
 
 export interface HookInvocation<E extends HookEvent = HookEvent> {
@@ -37,6 +37,8 @@ export interface MemoryPlatformAdapter {
 export interface WorkspacePlatformAdapter {
   beforeAgent?(invocation: WorkspaceHookInvocation<"BeforeAgent">): Promise<WorkspaceHookResult>;
   installConfigure?(invocation: WorkspaceHookInvocation<"InstallConfigure">): Promise<WorkspaceHookResult>;
+  userPromptExpansion?(invocation: WorkspaceHookInvocation<"UserPromptExpansion">): Promise<WorkspaceHookResult>;
+  commandExecuteBefore?(invocation: WorkspaceHookInvocation<"CommandExecuteBefore">): Promise<WorkspaceHookResult>;
 }
 
 export function isPlatform(value: string | undefined): value is Platform {

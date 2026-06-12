@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
 
 const command = process.env.NAMS_HOOKS_COMMAND ?? "nams-hooks";
-const workspaceConfigureTimeoutMs = readPositiveInteger(
-  process.env.NAMS_HOOKS_WORKSPACE_CONFIGURE_TIMEOUT_MS,
+const workspaceCommandTimeoutMs = readPositiveInteger(
+  process.env.NAMS_HOOKS_WORKSPACE_COMMAND_TIMEOUT_MS ?? process.env.NAMS_HOOKS_WORKSPACE_CONFIGURE_TIMEOUT_MS,
   30000,
 );
 
@@ -28,36 +28,16 @@ export const NamsHooks = async ({ client, directory, project, worktree }) => {
     },
 
     "command.execute.before": async (input) => {
-      const parsed = parseWorkspaceUseCommand(input);
-      if (parsed === undefined) {
+      if (input?.command !== "nams:workspace") {
         return undefined;
       }
 
-      if (parsed.selector === "") {
-        await showCommandResult(client, {
-          code: 1,
-          stdout: "",
-          stderr: "Usage: /nams:workspace use <workspace-id-or-name>",
-        });
+      const result = await invokeWorkspaceRun("CommandExecuteBefore", input, directory);
+      if (result?.stop === true) {
+        await showCommandResult(client, result);
         return { stop: true };
       }
-
-      const sessionId = typeof input?.sessionID === "string" ? input.sessionID.trim() : "";
-      if (sessionId === "") {
-        await showCommandResult(client, {
-          code: 1,
-          stdout: "",
-          stderr: [
-            "OpenCode session id is unavailable.",
-            `Configure manually after replacing <session-id>: nams-hooks workspaces configure opencode --scope session --session-id <session-id> --workspace ${shellQuote(parsed.selector)}`,
-          ].join("\n"),
-        });
-        return { stop: true };
-      }
-
-      const result = await invokeWorkspaceConfigure(sessionId, parsed.selector, directory);
-      await showCommandResult(client, result);
-      return { stop: true };
+      return undefined;
     },
 
     "chat.message": async (input, output) => {
@@ -107,25 +87,21 @@ export const NamsHooks = async ({ client, directory, project, worktree }) => {
 
 export default NamsHooks;
 
-async function invokeWorkspaceConfigure(sessionId, workspaceSelector, directory) {
+async function invokeWorkspaceRun(event, payload, directory) {
   return await new Promise((resolve) => {
     const cwd = typeof directory === "string" && directory.trim() !== "" ? directory : undefined;
     const child = spawn(
       command,
       [
         "workspaces",
-        "configure",
+        "run",
         "opencode",
-        "--scope",
-        "session",
-        "--session-id",
-        sessionId,
-        "--workspace",
-        workspaceSelector,
+        "--event",
+        event,
       ],
       {
         ...(cwd === undefined ? {} : { cwd }),
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: ["pipe", "pipe", "pipe"],
       },
     );
     let stdout = "";
@@ -133,12 +109,13 @@ async function invokeWorkspaceConfigure(sessionId, workspaceSelector, directory)
     let settled = false;
     let timeout = setTimeout(() => {
       finish({
+        stop: true,
         code: 1,
         stdout,
-        stderr: `nams-hooks workspace configure timed out after ${workspaceConfigureTimeoutMs}ms`,
+        stderr: `nams-hooks workspace command timed out after ${workspaceCommandTimeoutMs}ms`,
       });
       child.kill();
-    }, workspaceConfigureTimeoutMs);
+    }, workspaceCommandTimeoutMs);
 
     function finish(value) {
       if (settled) {
@@ -161,11 +138,30 @@ async function invokeWorkspaceConfigure(sessionId, workspaceSelector, directory)
       stderr += chunk;
     });
     child.on("error", (error) => {
-      finish({ code: 1, stdout, stderr: error.message });
+      finish({ stop: true, code: 1, stdout, stderr: error.message });
     });
     child.on("close", (code) => {
-      finish({ code: code ?? 1, stdout, stderr });
+      if (code !== 0) {
+        finish({ stop: true, code: code ?? 1, stdout, stderr });
+        return;
+      }
+      const trimmed = stdout.trim();
+      if (trimmed === "") {
+        finish(undefined);
+        return;
+      }
+      try {
+        finish(JSON.parse(trimmed));
+      } catch {
+        finish({ stop: true, code: 1, stdout: "", stderr: "nams-hooks workspace command returned invalid JSON" });
+      }
     });
+    child.stdin.on("error", () => {});
+    try {
+      child.stdin.end(`${JSON.stringify(payload)}\n`);
+    } catch (error) {
+      finish({ stop: true, code: 1, stdout, stderr: error instanceof Error ? error.message : String(error) });
+    }
   });
 }
 
@@ -251,52 +247,6 @@ async function showWarning(client, message) {
       },
     });
   } catch {}
-}
-
-function parseWorkspaceUseCommand(input) {
-  if (input?.command !== "nams:workspace") {
-    return undefined;
-  }
-
-  const parts = commandArgumentParts(input?.arguments);
-  if (parts[0] !== "use") {
-    return undefined;
-  }
-
-  return { selector: workspaceSelectorFromArguments(input?.arguments) };
-}
-
-function commandArgumentParts(argumentValue) {
-  if (Array.isArray(argumentValue)) {
-    return argumentValue.map((part) => String(part).trim());
-  }
-  if (typeof argumentValue === "string") {
-    const trimmed = argumentValue.trim();
-    return trimmed === "" ? [] : trimmed.split(/\s+/);
-  }
-  return [];
-}
-
-function workspaceSelectorFromArguments(argumentValue) {
-  if (Array.isArray(argumentValue)) {
-    return argumentValue
-      .slice(1)
-      .map((part) => String(part))
-      .join(" ")
-      .trim();
-  }
-  if (typeof argumentValue === "string") {
-    const match = argumentValue.match(/^\s*use(?:\s+([\s\S]*?))?\s*$/);
-    return match?.[1]?.trim() ?? "";
-  }
-  return "";
-}
-
-function shellQuote(value) {
-  if (/^[A-Za-z0-9_/:=-]+$/.test(value)) {
-    return value;
-  }
-  return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
 async function showCommandResult(client, result) {

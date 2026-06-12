@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/scripts/workspace-use.mjs"
+            "command": "nams-hooks workspaces run claude --event UserPromptExpansion"
           }
         ]
       }

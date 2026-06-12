@@ -43,7 +43,12 @@
             "type": "command",
             "command": "node",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/scripts/workspace-use.mjs"
+              "${CLAUDE_PLUGIN_ROOT}/bin/cli.js",
+              "workspaces",
+              "run",
+              "claude",
+              "--event",
+              "UserPromptExpansion"
             ]
           }
         ]

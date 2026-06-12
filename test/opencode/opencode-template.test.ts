@@ -31,7 +31,7 @@ interface StubOptions {
 }
 
 interface ImportTemplateOptions {
-  configureTimeoutMs?: string;
+  commandTimeoutMs?: string;
 }
 
 test("opencode plugin template exposes NAMS hook handlers", async () => {
@@ -47,7 +47,7 @@ test("opencode plugin template exposes NAMS hook handlers", async () => {
   assert.match(source, /nams-hooks/);
 });
 
-test("command.execute.before configures OpenCode session workspace", async () => {
+test("command.execute.before forwards OpenCode workspace command to workspace runtime", async () => {
   const fixture = await createNamsHooksStub();
   try {
     const toasts: any[] = [];
@@ -72,16 +72,16 @@ test("command.execute.before configures OpenCode session workspace", async () =>
     assert.equal(calls.length, 1);
     assert.deepEqual(calls[0].args, [
       "workspaces",
-      "configure",
+      "run",
       "opencode",
-      "--scope",
-      "session",
-      "--session-id",
-      "opencode-session-1",
-      "--workspace",
-      "Engineering Team",
+      "--event",
+      "CommandExecuteBefore",
     ]);
-    assert.equal(calls[0].stdin, "");
+    assert.deepEqual(calls[0].payload, {
+      command: "nams:workspace",
+      sessionID: "opencode-session-1",
+      arguments: ["use", "Engineering Team"],
+    });
     assert.deepEqual(toasts, [
       {
         title: "NAMS workspace selected",
@@ -95,7 +95,7 @@ test("command.execute.before configures OpenCode session workspace", async () =>
   }
 });
 
-test("command.execute.before configures string-argument OpenCode session workspace", async () => {
+test("command.execute.before forwards string-argument OpenCode workspace command", async () => {
   const fixture = await createNamsHooksStub();
   try {
     const toasts: any[] = [];
@@ -120,15 +120,16 @@ test("command.execute.before configures string-argument OpenCode session workspa
     assert.equal(calls.length, 1);
     assert.deepEqual(calls[0].args, [
       "workspaces",
-      "configure",
+      "run",
       "opencode",
-      "--scope",
-      "session",
-      "--session-id",
-      "opencode-session-1",
-      "--workspace",
-      "Engineering Team",
+      "--event",
+      "CommandExecuteBefore",
     ]);
+    assert.deepEqual(calls[0].payload, {
+      command: "nams:workspace",
+      sessionID: "opencode-session-1",
+      arguments: "use Engineering Team",
+    });
     assert.deepEqual(toasts, [
       {
         title: "NAMS workspace selected",
@@ -142,7 +143,7 @@ test("command.execute.before configures string-argument OpenCode session workspa
   }
 });
 
-test("command.execute.before runs workspace configure in OpenCode directory", async () => {
+test("command.execute.before runs workspace command in OpenCode directory", async () => {
   const fixture = await createNamsHooksStub();
   try {
     const { NamsHooks } = await importTemplateWithCommand(fixture.commandPath);
@@ -158,6 +159,7 @@ test("command.execute.before runs workspace configure in OpenCode directory", as
     assert.deepEqual(result, { stop: true });
     assert.equal(calls.length, 1);
     assert.equal(await realpath(calls[0].cwd), await realpath(fixture.directory));
+    assert.deepEqual(calls[0].args, ["workspaces", "run", "opencode", "--event", "CommandExecuteBefore"]);
   } finally {
     await fixture.cleanup();
   }
@@ -182,14 +184,25 @@ test("command.execute.before ignores unrelated OpenCode commands", async () => {
 
     assert.equal(otherCommand, undefined);
     assert.equal(otherSubcommand, undefined);
-    assert.deepEqual(await readCalls(fixture.callsPath), []);
+    const calls = await readCalls(fixture.callsPath);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].args, ["workspaces", "run", "opencode", "--event", "CommandExecuteBefore"]);
+    assert.deepEqual(calls[0].payload, {
+      command: "nams:workspace",
+      sessionID: "opencode-session-1",
+      arguments: ["list"],
+    });
   } finally {
     await fixture.cleanup();
   }
 });
 
 test("command.execute.before reports invalid OpenCode workspace command forms", async () => {
-  const fixture = await createNamsHooksStub();
+  const fixture = await createNamsHooksStub({
+    stdoutByCommand: {
+      invalidWorkspaceCommands: true,
+    },
+  });
   try {
     const toasts: any[] = [];
     const client = {
@@ -221,7 +234,12 @@ test("command.execute.before reports invalid OpenCode workspace command forms", 
     assert.equal(toasts[1].variant, "danger");
     assert.match(toasts[1].message, /OpenCode session id is unavailable/);
     assert.match(toasts[1].message, /--workspace 'Engineering Team'/);
-    assert.deepEqual(await readCalls(fixture.callsPath), []);
+    const calls = await readCalls(fixture.callsPath);
+    assert.equal(calls.length, 2);
+    assert.deepEqual(calls.map((call) => call.args), [
+      ["workspaces", "run", "opencode", "--event", "CommandExecuteBefore"],
+      ["workspaces", "run", "opencode", "--event", "CommandExecuteBefore"],
+    ]);
   } finally {
     await fixture.cleanup();
   }
@@ -243,7 +261,7 @@ test("command.execute.before times out hanging workspace configure", async () =>
       },
     };
     const { NamsHooks } = await importTemplateWithCommand(fixture.commandPath, {
-      configureTimeoutMs: "50",
+      commandTimeoutMs: "50",
     });
     const plugin = await NamsHooks({ client, directory: fixture.directory, project: "project-a", worktree: "worktree-a" });
 
@@ -259,7 +277,7 @@ test("command.execute.before times out hanging workspace configure", async () =>
     assert.ok(durationMs < 900, `expected timeout before hanging stub exited, took ${durationMs}ms`);
     assert.equal(toasts.length, 1);
     assert.equal(toasts[0].variant, "danger");
-    assert.match(toasts[0].message, /workspace configure timed out after 50ms/);
+    assert.match(toasts[0].message, /workspace command timed out after 50ms/);
   } finally {
     await fixture.cleanup();
   }
@@ -567,18 +585,46 @@ process.stdin.on("end", () => {
   const payload = trimmedStdin === "" ? undefined : JSON.parse(trimmedStdin);
   appendFileSync(callsPath, JSON.stringify({ args, cwd: process.cwd(), payload, stdin }) + "\\n");
   if (commandName === "workspaces") {
+    if (payload?.command === "nams:workspace" && Array.isArray(payload.arguments) && payload.arguments[0] !== "use") {
+      process.stdout.write(JSON.stringify({}));
+      return;
+    }
+    if (stdoutByCommand.invalidWorkspaceCommands === true) {
+      const argumentValue = payload?.arguments;
+      const argumentParts = Array.isArray(argumentValue) ? argumentValue : String(argumentValue ?? "").trim().split(/\\s+/);
+      if (argumentParts[0] === "use" && argumentParts.slice(1).join(" ").trim() === "") {
+        process.stdout.write(JSON.stringify({
+          stop: true,
+          code: 1,
+          stdout: "",
+          stderr: "Usage: /nams:workspace use <workspace-id-or-name>",
+        }));
+        return;
+      }
+      if (typeof payload?.sessionID === "string" && payload.sessionID.trim() === "") {
+        process.stdout.write(JSON.stringify({
+          stop: true,
+          code: 1,
+          stdout: "",
+          stderr: [
+            "OpenCode session id is unavailable.",
+            "Configure manually after replacing <session-id>: nams-hooks workspaces configure opencode --scope session --session-id <session-id> --workspace 'Engineering Team'",
+          ].join("\\n"),
+        }));
+        return;
+      }
+    }
     if (stdoutByCommand.configureFailure === true) {
-      process.stderr.write("workspace failed\\n");
-      process.exitCode = 2;
+      process.stdout.write(JSON.stringify({ stop: true, code: 2, stdout: "", stderr: "workspace failed\\n" }));
       return;
     }
     if (typeof stdoutByCommand.configureHangMs === "number") {
       setTimeout(() => {
-        process.stdout.write("late workspace configured\\n");
+        process.stdout.write(JSON.stringify({ stop: true, code: 0, stdout: "late workspace configured\\n", stderr: "" }));
       }, stdoutByCommand.configureHangMs);
       return;
     }
-    process.stdout.write("workspace configured\\n");
+    process.stdout.write(JSON.stringify({ stop: true, code: 0, stdout: "workspace configured\\n", stderr: "" }));
     return;
   }
   if (Object.hasOwn(stdoutByCommand, commandName)) {
@@ -608,16 +654,16 @@ process.stdin.on("end", () => {
 
 async function importTemplateWithCommand(commandPath: string, options: ImportTemplateOptions = {}): Promise<TemplateModule> {
   const previousCommand = process.env.NAMS_HOOKS_COMMAND;
-  const previousTimeout = process.env.NAMS_HOOKS_WORKSPACE_CONFIGURE_TIMEOUT_MS;
+  const previousTimeout = process.env.NAMS_HOOKS_WORKSPACE_COMMAND_TIMEOUT_MS;
   process.env.NAMS_HOOKS_COMMAND = commandPath;
-  if (options.configureTimeoutMs !== undefined) {
-    process.env.NAMS_HOOKS_WORKSPACE_CONFIGURE_TIMEOUT_MS = options.configureTimeoutMs;
+  if (options.commandTimeoutMs !== undefined) {
+    process.env.NAMS_HOOKS_WORKSPACE_COMMAND_TIMEOUT_MS = options.commandTimeoutMs;
   }
   try {
     return (await import(`${pathToFileURL(templatePath).href}?test=${Date.now()}-${Math.random()}`)) as TemplateModule;
   } finally {
     restoreEnv("NAMS_HOOKS_COMMAND", previousCommand);
-    restoreEnv("NAMS_HOOKS_WORKSPACE_CONFIGURE_TIMEOUT_MS", previousTimeout);
+    restoreEnv("NAMS_HOOKS_WORKSPACE_COMMAND_TIMEOUT_MS", previousTimeout);
   }
 }
 

@@ -168,6 +168,136 @@ test("workspaces BeforeAgent command allows without resolving workspace", async 
   }
 });
 
+test("workspaces run claude UserPromptExpansion configures the session workspace", async () => {
+  const projectDir = await realpath(await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-")));
+  const homeDir = path.join(projectDir, "home");
+  try {
+    await withWorkspaceServer(
+      async (baseUrl) => {
+        const result = await runCli(
+          ["workspaces", "run", "claude", "--event", "UserPromptExpansion"],
+          {
+            hook_event_name: "UserPromptExpansion",
+            command_name: "nams:workspace",
+            command_args: "use Engineering Team; $(echo unsafe) \"quoted\"",
+            session_id: "claude-session-1",
+          },
+          runtimeEnv(homeDir, baseUrl),
+          projectDir,
+        );
+
+        assert.equal(result.code, 0, result.stderr);
+        assert.equal(result.stderr, "");
+        const stdout = JSON.parse(result.stdout);
+        assert.equal(stdout.decision, "block");
+        assert.match(stdout.reason, /NAMS workspace configured for claude session claude-session-1: workspace-2/);
+
+        const state = await readOnlySessionState(homeDir, "claude");
+        assert.equal(state.harness, "claude");
+        assert.equal(state.harnessSessionId, "claude-session-1");
+        assert.equal(state.workspace.id, "workspace-2");
+        assert.equal(state.workspace.source, "session-selection");
+      },
+      {
+        workspaces: [
+          { id: "workspace-1", name: "Engineering", role: "owner", status: "active" },
+          { id: "workspace-2", name: "Engineering Team; $(echo unsafe) \"quoted\"", role: "member", status: "active" },
+        ],
+      },
+    );
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("workspaces run claude UserPromptExpansion blocks missing selector and session id", async () => {
+  const projectDir = await realpath(await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-")));
+  try {
+    await withWorkspaceServer(async (baseUrl) => {
+      const missingSelector = await runCli(
+        ["workspaces", "run", "claude", "--event", "UserPromptExpansion"],
+        {
+          hook_event_name: "UserPromptExpansion",
+          command_name: "nams:workspace",
+          command_args: "use",
+          session_id: "claude-session-1",
+        },
+        runtimeEnv(path.join(projectDir, "home"), baseUrl),
+        projectDir,
+      );
+
+      assert.equal(missingSelector.code, 0, missingSelector.stderr);
+      assert.equal(JSON.parse(missingSelector.stdout).decision, "block");
+      assert.match(JSON.parse(missingSelector.stdout).reason, /Usage: \/nams:workspace use <workspace-id-or-name>/);
+
+      const missingSession = await runCli(
+        ["workspaces", "run", "claude", "--event", "UserPromptExpansion"],
+        {
+          hook_event_name: "UserPromptExpansion",
+          command_name: "nams:workspace",
+          command_args: "use Engineering Team; $(echo unsafe)",
+          session_id: "",
+        },
+        runtimeEnv(path.join(projectDir, "home"), baseUrl),
+        projectDir,
+      );
+
+      assert.equal(missingSession.code, 0, missingSession.stderr);
+      assert.equal(JSON.parse(missingSession.stdout).decision, "block");
+      assert.match(JSON.parse(missingSession.stdout).reason, /Claude session id is unavailable/);
+      assert.match(
+        JSON.parse(missingSession.stdout).reason,
+        /--session-id <session-id> --workspace 'Engineering Team; \$\(echo unsafe\)'/,
+      );
+    });
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("workspaces run opencode CommandExecuteBefore configures the session workspace", async () => {
+  const projectDir = await realpath(await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-")));
+  const homeDir = path.join(projectDir, "home");
+  try {
+    await withWorkspaceServer(
+      async (baseUrl) => {
+        const result = await runCli(
+          ["workspaces", "run", "opencode", "--event", "CommandExecuteBefore"],
+          {
+            command: "nams:workspace",
+            arguments: ["use", "Engineering Team"],
+            sessionID: "opencode-session-1",
+          },
+          runtimeEnv(homeDir, baseUrl),
+          projectDir,
+        );
+
+        assert.equal(result.code, 0, result.stderr);
+        assert.equal(result.stderr, "");
+        const stdout = JSON.parse(result.stdout);
+        assert.equal(stdout.stop, true);
+        assert.equal(stdout.code, 0);
+        assert.match(stdout.stdout, /NAMS workspace configured for opencode session opencode-session-1: workspace-2/);
+        assert.equal(stdout.stderr, "");
+
+        const state = await readOnlySessionState(homeDir, "opencode");
+        assert.equal(state.harness, "opencode");
+        assert.equal(state.harnessSessionId, "opencode-session-1");
+        assert.equal(state.workspace.id, "workspace-2");
+        assert.equal(state.workspace.source, "session-selection");
+      },
+      {
+        workspaces: [
+          { id: "workspace-1", name: "Engineering", role: "owner", status: "active" },
+          { id: "workspace-2", name: "Engineering Team", role: "member", status: "active" },
+        ],
+      },
+    );
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("workspaces rejects unsupported workspace events with usage", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-"));
   try {
@@ -179,7 +309,7 @@ test("workspaces rejects unsupported workspace events with usage", async () => {
 
     assert.equal(result.code, 1);
     assert.match(result.stderr, /Usage:/);
-    assert.match(result.stderr, /workspaces <gemini\|claude\|codex\|opencode> --event <BeforeAgent\|InstallConfigure>/);
+    assert.match(result.stderr, /workspaces run <gemini\|claude\|codex\|opencode> --event <BeforeAgent\|InstallConfigure\|UserPromptExpansion\|CommandExecuteBefore>/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }

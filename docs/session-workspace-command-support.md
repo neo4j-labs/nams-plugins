@@ -97,21 +97,20 @@ current session ID for logging, session-specific files, and correlation.
 Claude skill content can include dynamic shell context using inline shell
 snippets such as `` !`git diff HEAD` ``, but `$ARGUMENTS` is the raw
 user-typed argument string and must not be interpolated into a shell command.
-The plugin should instead ship a static command/skill asset and handle the
-actual workspace selection in a `UserPromptExpansion` hook. The hook receives
-JSON on stdin with `session_id`, `command_name`, `command_args`,
-`command_source`, and `prompt`, then can block the slash expansion with a
-user-facing JSON response.
+The plugin should instead ship a static command asset and handle the actual
+workspace selection through the shared CLI workspace runner. The
+`UserPromptExpansion` hook receives JSON on stdin with `session_id`,
+`command_name`, `command_args`, `command_source`, and `prompt`, then can block
+the slash expansion with a user-facing JSON response.
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/workspace-use.mjs
+node ${CLAUDE_PLUGIN_ROOT}/bin/cli.js workspaces run claude --event UserPromptExpansion
 ```
 
-The helper should read the hook JSON from stdin, parse
-`workspaces use <selector>` from `command_args`, require a nonblank `session_id`
-or safe `${CLAUDE_SESSION_ID}` fallback, and spawn the bundled `bin/cli.js` with
-an argv array. The exact argument parsing should avoid treating the words
-`workspaces use` as part of the workspace name.
+The workspace runner reads the hook JSON from stdin, parses `use <selector>`
+from `command_args`, requires a nonblank `session_id`, and delegates to the
+existing session-scoped configure runtime. The exact argument parsing avoids
+treating the word `use` as part of the workspace name.
 
 ### OpenCode
 

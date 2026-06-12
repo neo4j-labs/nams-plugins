@@ -14,7 +14,6 @@ const claudeMarketplacePath = path.join(root, "dist", ".claude-plugin", "marketp
 const claudePluginManifestPath = path.join(root, "dist", "plugins", "nams-hooks", ".claude-plugin", "plugin.json");
 const claudePluginHooksPath = path.join(root, "dist", "plugins", "nams-hooks", "hooks", "hooks.json");
 const claudePluginCommandPath = path.join(root, "dist", "plugins", "nams-hooks", "commands", "nams", "workspace.md");
-const claudePluginWorkspaceScriptPath = path.join(root, "dist", "plugins", "nams-hooks", "scripts", "workspace-use.mjs");
 const claudePluginCliPath = path.join(root, "dist", "plugins", "nams-hooks", "bin", "cli.js");
 const codexMarketplacePath = path.join(root, "dist", ".agents", "plugins", "marketplace.json");
 const codexPluginManifestPath = path.join(root, "dist", "plugins", "codex-nams-hooks", ".codex-plugin", "plugin.json");
@@ -54,7 +53,6 @@ async function verifyClaudePluginFiles() {
   await access(claudePluginManifestPath);
   await access(claudePluginHooksPath);
   await access(claudePluginCommandPath);
-  await access(claudePluginWorkspaceScriptPath);
   await assertExecutable(claudePluginCliPath);
 
   const packageJson = JSON.parse(await readFile(rootPackagePath, "utf8"));
@@ -208,9 +206,9 @@ function assertClaudeWorkspaceCommandHook(hooks) {
   if (handler?.type !== "command" || handler.command !== "node") {
     throw new Error("Claude plugin UserPromptExpansion hook must run node.");
   }
-  const expectedArgs = ["${CLAUDE_PLUGIN_ROOT}/scripts/workspace-use.mjs"];
+  const expectedArgs = ["${CLAUDE_PLUGIN_ROOT}/bin/cli.js", "workspaces", "run", "claude", "--event", "UserPromptExpansion"];
   if (JSON.stringify(handler.args) !== JSON.stringify(expectedArgs)) {
-    throw new Error("Claude plugin UserPromptExpansion hook must invoke the bundled workspace-use helper with exec-form args.");
+    throw new Error("Claude plugin UserPromptExpansion hook must invoke the bundled CLI workspace runner with exec-form args.");
   }
 }
 
@@ -303,7 +301,6 @@ function claudePackedFiles(packageDir) {
     `${prefix}plugins/nams-hooks/.claude-plugin/plugin.json`,
     `${prefix}plugins/nams-hooks/hooks/hooks.json`,
     `${prefix}plugins/nams-hooks/commands/nams/workspace.md`,
-    `${prefix}plugins/nams-hooks/scripts/workspace-use.mjs`,
     `${prefix}plugins/nams-hooks/bin/cli.js`,
   ];
 }
