@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 
-const commandName = "nams-hooks";
-const usage = `Usage: /${commandName} workspaces use <workspace-id-or-name>`;
+const commandName = "nams:workspace";
+const usage = `Usage: /${commandName} use <workspace-id-or-name>`;
 const cliTimeoutMs = 30_000;
 
 const input = await readHookInput();
@@ -11,7 +11,7 @@ if (input.hook_event_name !== "UserPromptExpansion" || input.command_name !== co
 }
 
 const rawArgs = stringValue(input.command_args).trim();
-const match = /^workspaces\s+use\s+([\s\S]*)$/.exec(rawArgs);
+const match = /^use\s+([\s\S]*)$/.exec(rawArgs);
 const selector = match?.[1] ?? "";
 if (selector.trim().length === 0) {
   block(usage);

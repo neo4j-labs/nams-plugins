@@ -10,7 +10,7 @@ Add a platform command UX for selecting the NAMS workspace used by the current
 agent session:
 
 ```text
-/nams-hooks workspaces use <workspace-id-or-name>
+/nams:workspace use <workspace-id-or-name>
 ```
 
 For Claude Code, both project-template installs and plugin installs use this
@@ -54,9 +54,9 @@ memory persistence.
 
 ## Goals
 
-- Provide one memorable wrapper subcommand,
-  `workspaces use <workspace-id-or-name>`, behind each platform's deterministic
-  command surface.
+- Provide one memorable user-facing command shape,
+  `/nams:workspace use <workspace-id-or-name>`, behind each platform's
+  deterministic command surface.
 - Keep workspace validation, ambiguity handling, and state writes in the
   existing shared configure runtime.
 - Keep platform-specific command mechanics in platform templates or plugin
@@ -85,19 +85,20 @@ memory persistence.
 
 ## UX Contract
 
-The cross-platform wrapper subcommand is:
+The cross-platform user command is:
 
 ```text
-workspaces use <workspace-id-or-name>
+/nams:workspace use <workspace-id-or-name>
 ```
 
-The wrapper must interpret only this subcommand:
+After the platform command surface has matched `nams:workspace`, the wrapper
+must interpret only this subcommand:
 
 ```text
-workspaces use <selector>
+use <selector>
 ```
 
-`<selector>` is the full remaining argument text after `workspaces use`. It may
+`<selector>` is the full remaining argument text after `use`. It may
 be an exact workspace ID or exact workspace name. If the selector contains
 spaces, the wrapper should pass it to the shared CLI as one argv value where the
 platform command API permits it.
@@ -164,7 +165,7 @@ template and the Claude plugin. Claude Code treats custom commands and skills as
 the same command surface for this purpose. The user invokes:
 
 ```text
-/nams-hooks workspaces use Engineering
+/nams:workspace use Engineering
 ```
 
 The command should be user-invoked only. If the Claude command format supports a
@@ -185,9 +186,9 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/workspace-use.mjs
 
 The helper should read the `UserPromptExpansion` JSON from stdin, obtain the
 current session ID from `session_id` with a safe `${CLAUDE_SESSION_ID}`
-fallback, normalize `workspaces use <selector>` from `command_args`, and spawn
-the shared CLI with an argv array. The helper should preserve all text after
-`workspaces use` as the selector.
+fallback, normalize `use <selector>` from `command_args`, and spawn the shared
+CLI with an argv array. The helper should preserve all text after `use` as the
+selector.
 
 If no session ID is available, the helper blocks the slash expansion without
 writing state and prints a short message that includes the equivalent manual
@@ -203,8 +204,8 @@ that can stop or replace normal command execution. The research note identifies
 the source-level `command.execute.before` trigger as the best fit; current
 public docs also list command and TUI command events, so implementation must
 verify the exact trigger against the supported OpenCode plugin API before
-shipping. For command `nams-hooks`, when the supplied arguments begin with
-`workspaces use`, the plugin should:
+shipping. For command `nams:workspace`, when the supplied arguments begin with
+`use`, the plugin should:
 
 1. derive the selector from the remaining arguments;
 2. require a nonblank `sessionID` from the OpenCode command event;
@@ -214,8 +215,8 @@ shipping. For command `nams-hooks`, when the supplied arguments begin with
 5. prevent a normal model turn for this command when the OpenCode plugin API
    supports doing so.
 
-The plugin should ignore unrelated `nams-hooks` subcommands so future command
-surfaces remain possible. It should also ignore other slash commands.
+The plugin should ignore unrelated `nams:workspace` subcommands so future
+command surfaces remain possible. It should also ignore other slash commands.
 
 The existing `NAMS_HOOKS_COMMAND` environment override should continue to apply
 to OpenCode. This keeps local development and packaged installs aligned with
@@ -226,7 +227,7 @@ the current shim.
 Design Gemini around a custom command packaged with the Gemini extension:
 
 ```text
-/nams-hooks workspaces use Engineering
+/nams:workspace use Engineering
 ```
 
 The command eventually calls:
@@ -265,14 +266,14 @@ parse the harness session ID, the notice should include the concrete session ID.
 Otherwise it should keep the `<session-id>` placeholder.
 
 Any future Codex deterministic command implementation must follow the same
-wrapper contract: parse `workspaces use`, obtain the current Codex session ID,
-and delegate to the shared configure command without duplicating workspace
-validation or state writes.
+wrapper contract: match `nams:workspace`, parse `use <selector>`, obtain the
+current Codex session ID, and delegate to the shared configure command without
+duplicating workspace validation or state writes.
 
 ## Data Flow
 
-1. The user invokes the platform command with `workspaces use <selector>`.
-2. The platform wrapper parses `workspaces use` and extracts `<selector>`.
+1. The user invokes `/nams:workspace use <selector>`.
+2. The platform wrapper parses `use <selector>` and extracts `<selector>`.
 3. The wrapper obtains the current platform session ID from the platform command
    context or a deterministic local bridge.
 4. The wrapper invokes the shared configure command with platform, session ID,
@@ -302,7 +303,7 @@ The shared configure command remains responsible for:
 
 Wrappers are responsible for:
 
-- rejecting command forms other than `workspaces use <selector>`;
+- rejecting command forms other than `use <selector>`;
 - rejecting a blank selector before invoking the CLI;
 - rejecting missing current session ID before invoking the CLI; and
 - showing the manual configure command when a session ID cannot be supplied.
@@ -342,7 +343,7 @@ Claude tests should assert:
 
 - the packaged command asset exists in the baseline Claude template tree and
   the Claude plugin template tree;
-- the command expects `workspaces use <selector>`;
+- the command expects `use <selector>`;
 - it has no dynamic shell command containing raw `$ARGUMENTS`;
 - `UserPromptExpansion` hooks invoke safe Node helpers without shell-expanded
   selector arguments;
@@ -355,7 +356,7 @@ Claude tests should assert:
 
 OpenCode tests should simulate the plugin command event and assert:
 
-- `/nams-hooks workspaces use Engineering` spawns `configure opencode`;
+- `/nams:workspace use Engineering` spawns `configure opencode`;
 - the spawned argv includes `--scope session`, `--session-id <sessionID>`, and
   `--workspace Engineering`;
 - selectors with spaces are preserved;

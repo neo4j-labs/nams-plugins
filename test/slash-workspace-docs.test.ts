@@ -2,8 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
-const claudeTemplateSlash = "/nams-hooks workspaces use <workspace-id-or-name>";
-const opencodeSlash = "/nams-hooks workspaces use <workspace-id-or-name>";
+const workspaceSlash = "/nams:workspace use <workspace-id-or-name>";
 const genericSessionConfigure =
   "nams-hooks workspaces configure <platform> --scope session --session-id <session-id> --workspace <workspace-id-or-name>";
 const durableProjectConfigure =
@@ -63,11 +62,12 @@ test("README documents Tier 1 workspace selection and the portable shell command
   const content = await readDoc("README.md");
 
   assert.match(content, /session-scoped selection/i);
-  assertMentionsPlatformCommand(content, "Claude Code", claudeTemplateSlash);
-  assertMentionsPlatformCommand(content, "OpenCode", opencodeSlash);
+  assertMentionsPlatformCommand(content, "Claude Code", workspaceSlash);
+  assertMentionsPlatformCommand(content, "OpenCode", workspaceSlash);
   assertIncludesCommand(content, genericSessionConfigure);
   assertIncludesCommand(content, durableProjectConfigure);
   assert.doesNotMatch(content, /nams-hooks:nams-hooks/);
+  assert.doesNotMatch(content, /\/nams-hooks workspaces use/);
 });
 
 test("INSTALL workspace selection documents slash commands and shell fallback", async () => {
@@ -75,14 +75,15 @@ test("INSTALL workspace selection documents slash commands and shell fallback", 
   const workspaceSelection = sectionByHeading(content, "### Workspace Selection");
 
   assert.match(workspaceSelection, /multi-workspace inactive memory notices/i);
-  assertMentionsPlatformCommand(workspaceSelection, "Claude Code", claudeTemplateSlash);
-  assertMentionsPlatformCommand(workspaceSelection, "OpenCode", opencodeSlash);
+  assertMentionsPlatformCommand(workspaceSelection, "Claude Code", workspaceSlash);
+  assertMentionsPlatformCommand(workspaceSelection, "OpenCode", workspaceSlash);
   assert.match(workspaceSelection, /slash commands[\s\S]{0,160}explicit shell command/i);
   assert.match(workspaceSelection, /shell command[\s\S]{0,160}Gemini/i);
   assert.match(workspaceSelection, /shell command[\s\S]{0,160}Codex/i);
   assertIncludesCommand(workspaceSelection, genericSessionConfigure);
   assertIncludesCommand(workspaceSelection, opencodeSessionExample);
   assert.doesNotMatch(workspaceSelection, /nams-hooks:nams-hooks/);
+  assert.doesNotMatch(workspaceSelection, /\/nams-hooks workspaces use/);
 });
 
 test("INSTALL platform notes keep platform-specific workspace command guidance", async () => {
@@ -94,14 +95,14 @@ test("INSTALL platform notes keep platform-specific workspace command guidance",
 
   assert.match(claude, /project template/i);
   assert.match(claude, /Claude plugin/i);
-  assertIncludesCommand(claude, claudeTemplateSlash);
+  assertIncludesCommand(claude, workspaceSlash);
   assertIncludesCommand(
     claude,
     "nams-hooks workspaces configure claude --scope session --session-id <session-id> --workspace <workspace-id-or-name>",
   );
 
   assert.match(codex, /does not currently expose deterministic/i);
-  assert.match(codex, /\/nams-hooks workspaces use/);
+  assert.match(codex, /\/nams:workspace use/);
   assertIncludesCommand(
     codex,
     "nams-hooks workspaces configure codex --scope session --session-id <session-id> --workspace <workspace-id-or-name>",
@@ -114,7 +115,7 @@ test("INSTALL platform notes keep platform-specific workspace command guidance",
     "nams-hooks workspaces configure gemini --scope session --session-id <session-id> --workspace <workspace-id-or-name>",
   );
 
-  assertIncludesCommand(opencode, opencodeSlash);
+  assertIncludesCommand(opencode, workspaceSlash);
   assertIncludesCommand(
     opencode,
     "nams-hooks workspaces configure opencode --scope session --session-id <session-id> --workspace <workspace-id-or-name>",
@@ -126,11 +127,10 @@ test("session workspace research note reflects Tier 1 support and safe Claude ha
   const intro = content.slice(0, content.indexOf("## Current Repo State"));
   const remainingUxWork = sectionByHeading(content, "## Remaining UX Work");
 
-  assertMentionsPlatformCommand(intro, "Claude Code", claudeTemplateSlash);
-  assertMentionsPlatformCommand(intro, "OpenCode", opencodeSlash);
+  assertMentionsPlatformCommand(intro, "Claude Code", workspaceSlash);
+  assertMentionsPlatformCommand(intro, "OpenCode", workspaceSlash);
   assertIncludesCommand(intro, genericSessionConfigure);
-  assertIncludesCommand(remainingUxWork, claudeTemplateSlash);
-  assertIncludesCommand(remainingUxWork, opencodeSlash);
+  assertIncludesCommand(remainingUxWork, workspaceSlash);
   assertIncludesCommand(remainingUxWork, genericSessionConfigure);
   assert.match(remainingUxWork, /Gemini CLI[\s\S]{0,160}deferred/i);
   assert.match(remainingUxWork, /Codex[\s\S]{0,160}explicit shell configuration/i);

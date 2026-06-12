@@ -77,7 +77,7 @@ direct command:
 
 ```text
 # Claude Code and OpenCode
-/nams-hooks workspaces use <workspace-id-or-name>
+/nams:workspace use <workspace-id-or-name>
 ```
 
 These slash commands wrap the explicit shell command. Keep using the shell
@@ -153,7 +153,7 @@ The workspace selection command is direct in both the Claude project template
 and Claude plugin:
 
 ```text
-/nams-hooks workspaces use <workspace-id-or-name>
+/nams:workspace use <workspace-id-or-name>
 ```
 
 It wraps the explicit Claude session command:
@@ -182,7 +182,7 @@ Codex plugin installs do not currently define a custom NAMS credential prompt.
 Configure NAMS through `~/.nams/config.json`, project `.nams/config.json`, or the
 `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment variables.
 
-Codex does not currently expose deterministic `/nams-hooks workspaces use`.
+Codex does not currently expose deterministic `/nams:workspace use`.
 Use the explicit shell command from the hook notice:
 
 ```bash
@@ -227,7 +227,7 @@ OpenCode uses the generated plugin shim for hook execution and session workspace
 selection. The shim preserves the direct command UX:
 
 ```text
-/nams-hooks workspaces use <workspace-id-or-name>
+/nams:workspace use <workspace-id-or-name>
 ```
 
 It wraps the explicit OpenCode session command:

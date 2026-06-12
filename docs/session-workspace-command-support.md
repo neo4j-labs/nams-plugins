@@ -11,7 +11,7 @@ surface that can wrap it. Tier 1 user-facing forms are:
 
 ```text
 # Claude Code and OpenCode
-/nams-hooks workspaces use <workspace-id-or-name>
+/nams:workspace use <workspace-id-or-name>
 ```
 
 implemented as a deterministic local command:
@@ -57,7 +57,7 @@ The session state type now allows workspace sources:
 
 Runtime memory resolution gives `session-selection` precedence over configured
 `workspaceId`, including `NAMS_WORKSPACE_ID`. Other session workspace sources
-still sit after configured workspace ID. This makes `/nams-hooks workspaces use`
+still sit after configured workspace ID. This makes `/nams:workspace use`
 semantics session-local without mutating project or user config.
 
 Session scope includes filesystem preflights before listing workspaces:
@@ -72,8 +72,8 @@ Session scope includes filesystem preflights before listing workspaces:
 
 | Platform | Shared session command implemented? | User-invoked command can run shell? | Current-session id available? | Fit | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Claude Code | Yes | Yes | Yes | Best | Template and plugin custom commands are slash-invocable as `/nams-hooks`. `UserPromptExpansion` hooks can intercept the command before Claude sees it and receive `session_id` plus raw `command_args`. |
-| OpenCode | Yes | Yes | Yes | Best with plugin shim | The plugin shim intercepts `command.execute.before`, preserves `/nams-hooks workspaces use <workspace-id-or-name>`, and runs the shared configure command. |
+| Claude Code | Yes | Yes | Yes | Best | Template and plugin custom commands are slash-invocable as `/nams:workspace`. `UserPromptExpansion` hooks can intercept the command before Claude sees it and receive `session_id` plus raw `command_args`. |
+| OpenCode | Yes | Yes | Yes | Best with plugin shim | The plugin shim intercepts `command.execute.before`, preserves `/nams:workspace use <workspace-id-or-name>`, and runs the shared configure command. |
 | Gemini CLI | Yes | Yes | Partial | Good with bridge | Custom commands support shell injection, and hooks expose `GEMINI_SESSION_ID`. The custom-command shell execution path appears to set only the general `GEMINI_CLI=1` identity variable, so a session-id bridge is still needed for slash-command UX. |
 | Codex | Yes | Partial | Payload-dependent | Prompt-helper only | Codex hooks run shell commands and workspace notices now include parsed session IDs when available. Custom prompts expand into model instructions rather than deterministic pre-shell command execution. |
 
@@ -85,7 +85,7 @@ Claude Code is a strong fit for this feature. Both the project template and
 plugin expose the direct command:
 
 ```text
-/nams-hooks workspaces use <workspace-id-or-name>
+/nams:workspace use <workspace-id-or-name>
 ```
 
 Claude skills can be invoked directly with slash command names, for example
@@ -137,7 +137,7 @@ plugin.trigger(
 The shim intercepts this command:
 
 ```text
-/nams-hooks workspaces use <workspace-id-or-name>
+/nams:workspace use <workspace-id-or-name>
 ```
 
 The plugin calls:
@@ -226,13 +226,13 @@ After Tier 1, Claude Code project-template and plugin installs expose the direct
 command:
 
 ```text
-/nams-hooks workspaces use <workspace-id-or-name>
+/nams:workspace use <workspace-id-or-name>
 ```
 
 OpenCode exposes the direct plugin shim command:
 
 ```text
-/nams-hooks workspaces use <workspace-id-or-name>
+/nams:workspace use <workspace-id-or-name>
 ```
 
 The explicit configure command remains documented for all platforms, scripts,
@@ -245,7 +245,7 @@ nams-hooks workspaces configure <platform> --scope session --session-id <session
 Gemini CLI slash-command support remains designed but deferred until the current
 session ID can be resolved deterministically from a custom command. Codex remains
 on explicit shell configuration because it does not currently expose a
-deterministic `/nams-hooks workspaces use` command path.
+deterministic `/nams:workspace use` command path.
 
 The runtime notices emitted by supported adapters now point users at the session
 command when multiple NAMS workspaces are available. When the adapter can parse

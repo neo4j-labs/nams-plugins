@@ -62,9 +62,9 @@ test("command.execute.before configures OpenCode session workspace", async () =>
     const plugin = await NamsHooks({ client, directory: fixture.directory, project: "project-a", worktree: "worktree-a" });
 
     const result = await plugin["command.execute.before"]({
-      command: "nams-hooks",
+      command: "nams:workspace",
       sessionID: "opencode-session-1",
-      arguments: ["workspaces", "use", "Engineering Team"],
+      arguments: ["use", "Engineering Team"],
     });
 
     const calls = await readCalls(fixture.callsPath);
@@ -110,9 +110,9 @@ test("command.execute.before configures string-argument OpenCode session workspa
     const plugin = await NamsHooks({ client, directory: fixture.directory, project: "project-a", worktree: "worktree-a" });
 
     const result = await plugin["command.execute.before"]({
-      command: "nams-hooks",
+      command: "nams:workspace",
       sessionID: "opencode-session-1",
-      arguments: "workspaces use Engineering Team",
+      arguments: "use Engineering Team",
     });
 
     const calls = await readCalls(fixture.callsPath);
@@ -149,9 +149,9 @@ test("command.execute.before runs workspace configure in OpenCode directory", as
     const plugin = await NamsHooks({ directory: fixture.directory, project: "project-a", worktree: "worktree-a" });
 
     const result = await plugin["command.execute.before"]({
-      command: "nams-hooks",
+      command: "nams:workspace",
       sessionID: "opencode-session-1",
-      arguments: ["workspaces", "use", "Engineering"],
+      arguments: ["use", "Engineering"],
     });
 
     const calls = await readCalls(fixture.callsPath);
@@ -172,12 +172,12 @@ test("command.execute.before ignores unrelated OpenCode commands", async () => {
     const otherCommand = await plugin["command.execute.before"]({
       command: "other",
       sessionID: "opencode-session-1",
-      arguments: ["workspaces", "use", "Engineering Team"],
+      arguments: ["use", "Engineering Team"],
     });
     const otherSubcommand = await plugin["command.execute.before"]({
-      command: "nams-hooks",
+      command: "nams:workspace",
       sessionID: "opencode-session-1",
-      arguments: ["workspaces", "list"],
+      arguments: ["list"],
     });
 
     assert.equal(otherCommand, undefined);
@@ -203,21 +203,21 @@ test("command.execute.before reports invalid OpenCode workspace command forms", 
     const plugin = await NamsHooks({ client, directory: fixture.directory, project: "project-a", worktree: "worktree-a" });
 
     const missingSelector = await plugin["command.execute.before"]({
-      command: "nams-hooks",
+      command: "nams:workspace",
       sessionID: "opencode-session-1",
-      arguments: ["workspaces", "use"],
+      arguments: ["use"],
     });
     const missingSession = await plugin["command.execute.before"]({
-      command: "nams-hooks",
+      command: "nams:workspace",
       sessionID: " ",
-      arguments: ["workspaces", "use", "Engineering Team"],
+      arguments: ["use", "Engineering Team"],
     });
 
     assert.deepEqual(missingSelector, { stop: true });
     assert.deepEqual(missingSession, { stop: true });
     assert.equal(toasts.length, 2);
     assert.equal(toasts[0].variant, "danger");
-    assert.match(toasts[0].message, /Usage: \/nams-hooks workspaces use <workspace-id-or-name>/);
+    assert.match(toasts[0].message, /Usage: \/nams:workspace use <workspace-id-or-name>/);
     assert.equal(toasts[1].variant, "danger");
     assert.match(toasts[1].message, /OpenCode session id is unavailable/);
     assert.match(toasts[1].message, /--workspace 'Engineering Team'/);
@@ -249,9 +249,9 @@ test("command.execute.before times out hanging workspace configure", async () =>
 
     const startedAt = Date.now();
     const result = await plugin["command.execute.before"]({
-      command: "nams-hooks",
+      command: "nams:workspace",
       sessionID: "opencode-session-1",
-      arguments: ["workspaces", "use", "Engineering"],
+      arguments: ["use", "Engineering"],
     });
     const durationMs = Date.now() - startedAt;
 
@@ -284,9 +284,9 @@ test("command.execute.before surfaces failed workspace configure output", async 
     const plugin = await NamsHooks({ client, directory: fixture.directory, project: "project-a", worktree: "worktree-a" });
 
     const result = await plugin["command.execute.before"]({
-      command: "nams-hooks",
+      command: "nams:workspace",
       sessionID: "opencode-session-1",
-      arguments: "workspaces use Engineering",
+      arguments: "use Engineering",
     });
 
     const calls = await readCalls(fixture.callsPath);

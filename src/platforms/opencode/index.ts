@@ -295,7 +295,7 @@ function workspaceResultOutput(
 
 function opencodeSlashCommandLines(): string[] {
   return [
-    "In OpenCode sessions with the NAMS command installed, you can select a workspace with: /nams-hooks workspaces use <workspace-id-or-name>",
+    "In OpenCode sessions with the NAMS command installed, you can select a workspace with: /nams:workspace use <workspace-id-or-name>",
   ];
 }
 

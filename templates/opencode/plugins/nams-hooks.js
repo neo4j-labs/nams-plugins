@@ -37,7 +37,7 @@ export const NamsHooks = async ({ client, directory, project, worktree }) => {
         await showCommandResult(client, {
           code: 1,
           stdout: "",
-          stderr: "Usage: /nams-hooks workspaces use <workspace-id-or-name>",
+          stderr: "Usage: /nams:workspace use <workspace-id-or-name>",
         });
         return { stop: true };
       }
@@ -254,12 +254,12 @@ async function showWarning(client, message) {
 }
 
 function parseWorkspaceUseCommand(input) {
-  if (input?.command !== "nams-hooks") {
+  if (input?.command !== "nams:workspace") {
     return undefined;
   }
 
   const parts = commandArgumentParts(input?.arguments);
-  if (parts[0] !== "workspaces" || parts[1] !== "use") {
+  if (parts[0] !== "use") {
     return undefined;
   }
 
@@ -280,13 +280,13 @@ function commandArgumentParts(argumentValue) {
 function workspaceSelectorFromArguments(argumentValue) {
   if (Array.isArray(argumentValue)) {
     return argumentValue
-      .slice(2)
+      .slice(1)
       .map((part) => String(part))
       .join(" ")
       .trim();
   }
   if (typeof argumentValue === "string") {
-    const match = argumentValue.match(/^\s*workspaces\s+use(?:\s+([\s\S]*?))?\s*$/);
+    const match = argumentValue.match(/^\s*use(?:\s+([\s\S]*?))?\s*$/);
     return match?.[1]?.trim() ?? "";
   }
   return "";

@@ -13,7 +13,7 @@ const geminiExtensionPath = path.join(root, "dist", "gemini-extension.json");
 const claudeMarketplacePath = path.join(root, "dist", ".claude-plugin", "marketplace.json");
 const claudePluginManifestPath = path.join(root, "dist", "plugins", "nams-hooks", ".claude-plugin", "plugin.json");
 const claudePluginHooksPath = path.join(root, "dist", "plugins", "nams-hooks", "hooks", "hooks.json");
-const claudePluginCommandPath = path.join(root, "dist", "plugins", "nams-hooks", "commands", "nams-hooks.md");
+const claudePluginCommandPath = path.join(root, "dist", "plugins", "nams-hooks", "commands", "nams", "workspace.md");
 const claudePluginWorkspaceScriptPath = path.join(root, "dist", "plugins", "nams-hooks", "scripts", "workspace-use.mjs");
 const claudePluginCliPath = path.join(root, "dist", "plugins", "nams-hooks", "bin", "cli.js");
 const codexMarketplacePath = path.join(root, "dist", ".agents", "plugins", "marketplace.json");
@@ -202,8 +202,8 @@ function assertClaudeHookCommand(hooks, eventName, namsEvent) {
 function assertClaudeWorkspaceCommandHook(hooks) {
   const group = hooks.hooks?.UserPromptExpansion?.[0];
   const handler = group?.hooks?.[0];
-  if (group?.matcher !== "^nams-hooks$") {
-    throw new Error("Claude plugin UserPromptExpansion hook must match the /nams-hooks command.");
+  if (group?.matcher !== "^nams:workspace$") {
+    throw new Error("Claude plugin UserPromptExpansion hook must match the /nams:workspace command.");
   }
   if (handler?.type !== "command" || handler.command !== "node") {
     throw new Error("Claude plugin UserPromptExpansion hook must run node.");
@@ -302,7 +302,7 @@ function claudePackedFiles(packageDir) {
     `${prefix}.claude-plugin/marketplace.json`,
     `${prefix}plugins/nams-hooks/.claude-plugin/plugin.json`,
     `${prefix}plugins/nams-hooks/hooks/hooks.json`,
-    `${prefix}plugins/nams-hooks/commands/nams-hooks.md`,
+    `${prefix}plugins/nams-hooks/commands/nams/workspace.md`,
     `${prefix}plugins/nams-hooks/scripts/workspace-use.mjs`,
     `${prefix}plugins/nams-hooks/bin/cli.js`,
   ];
