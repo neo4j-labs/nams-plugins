@@ -4,7 +4,7 @@
 
 **Goal:** Split generated artifacts into npm, marketplace, and local distribution trees driven by a tested template projection manifest.
 
-**Architecture:** Keep hook runtime and platform adapters unchanged. Move source templates into shared, local, and marketplace template roots, then make `scripts/build-dist.mjs` project those templates into `dist/`, `dist-marketplace/`, and `dist-local/` from an explicit manifest. Make `scripts/check-dist.mjs` independently verify output presence, absence, command-mode, executable bits, package contents, and placeholder rendering.
+**Architecture:** Keep hook runtime and platform adapters unchanged. Move source templates into shared, local, and marketplace template roots, then make target-specific build scripts project those templates into `dist/`, `dist-marketplace/`, and `dist-local/` from explicit manifests. Put shared filesystem/rendering helpers in one build utility module, while each target script owns exactly one output tree. Make `scripts/check-dist.mjs` independently verify output presence, absence, command-mode, executable bits, package contents, and placeholder rendering.
 
 **Tech Stack:** TypeScript source compiled by `tsc`, Node.js ESM scripts using built-ins only, Node's `node:test` runner through `tsx`, JSON/JavaScript hook templates, npm dry-run package verification.
 
@@ -21,7 +21,11 @@
 - `test/opencode-template.test.ts`: assert the shared OpenCode template supports both installed and bundled command modes.
 - `test/opencode/opencode-template.test.ts`: render the shared OpenCode template in a temp file before importing it.
 - `test/package-metadata.test.ts`: assert new package scripts and package file inclusion rules.
-- `scripts/build-dist.mjs`: replace ad hoc copy logic with target-specific builders and a projection manifest.
+- `scripts/build-dist-common.mjs`: shared projection helpers for package metadata, runtime copying, template rendering, and OpenCode command rendering.
+- `scripts/build-dist-npm.mjs`: build only the npm package tree in `dist/`.
+- `scripts/build-dist-marketplace.mjs`: build only the self-contained marketplace tree in `dist-marketplace/`.
+- `scripts/build-dist-local.mjs`: build only local project configurations in `dist-local/`.
+- `scripts/build-dist.mjs`: delete after the target scripts are wired.
 - `scripts/check-dist.mjs`: verify all three generated trees.
 - `README.md`, `INSTALL.md`, `DEVELOPMENT.md`, and `docs/superpowers/specs/2026-05-10-nams-hooks-design.md`: document the three output trees and updated local/marketplace install paths.
 
@@ -66,10 +70,10 @@ test("package files include npm dist and docs without source templates", async (
 test("package scripts expose split dist targets and umbrella dist", async () => {
   const packageJson = JSON.parse(await readFile("package.json", "utf8"));
 
-  assert.equal(packageJson.scripts["dist:npm"], "rm -rf .build && tsc -p tsconfig.json --outDir .build/tsc && node scripts/build-dist.mjs npm");
-  assert.equal(packageJson.scripts["dist:marketplace"], "rm -rf .build && tsc -p tsconfig.json --outDir .build/tsc && node scripts/build-dist.mjs marketplace");
-  assert.equal(packageJson.scripts["dist:local"], "rm -rf .build && tsc -p tsconfig.json --outDir .build/tsc && node scripts/build-dist.mjs local");
-  assert.equal(packageJson.scripts.dist, "rm -rf .build && tsc -p tsconfig.json --outDir .build/tsc && node scripts/build-dist.mjs all");
+  assert.equal(packageJson.scripts["dist:npm"], "npm run build && node scripts/build-dist-npm.mjs");
+  assert.equal(packageJson.scripts["dist:marketplace"], "npm run build && node scripts/build-dist-marketplace.mjs");
+  assert.equal(packageJson.scripts["dist:local"], "npm run build && node scripts/build-dist-local.mjs");
+  assert.equal(packageJson.scripts.dist, "npm run dist:npm && npm run dist:local && npm run dist:marketplace");
   assert.equal(packageJson.scripts["dist:check"], "node scripts/check-dist.mjs");
   assert.equal(packageJson.scripts["package:check"], "npm run check && npm run dist && npm run dist:check");
 });
@@ -112,10 +116,10 @@ Edit `package.json` so `files` and `scripts` use this exact shape:
     "test:typecheck": "tsc -p tsconfig.test.json",
     "test": "npm run build && node --import=tsx --test test/*.test.ts test/**/*.test.ts",
     "check": "npm run openapi:generate && npm run build && npm run test:typecheck && npm test",
-    "dist:npm": "rm -rf .build && tsc -p tsconfig.json --outDir .build/tsc && node scripts/build-dist.mjs npm",
-    "dist:marketplace": "rm -rf .build && tsc -p tsconfig.json --outDir .build/tsc && node scripts/build-dist.mjs marketplace",
-    "dist:local": "rm -rf .build && tsc -p tsconfig.json --outDir .build/tsc && node scripts/build-dist.mjs local",
-    "dist": "rm -rf .build && tsc -p tsconfig.json --outDir .build/tsc && node scripts/build-dist.mjs all",
+    "dist:npm": "npm run build && node scripts/build-dist-npm.mjs",
+    "dist:marketplace": "npm run build && node scripts/build-dist-marketplace.mjs",
+    "dist:local": "npm run build && node scripts/build-dist-local.mjs",
+    "dist": "npm run dist:npm && npm run dist:local && npm run dist:marketplace",
     "dist:check": "node scripts/check-dist.mjs",
     "package:check": "npm run check && npm run dist && npm run dist:check"
   },
@@ -771,99 +775,68 @@ git commit -m "test: require split dist outputs" -m "Co-authored-by: Codex <code
 
 ---
 
-### Task 4: Implement Manifested Build Projections
+### Task 4: Implement Separate Build Scripts With Shared Projection Helpers
 
 **Files:**
-- Modify: `scripts/build-dist.mjs`
+- Create: `scripts/build-dist-common.mjs`
+- Create: `scripts/build-dist-npm.mjs`
+- Create: `scripts/build-dist-marketplace.mjs`
+- Create: `scripts/build-dist-local.mjs`
+- Delete: `scripts/build-dist.mjs`
 
-- [ ] **Step 1: Replace `scripts/build-dist.mjs` imports and constants**
+- [ ] **Step 1: Create shared build helper module**
 
-Use this top section:
+Create `scripts/build-dist-common.mjs` with this content:
 
 ```js
-#!/usr/bin/env node
-
 import { chmod, cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const compileDir = path.join(root, ".build", "tsc");
-const distDirs = {
-  npm: path.join(root, "dist"),
-  marketplace: path.join(root, "dist-marketplace"),
-  local: path.join(root, "dist-local"),
-};
-```
+export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+export const compileDir = path.join(root, ".build", "tsc");
 
-- [ ] **Step 2: Add the projection manifest**
-
-Add this manifest below the constants:
-
-```js
-const projections = {
-  npm: [
-    { kind: "runtime", to: "bin" },
-    { kind: "packageJson", to: "package.json" },
-  ],
-  marketplace: [
-    { kind: "template", platform: "gemini", from: "templates/marketplace/gemini/gemini-extension.json", to: "gemini-extension.json", renderPackage: false },
-    { kind: "template", platform: "gemini", from: "templates/marketplace/gemini/hooks", to: "hooks", renderPackage: false },
-    { kind: "runtime", platform: "gemini", to: "plugins/gemini-nams-hooks/bin" },
-    { kind: "template", platform: "claude", from: "templates/marketplace/claude/.claude-plugin", to: ".claude-plugin", renderPackage: true },
-    { kind: "template", platform: "claude", from: "templates/marketplace/claude/plugins/claude-nams-hooks", to: "plugins/claude-nams-hooks", renderPackage: true },
-    { kind: "runtime", platform: "claude", to: "plugins/claude-nams-hooks/bin" },
-    { kind: "template", platform: "codex", from: "templates/marketplace/codex/.agents", to: ".agents", renderPackage: true },
-    { kind: "template", platform: "codex", from: "templates/marketplace/codex/plugins/codex-nams-hooks", to: "plugins/codex-nams-hooks", renderPackage: true },
-    { kind: "runtime", platform: "codex", to: "plugins/codex-nams-hooks/bin" },
-    { kind: "opencode", platform: "opencode", from: "templates/marketplace/opencode/plugins/opencode-nams-hooks/nams-hooks.js", to: "plugins/opencode-nams-hooks/nams-hooks.js", commandMode: "bundled" },
-    { kind: "runtime", platform: "opencode", to: "plugins/opencode-nams-hooks/bin" },
-  ],
-  local: [
-    { kind: "template", platform: "claude", from: "templates/local/claude", to: "claude", renderPackage: false },
-    { kind: "template", platform: "codex", from: "templates/local/codex", to: "codex", renderPackage: false },
-    { kind: "template", platform: "gemini", from: "templates/local/gemini", to: "gemini", renderPackage: false },
-    { kind: "opencode", platform: "opencode", from: "templates/local/opencode/.opencode/plugins/nams-hooks.js", to: "opencode/.opencode/plugins/nams-hooks.js", commandMode: "installed" },
-  ],
-};
-```
-
-- [ ] **Step 3: Replace `main()`**
-
-Use this `main()`:
-
-```js
-async function main() {
-  const target = process.argv[2] ?? "all";
-  const source = await readRootPackageJson();
-  const replacements = packageTemplateReplacements(source);
-
-  if (target === "all") {
-    await buildTarget("npm", source, replacements);
-    await buildTarget("marketplace", source, replacements);
-    await buildTarget("local", source, replacements);
-    return;
-  }
-
-  if (!Object.hasOwn(projections, target)) {
-    throw new Error(`Unknown dist target ${target}. Expected npm, marketplace, local, or all.`);
-  }
-
-  await buildTarget(target, source, replacements);
-}
-```
-
-- [ ] **Step 4: Add `buildTarget()` and projection runners**
-
-Add these functions:
-
-```js
-async function buildTarget(target, source, replacements) {
-  const outputRoot = distDirs[target];
+export async function resetOutputRoot(outputRoot) {
   await rm(outputRoot, { recursive: true, force: true });
   await mkdir(outputRoot, { recursive: true });
+}
 
-  for (const projection of projections[target]) {
+export async function readRootPackageJson() {
+  return JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
+}
+
+export function packageTemplateReplacements(source) {
+  return {
+    __PACKAGE_VERSION__: source.version,
+    __PACKAGE_LICENSE__: source.license,
+  };
+}
+
+export async function copyRuntime(targetDir) {
+  await cp(compileDir, targetDir, { recursive: true });
+  await chmod(path.join(targetDir, "cli.js"), 0o755);
+}
+
+export async function writeReleasePackageJson(source, targetPath) {
+  const releasePackage = {
+    name: source.name,
+    version: source.version,
+    description: source.description,
+    type: source.type,
+    bin: {
+      "nams-hooks": "./bin/cli.js",
+    },
+    engines: source.engines,
+    license: source.license,
+  };
+  await writeFileWithParents(targetPath, `${JSON.stringify(releasePackage, null, 2)}\n`);
+}
+
+export async function buildProjectionTarget(outputRoot, projections) {
+  const source = await readRootPackageJson();
+  const replacements = packageTemplateReplacements(source);
+  await resetOutputRoot(outputRoot);
+  for (const projection of projections) {
     await applyProjection(outputRoot, projection, source, replacements);
   }
 }
@@ -888,39 +861,8 @@ async function applyProjection(outputRoot, projection, source, replacements) {
   }
   throw new Error(`Unsupported projection kind ${projection.kind}`);
 }
-```
 
-- [ ] **Step 5: Add runtime and OpenCode render helpers**
-
-Add these functions:
-
-```js
-async function copyRuntime(targetDir) {
-  await cp(compileDir, targetDir, { recursive: true });
-  await chmod(path.join(targetDir, "cli.js"), 0o755);
-}
-
-async function renderOpenCodeProjection(outputRoot, projection) {
-  const marker = await readFile(path.join(root, projection.from), "utf8");
-  const markerPath = marker.trim();
-  if (markerPath !== "../../../../opencode/plugins/nams-hooks.js") {
-    throw new Error(`${projection.from} must point at the shared OpenCode template.`);
-  }
-  const commandExpression = projection.commandMode === "bundled"
-    ? 'new URL("./bin/cli.js", import.meta.url).pathname'
-    : JSON.stringify("nams-hooks");
-  const source = await readFile(path.join(root, "templates", "opencode", "plugins", "nams-hooks.js"), "utf8");
-  const rendered = renderTemplate(source, { __NAMS_HOOKS_COMMAND__: commandExpression });
-  await writeFileWithParents(path.join(outputRoot, projection.to), rendered);
-}
-```
-
-- [ ] **Step 6: Replace template rendering helpers**
-
-Replace `renderTemplateTree()` with these functions:
-
-```js
-async function renderTemplatePath(sourcePath, targetPath, replacements) {
+export async function renderTemplatePath(sourcePath, targetPath, replacements) {
   const entries = await readdir(sourcePath, { withFileTypes: true }).catch(async (error) => {
     if (error?.code === "ENOTDIR") {
       const rendered = renderTemplate(await readFile(sourcePath, "utf8"), replacements);
@@ -945,36 +887,115 @@ async function renderTemplatePath(sourcePath, targetPath, replacements) {
   }
 }
 
-async function writeFileWithParents(filePath, content) {
+export function renderTemplate(content, replacements) {
+  let rendered = content;
+  for (const [placeholder, value] of Object.entries(replacements)) {
+    rendered = rendered.split(placeholder).join(value);
+  }
+  return rendered;
+}
+
+export async function renderOpenCodeProjection(outputRoot, projection) {
+  const marker = await readFile(path.join(root, projection.from), "utf8");
+  const markerPath = marker.trim();
+  if (markerPath !== "../../../../opencode/plugins/nams-hooks.js") {
+    throw new Error(`${projection.from} must point at the shared OpenCode template.`);
+  }
+  const commandExpression = projection.commandMode === "bundled"
+    ? 'new URL("./bin/cli.js", import.meta.url).pathname'
+    : JSON.stringify("nams-hooks");
+  const source = await readFile(path.join(root, "templates", "opencode", "plugins", "nams-hooks.js"), "utf8");
+  const rendered = renderTemplate(source, { __NAMS_HOOKS_COMMAND__: commandExpression });
+  await writeFileWithParents(path.join(outputRoot, projection.to), rendered);
+}
+
+export async function writeFileWithParents(filePath, content) {
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, content);
 }
 ```
 
-Keep `renderTemplate()` and `packageTemplateReplacements()` with the same behavior.
+- [ ] **Step 2: Create npm dist build script**
 
-- [ ] **Step 7: Update `writeReleasePackageJson()` signature**
-
-Replace `writeReleasePackageJson(source)` with:
+Create `scripts/build-dist-npm.mjs` with this content:
 
 ```js
-async function writeReleasePackageJson(source, targetPath) {
-  const releasePackage = {
-    name: source.name,
-    version: source.version,
-    description: source.description,
-    type: source.type,
-    bin: {
-      "nams-hooks": "./bin/cli.js",
-    },
-    engines: source.engines,
-    license: source.license,
-  };
-  await writeFileWithParents(targetPath, `${JSON.stringify(releasePackage, null, 2)}\n`);
-}
+#!/usr/bin/env node
+
+import path from "node:path";
+import {
+  copyRuntime,
+  readRootPackageJson,
+  resetOutputRoot,
+  root,
+  writeReleasePackageJson,
+} from "./build-dist-common.mjs";
+
+const outputRoot = path.join(root, "dist");
+
+await resetOutputRoot(outputRoot);
+await copyRuntime(path.join(outputRoot, "bin"));
+await writeReleasePackageJson(await readRootPackageJson(), path.join(outputRoot, "package.json"));
 ```
 
-- [ ] **Step 8: Run split dist targets and verify output is created**
+- [ ] **Step 3: Create marketplace dist build script**
+
+Create `scripts/build-dist-marketplace.mjs` with this content:
+
+```js
+#!/usr/bin/env node
+
+import path from "node:path";
+import { buildProjectionTarget, root } from "./build-dist-common.mjs";
+
+const outputRoot = path.join(root, "dist-marketplace");
+const projections = [
+  { kind: "template", platform: "gemini", from: "templates/marketplace/gemini/gemini-extension.json", to: "gemini-extension.json", renderPackage: false },
+  { kind: "template", platform: "gemini", from: "templates/marketplace/gemini/hooks", to: "hooks", renderPackage: false },
+  { kind: "runtime", platform: "gemini", to: "plugins/gemini-nams-hooks/bin" },
+  { kind: "template", platform: "claude", from: "templates/marketplace/claude/.claude-plugin", to: ".claude-plugin", renderPackage: true },
+  { kind: "template", platform: "claude", from: "templates/marketplace/claude/plugins/claude-nams-hooks", to: "plugins/claude-nams-hooks", renderPackage: true },
+  { kind: "runtime", platform: "claude", to: "plugins/claude-nams-hooks/bin" },
+  { kind: "template", platform: "codex", from: "templates/marketplace/codex/.agents", to: ".agents", renderPackage: true },
+  { kind: "template", platform: "codex", from: "templates/marketplace/codex/plugins/codex-nams-hooks", to: "plugins/codex-nams-hooks", renderPackage: true },
+  { kind: "runtime", platform: "codex", to: "plugins/codex-nams-hooks/bin" },
+  { kind: "opencode", platform: "opencode", from: "templates/marketplace/opencode/plugins/opencode-nams-hooks/nams-hooks.js", to: "plugins/opencode-nams-hooks/nams-hooks.js", commandMode: "bundled" },
+  { kind: "runtime", platform: "opencode", to: "plugins/opencode-nams-hooks/bin" },
+];
+
+await buildProjectionTarget(outputRoot, projections);
+```
+
+- [ ] **Step 4: Create local dist build script**
+
+Create `scripts/build-dist-local.mjs` with this content:
+
+```js
+#!/usr/bin/env node
+
+import path from "node:path";
+import { buildProjectionTarget, root } from "./build-dist-common.mjs";
+
+const outputRoot = path.join(root, "dist-local");
+const projections = [
+  { kind: "template", platform: "claude", from: "templates/local/claude", to: "claude", renderPackage: false },
+  { kind: "template", platform: "codex", from: "templates/local/codex", to: "codex", renderPackage: false },
+  { kind: "template", platform: "gemini", from: "templates/local/gemini", to: "gemini", renderPackage: false },
+  { kind: "opencode", platform: "opencode", from: "templates/local/opencode/.opencode/plugins/nams-hooks.js", to: "opencode/.opencode/plugins/nams-hooks.js", commandMode: "installed" },
+];
+
+await buildProjectionTarget(outputRoot, projections);
+```
+
+- [ ] **Step 5: Remove the old umbrella build script**
+
+Run:
+
+```bash
+git rm scripts/build-dist.mjs
+```
+
+- [ ] **Step 6: Run split dist targets and verify output is created**
 
 Run:
 
@@ -992,7 +1013,7 @@ test -f dist-local/codex/.codex/hooks.json
 
 Expected: all commands exit `0`.
 
-- [ ] **Step 9: Run dist check and verify it passes**
+- [ ] **Step 7: Run dist check and verify it passes**
 
 Run:
 
@@ -1003,13 +1024,13 @@ npm run dist:check
 
 Expected: PASS.
 
-- [ ] **Step 10: Commit build projection implementation**
+- [ ] **Step 8: Commit build projection implementation**
 
 Run:
 
 ```bash
-git add scripts/build-dist.mjs
-git commit -m "feat: build manifested dist projections" -m "Co-authored-by: Codex <codex@openai.com>"
+git add -A scripts/build-dist-common.mjs scripts/build-dist-npm.mjs scripts/build-dist-marketplace.mjs scripts/build-dist-local.mjs scripts/build-dist.mjs
+git commit -m "feat: build split dist projections" -m "Co-authored-by: Codex <codex@openai.com>"
 ```
 
 ---

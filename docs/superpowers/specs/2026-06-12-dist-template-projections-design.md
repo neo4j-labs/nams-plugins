@@ -176,15 +176,16 @@ match each platform's native project configuration shape.
 
 ## Build Script Design
 
-`scripts/build-dist.mjs` will expose target-specific build paths:
+Separate build scripts will expose target-specific build paths:
 
 - `dist:npm`: build `dist/`.
 - `dist:marketplace`: build `dist-marketplace/`.
 - `dist:local`: build `dist-local/`.
 - `dist`: umbrella target that builds all three.
 
-The build script will compile TypeScript once into `.build/tsc`, then render
-targets through a projection manifest. The manifest should describe:
+Each `package.json` target-specific script will compile TypeScript into
+`.build/tsc`, then run the matching projection script. The projection scripts
+will render targets through explicit manifests. The manifests should describe:
 
 - target output tree.
 - platform.
@@ -263,16 +264,17 @@ what to create; check logic proves what was created.
 
 ```json
 {
-  "dist:npm": "node scripts/build-dist.mjs npm",
-  "dist:marketplace": "node scripts/build-dist.mjs marketplace",
-  "dist:local": "node scripts/build-dist.mjs local",
-  "dist": "node scripts/build-dist.mjs all"
+  "dist:npm": "npm run build && node scripts/build-dist-npm.mjs",
+  "dist:marketplace": "npm run build && node scripts/build-dist-marketplace.mjs",
+  "dist:local": "npm run build && node scripts/build-dist-local.mjs",
+  "dist": "npm run dist:npm && npm run dist:local && npm run dist:marketplace"
 }
 ```
 
-`npm run dist` is the umbrella command. It must remove and recreate all three
-dist trees from source. Target-specific scripts may remove only their own output
-tree, but they must not leave stale files behind.
+`npm run dist` is the umbrella command. Each target-specific script owns one
+output tree and must remove and recreate that tree from source. The umbrella
+command runs the npm package tree first, then local configuration output, then
+marketplace output.
 
 `npm run package:check` will continue to run full project verification and then
 verify all generated outputs.
@@ -298,10 +300,6 @@ The current ambiguous Claude marketplace plugin directory
 `plugins/claude-nams-hooks/`. The installable plugin name may remain
 `nams-hooks`; the filesystem folder names are platform-specific to avoid
 ambiguous ownership.
-
-The pre-existing untracked path `templates/claude/.claude/.claude` in the
-working checkout is not part of this design. Implementation should not delete or
-rewrite unrelated untracked user files without explicit permission.
 
 ## Testing Plan
 
