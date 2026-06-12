@@ -37,7 +37,7 @@
     ],
     "UserPromptExpansion": [
       {
-        "matcher": "^nams-hooks:nams-hooks$",
+        "matcher": "^nams-hooks$",
         "hooks": [
           {
             "type": "command",

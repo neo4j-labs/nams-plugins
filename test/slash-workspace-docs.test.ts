@@ -3,7 +3,6 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
 const claudeTemplateSlash = "/nams-hooks workspaces use <workspace-id-or-name>";
-const claudePluginSlash = "/nams-hooks:nams-hooks workspaces use <workspace-id-or-name>";
 const opencodeSlash = "/nams-hooks workspaces use <workspace-id-or-name>";
 const genericSessionConfigure =
   "nams-hooks workspaces configure <platform> --scope session --session-id <session-id> --workspace <workspace-id-or-name>";
@@ -65,10 +64,10 @@ test("README documents Tier 1 workspace selection and the portable shell command
 
   assert.match(content, /session-scoped selection/i);
   assertMentionsPlatformCommand(content, "Claude Code", claudeTemplateSlash);
-  assertMentionsPlatformCommand(content, "Claude plugin", claudePluginSlash);
   assertMentionsPlatformCommand(content, "OpenCode", opencodeSlash);
   assertIncludesCommand(content, genericSessionConfigure);
   assertIncludesCommand(content, durableProjectConfigure);
+  assert.doesNotMatch(content, /nams-hooks:nams-hooks/);
 });
 
 test("INSTALL workspace selection documents slash commands and shell fallback", async () => {
@@ -77,13 +76,13 @@ test("INSTALL workspace selection documents slash commands and shell fallback", 
 
   assert.match(workspaceSelection, /multi-workspace inactive memory notices/i);
   assertMentionsPlatformCommand(workspaceSelection, "Claude Code", claudeTemplateSlash);
-  assertMentionsPlatformCommand(workspaceSelection, "Claude Code plugin", claudePluginSlash);
   assertMentionsPlatformCommand(workspaceSelection, "OpenCode", opencodeSlash);
   assert.match(workspaceSelection, /slash commands[\s\S]{0,160}explicit shell command/i);
   assert.match(workspaceSelection, /shell command[\s\S]{0,160}Gemini/i);
   assert.match(workspaceSelection, /shell command[\s\S]{0,160}Codex/i);
   assertIncludesCommand(workspaceSelection, genericSessionConfigure);
   assertIncludesCommand(workspaceSelection, opencodeSessionExample);
+  assert.doesNotMatch(workspaceSelection, /nams-hooks:nams-hooks/);
 });
 
 test("INSTALL platform notes keep platform-specific workspace command guidance", async () => {
@@ -94,9 +93,8 @@ test("INSTALL platform notes keep platform-specific workspace command guidance",
   const opencode = sectionByHeading(content, "## OpenCode");
 
   assert.match(claude, /project template/i);
-  assert.match(claude, /namespaced/i);
+  assert.match(claude, /Claude plugin/i);
   assertIncludesCommand(claude, claudeTemplateSlash);
-  assertIncludesCommand(claude, claudePluginSlash);
   assertIncludesCommand(
     claude,
     "nams-hooks workspaces configure claude --scope session --session-id <session-id> --workspace <workspace-id-or-name>",
@@ -128,18 +126,17 @@ test("session workspace research note reflects Tier 1 support and safe Claude ha
   const intro = content.slice(0, content.indexOf("## Current Repo State"));
   const remainingUxWork = sectionByHeading(content, "## Remaining UX Work");
 
-  assertMentionsPlatformCommand(intro, "Claude Code project template", claudeTemplateSlash);
-  assertMentionsPlatformCommand(intro, "Claude Code plugin", claudePluginSlash);
+  assertMentionsPlatformCommand(intro, "Claude Code", claudeTemplateSlash);
   assertMentionsPlatformCommand(intro, "OpenCode", opencodeSlash);
   assertIncludesCommand(intro, genericSessionConfigure);
   assertIncludesCommand(remainingUxWork, claudeTemplateSlash);
-  assertIncludesCommand(remainingUxWork, claudePluginSlash);
   assertIncludesCommand(remainingUxWork, opencodeSlash);
   assertIncludesCommand(remainingUxWork, genericSessionConfigure);
   assert.match(remainingUxWork, /Gemini CLI[\s\S]{0,160}deferred/i);
   assert.match(remainingUxWork, /Codex[\s\S]{0,160}explicit shell configuration/i);
   assert.doesNotMatch(remainingUxWork, /Add Claude Code UX first/);
   assert.doesNotMatch(content, /current shim does not yet intercept a user command/);
+  assert.doesNotMatch(content, /nams-hooks:nams-hooks/);
   assert.match(content, /UserPromptExpansion/);
   assert.match(content, /\$ARGUMENTS[^.]*must not be interpolated into a shell command/s);
 });

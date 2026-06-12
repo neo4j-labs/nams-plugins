@@ -6,4 +6,4 @@ disable-model-invocation: true
 
 The nams-hooks plugin handles this command before it reaches Claude.
 
-Use `/nams-hooks:nams-hooks workspaces use <workspace-id-or-name>`.
+Use `/nams-hooks workspaces use <workspace-id-or-name>`.

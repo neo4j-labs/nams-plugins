@@ -13,13 +13,8 @@ agent session:
 /nams-hooks workspaces use <workspace-id-or-name>
 ```
 
-For project-template Claude Code installs, this direct command is available.
-For marketplace-installed Claude Code plugins, Claude namespaces plugin
-commands by plugin name. The Claude plugin therefore exposes the command as:
-
-```text
-/nams-hooks:nams-hooks workspaces use <workspace-id-or-name>
-```
+For Claude Code, both project-template installs and plugin installs use this
+direct command.
 
 The slash command is a convenience wrapper only. The existing shared command
 remains the source of truth for workspace validation and state mutation:
@@ -166,16 +161,10 @@ documented current-session substitution.
 
 Package a Claude slash-invocable command asset with both the baseline Claude
 template and the Claude plugin. Claude Code treats custom commands and skills as
-the same command surface for this purpose. The project-template user invokes:
+the same command surface for this purpose. The user invokes:
 
 ```text
 /nams-hooks workspaces use Engineering
-```
-
-Plugin commands are namespaced by plugin name. The plugin user invokes:
-
-```text
-/nams-hooks:nams-hooks workspaces use Engineering
 ```
 
 The command should be user-invoked only. If the Claude command format supports a

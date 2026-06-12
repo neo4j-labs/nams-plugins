@@ -10,13 +10,7 @@ which currently supported `nams-hooks` platforms expose a user-invoked command
 surface that can wrap it. Tier 1 user-facing forms are:
 
 ```text
-# Claude Code project template command
-/nams-hooks workspaces use <workspace-id-or-name>
-
-# Claude Code plugin command
-/nams-hooks:nams-hooks workspaces use <workspace-id-or-name>
-
-# OpenCode plugin shim command
+# Claude Code and OpenCode
 /nams-hooks workspaces use <workspace-id-or-name>
 ```
 
@@ -78,7 +72,7 @@ Session scope includes filesystem preflights before listing workspaces:
 
 | Platform | Shared session command implemented? | User-invoked command can run shell? | Current-session id available? | Fit | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Claude Code | Yes | Yes | Yes | Best | Plugin skills/custom commands are slash-invocable under the plugin namespace. `UserPromptExpansion` hooks can intercept the command before Claude sees it and receive `session_id` plus raw `command_args`. |
+| Claude Code | Yes | Yes | Yes | Best | Template and plugin custom commands are slash-invocable as `/nams-hooks`. `UserPromptExpansion` hooks can intercept the command before Claude sees it and receive `session_id` plus raw `command_args`. |
 | OpenCode | Yes | Yes | Yes | Best with plugin shim | The plugin shim intercepts `command.execute.before`, preserves `/nams-hooks workspaces use <workspace-id-or-name>`, and runs the shared configure command. |
 | Gemini CLI | Yes | Yes | Partial | Good with bridge | Custom commands support shell injection, and hooks expose `GEMINI_SESSION_ID`. The custom-command shell execution path appears to set only the general `GEMINI_CLI=1` identity variable, so a session-id bridge is still needed for slash-command UX. |
 | Codex | Yes | Partial | Payload-dependent | Prompt-helper only | Codex hooks run shell commands and workspace notices now include parsed session IDs when available. Custom prompts expand into model instructions rather than deterministic pre-shell command execution. |
@@ -87,18 +81,11 @@ Session scope includes filesystem preflights before listing workspaces:
 
 ### Claude Code
 
-Claude Code is a strong fit for this feature. The project template exposes the
-direct command:
+Claude Code is a strong fit for this feature. Both the project template and
+plugin expose the direct command:
 
 ```text
 /nams-hooks workspaces use <workspace-id-or-name>
-```
-
-The Claude plugin has one important packaging constraint: plugin commands are
-namespaced by plugin name. The Claude plugin therefore exposes the command as:
-
-```text
-/nams-hooks:nams-hooks workspaces use <workspace-id-or-name>
 ```
 
 Claude skills can be invoked directly with slash command names, for example
@@ -235,16 +222,11 @@ Behavior:
 
 ## Remaining UX Work
 
-After Tier 1, Claude Code project-template installs expose the direct command:
+After Tier 1, Claude Code project-template and plugin installs expose the direct
+command:
 
 ```text
 /nams-hooks workspaces use <workspace-id-or-name>
-```
-
-Claude Code plugin installs expose the namespaced command:
-
-```text
-/nams-hooks:nams-hooks workspaces use <workspace-id-or-name>
 ```
 
 OpenCode exposes the direct plugin shim command:

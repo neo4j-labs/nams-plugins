@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const commandName = "nams-hooks:nams-hooks";
+const commandName = "nams-hooks";
 const usage = `Usage: /${commandName} workspaces use <workspace-id-or-name>`;
 const cliTimeoutMs = 30_000;
 

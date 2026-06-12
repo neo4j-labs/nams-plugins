@@ -9,8 +9,7 @@ const claudeCommandPath = "templates/claude/plugins/nams-hooks/commands/nams-hoo
 const claudeWorkspaceScriptPath = "templates/claude/plugins/nams-hooks/scripts/workspace-use.mjs";
 const claudeBaselineCommandPath = "templates/claude/.claude/commands/nams-hooks.md";
 const claudeBaselineWorkspaceScriptPath = "templates/claude/.claude/scripts/workspace-use.mjs";
-const claudeWorkspaceCommandName = "nams-hooks:nams-hooks";
-const claudeBaselineCommandName = "nams-hooks";
+const claudeWorkspaceCommandName = "nams-hooks";
 
 test("Claude template maps native hooks to NAMS events", async () => {
   const template = JSON.parse(await readFile("templates/claude/.claude/settings.local.json", "utf8"));
@@ -80,12 +79,13 @@ test("Claude plugin template packages slash workspace command hook", async () =>
 
   assert.match(command, /argument-hint: workspaces use <workspace-id-or-name>/);
   assert.match(command, /disable-model-invocation: true/);
-  assert.match(command, /\/nams-hooks:nams-hooks workspaces use <workspace-id-or-name>/);
+  assert.match(command, /\/nams-hooks workspaces use <workspace-id-or-name>/);
+  assert.doesNotMatch(command, /nams-hooks:nams-hooks/);
   assert.doesNotMatch(command, /!\s*`/);
   assert.doesNotMatch(command, /\$ARGUMENTS/);
 
   assert.deepEqual(pluginCommandFor(template, "UserPromptExpansion"), ["node", "${CLAUDE_PLUGIN_ROOT}/scripts/workspace-use.mjs"]);
-  assert.equal(pluginMatcherFor(template, "UserPromptExpansion"), "^nams-hooks:nams-hooks$");
+  assert.equal(pluginMatcherFor(template, "UserPromptExpansion"), "^nams-hooks$");
   assert.match(script, /UserPromptExpansion/);
   assert.match(script, /command_args/);
   assert.match(script, /session_id/);
@@ -93,6 +93,7 @@ test("Claude plugin template packages slash workspace command hook", async () =>
   assert.match(script, /workspaces/);
   assert.match(script, /configure/);
   assert.match(script, /claude/);
+  assert.doesNotMatch(script, /nams-hooks:nams-hooks/);
   assert.match(script, /cliTimeoutMs = 30_000/);
   assert.match(script, /setTimeout/);
   assert.match(script, /shellQuote/);
@@ -177,8 +178,6 @@ test("Claude baseline slash workspace helper delegates through nams-hooks withou
         PATH: `${fixture.binDir}${path.delimiter}${process.env.PATH ?? ""}`,
       },
       input: JSON.stringify(userPromptExpansionInput({
-        command_name: claudeBaselineCommandName,
-        prompt: `/${claudeBaselineCommandName}`,
         session_id: "claude-session-1",
         command_args: `workspaces   use ${selector}`,
       })),
@@ -223,7 +222,7 @@ test("Claude slash workspace helper blocks missing selector and session id", asy
     });
     assert.equal(missingSelector.status, 0);
     assert.equal(JSON.parse(missingSelector.stdout).decision, "block");
-    assert.match(JSON.parse(missingSelector.stdout).reason, /Usage: \/nams-hooks:nams-hooks workspaces use <workspace-id-or-name>/);
+    assert.match(JSON.parse(missingSelector.stdout).reason, /Usage: \/nams-hooks workspaces use <workspace-id-or-name>/);
 
     const selector = "Engineering Team; $(echo unsafe)";
     const missingSession = spawnSync(process.execPath, [fixture.scriptPath], {

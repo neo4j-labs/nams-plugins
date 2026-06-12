@@ -72,18 +72,11 @@ Workspace selection has three lifetimes:
 For multi-workspace inactive memory notices, the recommended quick fix is a
 session selection.
 
-When the platform command is installed, Claude Code exposes the direct command
-from the project template, the Claude Code plugin exposes the namespaced
-command, and OpenCode exposes the direct command:
+When the platform command is installed, Claude Code and OpenCode expose the
+direct command:
 
 ```text
-# Claude Code project template
-/nams-hooks workspaces use <workspace-id-or-name>
-
-# Claude Code plugin
-/nams-hooks:nams-hooks workspaces use <workspace-id-or-name>
-
-# OpenCode
+# Claude Code and OpenCode
 /nams-hooks workspaces use <workspace-id-or-name>
 ```
 
@@ -156,16 +149,11 @@ plugin-provided values.
 Use `--scope project`, `--scope local`, or `--scope user` on Claude plugin
 commands when you need a specific installation scope.
 
-The project template workspace selection command is direct:
+The workspace selection command is direct in both the Claude project template
+and Claude plugin:
 
 ```text
 /nams-hooks workspaces use <workspace-id-or-name>
-```
-
-The workspace selection command is namespaced in the Claude plugin:
-
-```text
-/nams-hooks:nams-hooks workspaces use <workspace-id-or-name>
 ```
 
 It wraps the explicit Claude session command:

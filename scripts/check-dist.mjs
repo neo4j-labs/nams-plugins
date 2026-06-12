@@ -202,8 +202,8 @@ function assertClaudeHookCommand(hooks, eventName, namsEvent) {
 function assertClaudeWorkspaceCommandHook(hooks) {
   const group = hooks.hooks?.UserPromptExpansion?.[0];
   const handler = group?.hooks?.[0];
-  if (group?.matcher !== "^nams-hooks:nams-hooks$") {
-    throw new Error("Claude plugin UserPromptExpansion hook must match the namespaced /nams-hooks:nams-hooks command.");
+  if (group?.matcher !== "^nams-hooks$") {
+    throw new Error("Claude plugin UserPromptExpansion hook must match the /nams-hooks command.");
   }
   if (handler?.type !== "command" || handler.command !== "node") {
     throw new Error("Claude plugin UserPromptExpansion hook must run node.");
