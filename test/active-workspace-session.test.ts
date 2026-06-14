@@ -11,6 +11,10 @@ import {
   resolveActiveWorkspaceSession,
 } from "../src/runtime/active-workspace-session.js";
 
+interface TestMarker {
+  sessions: Array<Record<string, unknown>>;
+}
+
 function env(homeDir: string): Record<string, string> {
   return {
     HOME: homeDir,
@@ -18,8 +22,12 @@ function env(homeDir: string): Record<string, string> {
   };
 }
 
-async function readMarker(homeDir: string, platform: "gemini" | "codex"): Promise<Record<string, any>> {
-  return JSON.parse(await readFile(path.join(homeDir, ".nams", "state", platform, "active-workspace-sessions.json"), "utf8"));
+async function readMarker(homeDir: string, platform: "gemini" | "codex"): Promise<TestMarker> {
+  return JSON.parse(await readFile(path.join(homeDir, ".nams", "state", platform, "active-workspace-sessions.json"), "utf8")) as TestMarker;
+}
+
+async function wait(durationMs: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, durationMs));
 }
 
 test("records active workspace session markers without version metadata", async () => {
@@ -127,6 +135,42 @@ test("treats marker files with extra top-level metadata as empty before recordin
   }
 });
 
+test("treats marker files with any invalid session record as empty", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-active-session-project-"));
+  const homeDir = path.join(projectDir, "home");
+  const markerPath = path.join(homeDir, ".nams", "state", "gemini", "active-workspace-sessions.json");
+  try {
+    await mkdir(path.dirname(markerPath), { recursive: true });
+    await writeFile(markerPath, `${JSON.stringify({
+      sessions: [
+        {
+          sessionId: "valid-session",
+          sessionKey: "valid-session",
+          projectDirectory: path.resolve(projectDir),
+          touchedAt: "2026-06-14T10:00:00.000Z",
+        },
+        {
+          sessionId: "",
+          sessionKey: "invalid-session",
+          projectDirectory: path.resolve(projectDir),
+          touchedAt: "2026-06-14T10:00:00.000Z",
+        },
+      ],
+    })}\n`, { encoding: "utf8", mode: 0o600 });
+
+    const resolved = await resolveActiveWorkspaceSession({
+      platform: "gemini",
+      projectDirectory: projectDir,
+      now: new Date("2026-06-14T10:00:30.000Z"),
+      environment: env(homeDir),
+    });
+
+    assert.deepEqual(resolved, { status: "missing" });
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("resolves exactly one fresh active session and prunes stale records", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-active-session-project-"));
   const homeDir = path.join(projectDir, "home");
@@ -160,6 +204,75 @@ test("resolves exactly one fresh active session and prunes stale records", async
     const marker = await readMarker(homeDir, "gemini");
     assert.deepEqual(marker.sessions.map((session: Record<string, unknown>) => session.sessionId), ["fresh-session"]);
   } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("resolve reads the current marker after waiting for the marker lock", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-active-session-project-"));
+  const homeDir = path.join(projectDir, "home");
+  const markerPath = activeWorkspaceSessionsPath("gemini", env(homeDir));
+  const lockPath = `${markerPath}.lock`;
+  try {
+    await mkdir(path.dirname(markerPath), { recursive: true });
+    await writeFile(markerPath, `${JSON.stringify({
+      sessions: [
+        {
+          sessionId: "stale-session",
+          sessionKey: "stale-session",
+          projectDirectory: path.resolve(projectDir),
+          touchedAt: "2026-06-14T09:58:00.000Z",
+        },
+        {
+          sessionId: "first-fresh-session",
+          sessionKey: "first-fresh-session",
+          projectDirectory: path.resolve(projectDir),
+          touchedAt: "2026-06-14T10:00:00.000Z",
+        },
+      ],
+    })}\n`, { encoding: "utf8", mode: 0o600 });
+    await mkdir(lockPath, { mode: 0o700 });
+
+    const resolving = resolveActiveWorkspaceSession({
+      platform: "gemini",
+      projectDirectory: projectDir,
+      now: new Date("2026-06-14T10:00:30.000Z"),
+      environment: env(homeDir),
+    });
+    await wait(30);
+
+    await writeFile(markerPath, `${JSON.stringify({
+      sessions: [
+        {
+          sessionId: "stale-session",
+          sessionKey: "stale-session",
+          projectDirectory: path.resolve(projectDir),
+          touchedAt: "2026-06-14T09:58:00.000Z",
+        },
+        {
+          sessionId: "first-fresh-session",
+          sessionKey: "first-fresh-session",
+          projectDirectory: path.resolve(projectDir),
+          touchedAt: "2026-06-14T10:00:00.000Z",
+        },
+        {
+          sessionId: "second-fresh-session",
+          sessionKey: "second-fresh-session",
+          projectDirectory: path.resolve(projectDir),
+          touchedAt: "2026-06-14T10:00:00.000Z",
+        },
+      ],
+    })}\n`, { encoding: "utf8", mode: 0o600 });
+    await rm(lockPath, { recursive: true, force: true });
+
+    const resolved = await resolving;
+    assert.equal(resolved.status, "ambiguous");
+    assert.deepEqual(
+      resolved.status === "ambiguous" ? resolved.candidates.map((session) => session.sessionId).sort() : [],
+      ["first-fresh-session", "second-fresh-session"],
+    );
+  } finally {
+    await rm(lockPath, { recursive: true, force: true });
     await rm(projectDir, { recursive: true, force: true });
   }
 });

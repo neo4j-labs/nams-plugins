@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import type { Platform } from "../interfaces.js";
 import { RuntimeEnvironment, type RuntimeEnvironmentInput } from "./paths.js";
@@ -8,7 +8,6 @@ export const ACTIVE_WORKSPACE_SESSION_TTL_MS = 60_000;
 export const ACTIVE_WORKSPACE_SESSION_WINNER_GAP_MS = 15_000;
 
 const ACTIVE_WORKSPACE_SESSION_LOCK_RETRY_DELAY_MS = 10;
-const ACTIVE_WORKSPACE_SESSION_LOCK_STALE_MS = 2_000;
 const ACTIVE_WORKSPACE_SESSION_LOCK_MAX_WAIT_MS = 5_000;
 
 export interface ActiveWorkspaceSessionRecord {
@@ -95,38 +94,40 @@ export async function resolveActiveWorkspaceSession(
   const ttlMs = input.ttlMs ?? ACTIVE_WORKSPACE_SESSION_TTL_MS;
   const winnerGapMs = input.winnerGapMs ?? ACTIVE_WORKSPACE_SESSION_WINNER_GAP_MS;
   const markerPath = activeWorkspaceSessionsPath(input.platform, input.environment);
-  const marker = await readMarker(markerPath);
-  const projectDirectory = normalizeProjectDirectory(input.projectDirectory);
-  const cutoff = now.getTime() - ttlMs;
-  const retained = marker.sessions.filter((session) => {
-    const touchedAt = Date.parse(session.touchedAt);
-    return Number.isFinite(touchedAt) && touchedAt >= cutoff;
-  });
-  const fresh = retained
-    .filter((session) => {
+  return await withMarkerLock(markerPath, async () => {
+    const marker = await readMarker(markerPath);
+    const projectDirectory = normalizeProjectDirectory(input.projectDirectory);
+    const cutoff = now.getTime() - ttlMs;
+    const retained = marker.sessions.filter((session) => {
       const touchedAt = Date.parse(session.touchedAt);
-      return Number.isFinite(touchedAt) && touchedAt >= cutoff && session.projectDirectory === projectDirectory;
-    })
-    .sort((left, right) => Date.parse(right.touchedAt) - Date.parse(left.touchedAt));
+      return Number.isFinite(touchedAt) && touchedAt >= cutoff;
+    });
+    const fresh = retained
+      .filter((session) => {
+        const touchedAt = Date.parse(session.touchedAt);
+        return Number.isFinite(touchedAt) && touchedAt >= cutoff && session.projectDirectory === projectDirectory;
+      })
+      .sort((left, right) => Date.parse(right.touchedAt) - Date.parse(left.touchedAt));
 
-  if (retained.length !== marker.sessions.length) {
-    await writeMarker(markerPath, { sessions: retained }).catch(() => {});
-  }
+    if (retained.length !== marker.sessions.length) {
+      await writeMarker(markerPath, { sessions: retained }).catch(() => {});
+    }
 
-  if (fresh.length === 0) {
-    return { status: "missing" };
-  }
-  if (fresh.length === 1) {
-    return resolvedSession(fresh[0]);
-  }
+    if (fresh.length === 0) {
+      return { status: "missing" };
+    }
+    if (fresh.length === 1) {
+      return resolvedSession(fresh[0]);
+    }
 
-  const newest = fresh[0];
-  const runnerUp = fresh[1];
-  if (Date.parse(newest.touchedAt) - Date.parse(runnerUp.touchedAt) >= winnerGapMs) {
-    return resolvedSession(newest);
-  }
+    const newest = fresh[0];
+    const runnerUp = fresh[1];
+    if (Date.parse(newest.touchedAt) - Date.parse(runnerUp.touchedAt) >= winnerGapMs) {
+      return resolvedSession(newest);
+    }
 
-  return { status: "ambiguous", candidates: fresh };
+    return { status: "ambiguous", candidates: fresh };
+  });
 }
 
 async function withMarkerLock<T>(markerPath: string, callback: () => Promise<T>): Promise<T> {
@@ -150,27 +151,11 @@ async function acquireMarkerLock(lockPath: string): Promise<void> {
       if (!isErrorCode(error, "EEXIST")) {
         throw error;
       }
-      if (await isStaleLock(lockPath)) {
-        await rm(lockPath, { recursive: true, force: true });
-        continue;
-      }
       if (Date.now() - startedAt >= ACTIVE_WORKSPACE_SESSION_LOCK_MAX_WAIT_MS) {
         throw new Error(`Timed out acquiring active workspace session marker lock: ${lockPath}`);
       }
       await delay(ACTIVE_WORKSPACE_SESSION_LOCK_RETRY_DELAY_MS);
     }
-  }
-}
-
-async function isStaleLock(lockPath: string): Promise<boolean> {
-  try {
-    const lock = await stat(lockPath);
-    return Date.now() - lock.mtimeMs >= ACTIVE_WORKSPACE_SESSION_LOCK_STALE_MS;
-  } catch (error) {
-    if (isErrorCode(error, "ENOENT")) {
-      return false;
-    }
-    throw error;
   }
 }
 
@@ -183,12 +168,15 @@ async function readMarker(markerPath: string): Promise<ActiveWorkspaceSessionMar
     if (!Array.isArray(parsed.sessions)) {
       return { sessions: [] };
     }
-    return {
-      sessions: parsed.sessions.flatMap((value) => {
-        const record = validRecord(value);
-        return record === undefined ? [] : [record];
-      }),
-    };
+    const sessions: ActiveWorkspaceSessionRecord[] = [];
+    for (const value of parsed.sessions) {
+      const record = validRecord(value);
+      if (record === undefined) {
+        return { sessions: [] };
+      }
+      sessions.push(record);
+    }
+    return { sessions };
   } catch {
     return { sessions: [] };
   }
