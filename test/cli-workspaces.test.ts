@@ -371,6 +371,69 @@ test("workspaces run gemini CustomCommand configures the resolved active session
   }
 });
 
+test("workspaces run codex CustomCommand configures the resolved active session workspace", async () => {
+  const projectDir = await realpath(await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-")));
+  const homeDir = path.join(projectDir, "home");
+  try {
+    await withWorkspaceServer(
+      async (baseUrl) => {
+        await mkdir(path.join(projectDir, ".nams"), { recursive: true });
+        await writeFile(
+          path.join(projectDir, ".nams", "config.json"),
+          `${JSON.stringify({ apiKey: "test-api-key", baseUrl }, null, 2)}\n`,
+        );
+        await mkdir(path.join(homeDir, ".nams", "state", "codex"), { recursive: true });
+        await writeFile(
+          path.join(homeDir, ".nams", "state", "codex", "active-workspace-sessions.json"),
+          `${JSON.stringify(
+            {
+              sessions: [
+                {
+                  sessionId: "codex-session-1",
+                  sessionKey: "codex-session-1",
+                  projectDirectory: projectDir,
+                  touchedAt: new Date().toISOString(),
+                },
+              ],
+            },
+            null,
+            2,
+          )}\n`,
+        );
+
+        const result = await runCli(
+          ["workspaces", "run", "codex", "--event", "CustomCommand"],
+          { command_name: "nams:workspace", command_args: "use Research Team" },
+          runtimeEnv(homeDir, baseUrl),
+          projectDir,
+        );
+
+        assert.equal(result.code, 0, result.stderr);
+        assert.equal(result.stderr, "");
+        const stdout = JSON.parse(result.stdout);
+        assert.equal(stdout.continue, true);
+        assert.equal(stdout.suppressOutput, false);
+        assert.equal(stdout.exitCode, 0);
+        assert.match(stdout.message, /NAMS workspace configured for codex session codex-session-1: workspace-2/);
+
+        const state = await readOnlyPersistedSessionState(homeDir, "codex");
+        assert.equal(state.harness, "codex");
+        assert.equal(state.harnessSessionId, "codex-session-1");
+        assert.equal(state.workspace.id, "workspace-2");
+        assert.equal(state.workspace.source, "session-selection");
+      },
+      {
+        workspaces: [
+          { id: "workspace-1", name: "Engineering", role: "owner", status: "active" },
+          { id: "workspace-2", name: "Research Team", role: "member", status: "active" },
+        ],
+      },
+    );
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("workspaces run gemini CustomCommand fails closed without an active session", async () => {
   const projectDir = await realpath(await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-")));
   const homeDir = path.join(projectDir, "home");
@@ -393,9 +456,42 @@ test("workspaces run gemini CustomCommand fails closed without an active session
       assert.equal(result.stderr, "");
       const stdout = JSON.parse(result.stdout);
       assert.equal(stdout.continue, false);
+      assert.equal(stdout.suppressOutput, false);
       assert.equal(stdout.exitCode, 1);
       assert.match(stdout.message, /Gemini session id is unavailable/);
       assert.match(stdout.message, /--session-id <session-id> --workspace Engineering/);
+    });
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("workspaces run codex CustomCommand fails closed without an active session", async () => {
+  const projectDir = await realpath(await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-")));
+  const homeDir = path.join(projectDir, "home");
+  try {
+    await withWorkspaceServer(async (baseUrl) => {
+      await mkdir(path.join(projectDir, ".nams"), { recursive: true });
+      await writeFile(
+        path.join(projectDir, ".nams", "config.json"),
+        `${JSON.stringify({ apiKey: "test-api-key", baseUrl }, null, 2)}\n`,
+      );
+
+      const result = await runCli(
+        ["workspaces", "run", "codex", "--event", "CustomCommand"],
+        { command_name: "nams:workspace", command_args: "use Research" },
+        runtimeEnv(homeDir, baseUrl),
+        projectDir,
+      );
+
+      assert.equal(result.code, 0, result.stderr);
+      assert.equal(result.stderr, "");
+      const stdout = JSON.parse(result.stdout);
+      assert.equal(stdout.continue, false);
+      assert.equal(stdout.suppressOutput, false);
+      assert.equal(stdout.exitCode, 1);
+      assert.match(stdout.message, /Codex session id is unavailable/);
+      assert.match(stdout.message, /--session-id <session-id> --workspace Research/);
     });
   } finally {
     await rm(projectDir, { recursive: true, force: true });
