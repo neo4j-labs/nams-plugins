@@ -184,19 +184,20 @@ test("bridged workspace command fails closed when active session is ambiguous", 
   const homeDir = path.join(projectDir, "home");
   const restoreEnv = withRuntimeEnvironment(homeDir);
   try {
+    const now = new Date();
     await recordActiveWorkspaceSession({
       platform: "codex",
       sessionId: "codex-session-1",
       sessionKey: "codex-session-1",
       projectDirectory: projectDir,
-      touchedAt: new Date("2026-06-14T10:00:00.000Z"),
+      touchedAt: new Date(now.getTime() - 1_000),
     });
     await recordActiveWorkspaceSession({
       platform: "codex",
       sessionId: "codex-session-2",
       sessionKey: "codex-session-2",
       projectDirectory: projectDir,
-      touchedAt: new Date("2026-06-14T10:00:01.000Z"),
+      touchedAt: now,
     });
 
     const result = await runActiveSessionWorkspaceUseCommand(invocation("codex", projectDir), {
