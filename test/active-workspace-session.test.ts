@@ -85,6 +85,48 @@ test("treats malformed marker files as empty and rewrites clean shape", async ()
   }
 });
 
+test("treats marker files with extra top-level metadata as empty and rewrites clean shape", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-active-session-project-"));
+  const homeDir = path.join(projectDir, "home");
+  const markerPath = path.join(homeDir, ".nams", "state", "gemini", "active-workspace-sessions.json");
+  try {
+    await mkdir(path.dirname(markerPath), { recursive: true });
+    await writeFile(markerPath, `${JSON.stringify({
+      version: 1,
+      sessions: [
+        {
+          sessionId: "metadata-session",
+          sessionKey: "metadata-session",
+          projectDirectory: path.resolve(projectDir),
+          touchedAt: "2026-06-14T10:00:00.000Z",
+        },
+      ],
+    })}\n`, { encoding: "utf8", mode: 0o600 });
+
+    const missing = await resolveActiveWorkspaceSession({
+      platform: "gemini",
+      projectDirectory: projectDir,
+      now: new Date("2026-06-14T10:00:30.000Z"),
+      environment: env(homeDir),
+    });
+    assert.deepEqual(missing, { status: "missing" });
+
+    await recordActiveWorkspaceSession({
+      platform: "gemini",
+      sessionId: "clean-session",
+      sessionKey: "clean-session",
+      projectDirectory: projectDir,
+      touchedAt: new Date("2026-06-14T10:00:31.000Z"),
+      environment: env(homeDir),
+    });
+    const marker = await readMarker(homeDir, "gemini");
+    assert.deepEqual(Object.keys(marker).sort(), ["sessions"]);
+    assert.deepEqual(marker.sessions.map((session: Record<string, unknown>) => session.sessionId), ["clean-session"]);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("resolves exactly one fresh active session and prunes stale records", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-active-session-project-"));
   const homeDir = path.join(projectDir, "home");
@@ -187,6 +229,55 @@ test("fails closed for fresh sessions that do not clear the winner gap", async (
     assert.equal(resolved.status === "ambiguous" ? resolved.candidates.length : 0, 2);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("resolving one project preserves fresh same-platform records for other projects", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-active-session-project-"));
+  const otherProjectDir = await mkdtemp(path.join(tmpdir(), "nams-active-session-other-"));
+  const homeDir = path.join(projectDir, "home");
+  try {
+    await recordActiveWorkspaceSession({
+      platform: "gemini",
+      sessionId: "project-session",
+      sessionKey: "project-session",
+      projectDirectory: projectDir,
+      touchedAt: new Date("2026-06-14T10:00:00.000Z"),
+      environment: env(homeDir),
+    });
+    await recordActiveWorkspaceSession({
+      platform: "gemini",
+      sessionId: "other-project-session",
+      sessionKey: "other-project-session",
+      projectDirectory: otherProjectDir,
+      touchedAt: new Date("2026-06-14T10:00:00.000Z"),
+      environment: env(homeDir),
+    });
+
+    assert.equal((await resolveActiveWorkspaceSession({
+      platform: "gemini",
+      projectDirectory: projectDir,
+      now: new Date("2026-06-14T10:00:30.000Z"),
+      environment: env(homeDir),
+    })).status, "resolved");
+
+    const otherResolved = await resolveActiveWorkspaceSession({
+      platform: "gemini",
+      projectDirectory: otherProjectDir,
+      now: new Date("2026-06-14T10:00:30.000Z"),
+      environment: env(homeDir),
+    });
+    assert.equal(otherResolved.status, "resolved");
+    assert.equal(otherResolved.status === "resolved" ? otherResolved.sessionId : "", "other-project-session");
+
+    const marker = await readMarker(homeDir, "gemini");
+    assert.deepEqual(
+      marker.sessions.map((session: Record<string, unknown>) => session.sessionId).sort(),
+      ["other-project-session", "project-session"],
+    );
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+    await rm(otherProjectDir, { recursive: true, force: true });
   }
 });
 

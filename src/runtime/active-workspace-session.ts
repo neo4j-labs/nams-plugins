@@ -92,15 +92,19 @@ export async function resolveActiveWorkspaceSession(
   const marker = await readMarker(markerPath);
   const projectDirectory = normalizeProjectDirectory(input.projectDirectory);
   const cutoff = now.getTime() - ttlMs;
-  const fresh = marker.sessions
+  const retained = marker.sessions.filter((session) => {
+    const touchedAt = Date.parse(session.touchedAt);
+    return Number.isFinite(touchedAt) && touchedAt >= cutoff;
+  });
+  const fresh = retained
     .filter((session) => {
       const touchedAt = Date.parse(session.touchedAt);
       return Number.isFinite(touchedAt) && touchedAt >= cutoff && session.projectDirectory === projectDirectory;
     })
     .sort((left, right) => Date.parse(right.touchedAt) - Date.parse(left.touchedAt));
 
-  if (fresh.length !== marker.sessions.length) {
-    await writeMarker(markerPath, { sessions: fresh });
+  if (retained.length !== marker.sessions.length) {
+    await writeMarker(markerPath, { sessions: retained });
   }
 
   if (fresh.length === 0) {
@@ -121,7 +125,10 @@ export async function resolveActiveWorkspaceSession(
 
 async function readMarker(markerPath: string): Promise<ActiveWorkspaceSessionMarker> {
   try {
-    const parsed = JSON.parse(await readFile(markerPath, "utf8")) as { sessions?: unknown };
+    const parsed = JSON.parse(await readFile(markerPath, "utf8")) as unknown;
+    if (!isMarkerObject(parsed)) {
+      return { sessions: [] };
+    }
     if (!Array.isArray(parsed.sessions)) {
       return { sessions: [] };
     }
@@ -134,6 +141,16 @@ async function readMarker(markerPath: string): Promise<ActiveWorkspaceSessionMar
   } catch {
     return { sessions: [] };
   }
+}
+
+function isMarkerObject(value: unknown): value is { sessions: unknown } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === 1 &&
+    "sessions" in value
+  );
 }
 
 async function writeMarker(markerPath: string, marker: ActiveWorkspaceSessionMarker): Promise<void> {
