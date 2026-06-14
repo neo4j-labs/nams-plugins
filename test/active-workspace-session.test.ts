@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -54,7 +54,7 @@ test("records active workspace session markers without version metadata", async 
   }
 });
 
-test("treats malformed marker files as empty and rewrites clean shape", async () => {
+test("treats malformed marker files as empty before recording clean shape", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-active-session-project-"));
   const homeDir = path.join(projectDir, "home");
   const markerPath = path.join(homeDir, ".nams", "state", "gemini", "active-workspace-sessions.json");
@@ -85,7 +85,7 @@ test("treats malformed marker files as empty and rewrites clean shape", async ()
   }
 });
 
-test("treats marker files with extra top-level metadata as empty and rewrites clean shape", async () => {
+test("treats marker files with extra top-level metadata as empty before recording clean shape", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-active-session-project-"));
   const homeDir = path.join(projectDir, "home");
   const markerPath = path.join(homeDir, ".nams", "state", "gemini", "active-workspace-sessions.json");
@@ -164,6 +164,46 @@ test("resolves exactly one fresh active session and prunes stale records", async
   }
 });
 
+test("resolves fresh sessions even when stale-prune cleanup cannot write", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-active-session-project-"));
+  const homeDir = path.join(projectDir, "home");
+  const markerPath = path.join(homeDir, ".nams", "state", "gemini", "active-workspace-sessions.json");
+  const now = new Date("2026-06-14T10:00:30.000Z");
+  try {
+    await mkdir(path.dirname(markerPath), { recursive: true });
+    await writeFile(markerPath, `${JSON.stringify({
+      sessions: [
+        {
+          sessionId: "stale-session",
+          sessionKey: "stale-session",
+          projectDirectory: path.resolve(projectDir),
+          touchedAt: new Date(now.getTime() - ACTIVE_WORKSPACE_SESSION_TTL_MS - 1).toISOString(),
+        },
+        {
+          sessionId: "fresh-session",
+          sessionKey: "fresh-session",
+          projectDirectory: path.resolve(projectDir),
+          touchedAt: "2026-06-14T10:00:00.000Z",
+        },
+      ],
+    })}\n`, { encoding: "utf8", mode: 0o600 });
+    await chmod(markerPath, 0o400);
+
+    const resolved = await resolveActiveWorkspaceSession({
+      platform: "gemini",
+      projectDirectory: projectDir,
+      now,
+      environment: env(homeDir),
+    });
+
+    assert.equal(resolved.status, "resolved");
+    assert.equal(resolved.status === "resolved" ? resolved.sessionId : "", "fresh-session");
+  } finally {
+    await chmod(markerPath, 0o600).catch(() => {});
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("resolves newest fresh session only when it clears the winner gap", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-active-session-project-"));
   const homeDir = path.join(projectDir, "home");
@@ -227,6 +267,39 @@ test("fails closed for fresh sessions that do not clear the winner gap", async (
     });
     assert.equal(resolved.status, "ambiguous");
     assert.equal(resolved.status === "ambiguous" ? resolved.candidates.length : 0, 2);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("concurrent records preserve distinct fresh sessions for the same platform and project", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-active-session-project-"));
+  const homeDir = path.join(projectDir, "home");
+  const sessionIds = Array.from({ length: 8 }, (_, index) => `concurrent-session-${index + 1}`);
+  try {
+    await Promise.all(sessionIds.map((sessionId) => recordActiveWorkspaceSession({
+      platform: "gemini",
+      sessionId,
+      sessionKey: sessionId,
+      projectDirectory: projectDir,
+      touchedAt: new Date("2026-06-14T10:00:00.000Z"),
+      environment: env(homeDir),
+    })));
+
+    const marker = await readMarker(homeDir, "gemini");
+    assert.deepEqual(
+      marker.sessions.map((session: Record<string, unknown>) => session.sessionId).sort(),
+      sessionIds,
+    );
+
+    const resolved = await resolveActiveWorkspaceSession({
+      platform: "gemini",
+      projectDirectory: projectDir,
+      now: new Date("2026-06-14T10:00:30.000Z"),
+      environment: env(homeDir),
+    });
+    assert.equal(resolved.status, "ambiguous");
+    assert.equal(resolved.status === "ambiguous" ? resolved.candidates.length : 0, sessionIds.length);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }

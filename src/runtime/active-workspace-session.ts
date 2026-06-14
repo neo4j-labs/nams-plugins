@@ -1,11 +1,15 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import type { Platform } from "../interfaces.js";
 import { RuntimeEnvironment, type RuntimeEnvironmentInput } from "./paths.js";
-import { writePrivateFile } from "./permissions.js";
+import { ensurePrivateDirectory, writePrivateFile } from "./permissions.js";
 
 export const ACTIVE_WORKSPACE_SESSION_TTL_MS = 60_000;
 export const ACTIVE_WORKSPACE_SESSION_WINNER_GAP_MS = 15_000;
+
+const ACTIVE_WORKSPACE_SESSION_LOCK_RETRY_DELAY_MS = 10;
+const ACTIVE_WORKSPACE_SESSION_LOCK_STALE_MS = 2_000;
+const ACTIVE_WORKSPACE_SESSION_LOCK_MAX_WAIT_MS = 5_000;
 
 export interface ActiveWorkspaceSessionRecord {
   sessionId: string;
@@ -59,27 +63,29 @@ export async function recordActiveWorkspaceSession(input: RecordActiveWorkspaceS
 
   const now = input.touchedAt ?? new Date();
   const markerPath = activeWorkspaceSessionsPath(input.platform, input.environment);
-  const existing = await readMarker(markerPath);
-  const cutoff = now.getTime() - ACTIVE_WORKSPACE_SESSION_TTL_MS;
-  const projectDirectory = normalizeProjectDirectory(input.projectDirectory);
-  const record: ActiveWorkspaceSessionRecord = {
-    sessionId,
-    sessionKey,
-    projectDirectory,
-    ...(input.statePath !== undefined && input.statePath.trim() !== "" ? { statePath: input.statePath } : {}),
-    touchedAt: now.toISOString(),
-  };
+  await withMarkerLock(markerPath, async () => {
+    const existing = await readMarker(markerPath);
+    const cutoff = now.getTime() - ACTIVE_WORKSPACE_SESSION_TTL_MS;
+    const projectDirectory = normalizeProjectDirectory(input.projectDirectory);
+    const record: ActiveWorkspaceSessionRecord = {
+      sessionId,
+      sessionKey,
+      projectDirectory,
+      ...(input.statePath !== undefined && input.statePath.trim() !== "" ? { statePath: input.statePath } : {}),
+      touchedAt: now.toISOString(),
+    };
 
-  const sessions = existing.sessions.filter((session) => {
-    const touchedAt = Date.parse(session.touchedAt);
-    if (!Number.isFinite(touchedAt) || touchedAt < cutoff) {
-      return false;
-    }
-    return !(session.sessionKey === sessionKey && session.projectDirectory === projectDirectory);
+    const sessions = existing.sessions.filter((session) => {
+      const touchedAt = Date.parse(session.touchedAt);
+      if (!Number.isFinite(touchedAt) || touchedAt < cutoff) {
+        return false;
+      }
+      return !(session.sessionKey === sessionKey && session.projectDirectory === projectDirectory);
+    });
+    sessions.push(record);
+
+    await writeMarker(markerPath, { sessions });
   });
-  sessions.push(record);
-
-  await writeMarker(markerPath, { sessions });
 }
 
 export async function resolveActiveWorkspaceSession(
@@ -104,7 +110,7 @@ export async function resolveActiveWorkspaceSession(
     .sort((left, right) => Date.parse(right.touchedAt) - Date.parse(left.touchedAt));
 
   if (retained.length !== marker.sessions.length) {
-    await writeMarker(markerPath, { sessions: retained });
+    await writeMarker(markerPath, { sessions: retained }).catch(() => {});
   }
 
   if (fresh.length === 0) {
@@ -121,6 +127,51 @@ export async function resolveActiveWorkspaceSession(
   }
 
   return { status: "ambiguous", candidates: fresh };
+}
+
+async function withMarkerLock<T>(markerPath: string, callback: () => Promise<T>): Promise<T> {
+  const lockPath = `${markerPath}.lock`;
+  await acquireMarkerLock(lockPath);
+  try {
+    return await callback();
+  } finally {
+    await rm(lockPath, { recursive: true, force: true });
+  }
+}
+
+async function acquireMarkerLock(lockPath: string): Promise<void> {
+  await ensurePrivateDirectory(path.dirname(lockPath));
+  const startedAt = Date.now();
+  for (;;) {
+    try {
+      await mkdir(lockPath, { mode: 0o700 });
+      return;
+    } catch (error) {
+      if (!isErrorCode(error, "EEXIST")) {
+        throw error;
+      }
+      if (await isStaleLock(lockPath)) {
+        await rm(lockPath, { recursive: true, force: true });
+        continue;
+      }
+      if (Date.now() - startedAt >= ACTIVE_WORKSPACE_SESSION_LOCK_MAX_WAIT_MS) {
+        throw new Error(`Timed out acquiring active workspace session marker lock: ${lockPath}`);
+      }
+      await delay(ACTIVE_WORKSPACE_SESSION_LOCK_RETRY_DELAY_MS);
+    }
+  }
+}
+
+async function isStaleLock(lockPath: string): Promise<boolean> {
+  try {
+    const lock = await stat(lockPath);
+    return Date.now() - lock.mtimeMs >= ACTIVE_WORKSPACE_SESSION_LOCK_STALE_MS;
+  } catch (error) {
+    if (isErrorCode(error, "ENOENT")) {
+      return false;
+    }
+    throw error;
+  }
 }
 
 async function readMarker(markerPath: string): Promise<ActiveWorkspaceSessionMarker> {
@@ -155,6 +206,14 @@ function isMarkerObject(value: unknown): value is { sessions: unknown } {
 
 async function writeMarker(markerPath: string, marker: ActiveWorkspaceSessionMarker): Promise<void> {
   await writePrivateFile(markerPath, `${JSON.stringify(marker, null, 2)}\n`);
+}
+
+async function delay(durationMs: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, durationMs));
+}
+
+function isErrorCode(error: unknown, code: string): boolean {
+  return error instanceof Error && "code" in error && error.code === code;
 }
 
 function validRecord(value: unknown): ActiveWorkspaceSessionRecord | undefined {
