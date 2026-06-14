@@ -20,6 +20,8 @@ const codexMarketplacePath = path.join(root, "dist", ".agents", "plugins", "mark
 const codexPluginManifestPath = path.join(root, "dist", "plugins", "codex-nams-hooks", ".codex-plugin", "plugin.json");
 const codexPluginHooksPath = path.join(root, "dist", "plugins", "codex-nams-hooks", "hooks", "hooks.json");
 const codexPluginCliPath = path.join(root, "dist", "plugins", "codex-nams-hooks", "bin", "cli.js");
+const codexPluginSkillPath = path.join(root, "dist", "plugins", "codex-nams-hooks", "skills", "workspace", "SKILL.md");
+const codexPluginSkillPolicyPath = path.join(root, "dist", "plugins", "codex-nams-hooks", "skills", "workspace", "agents", "openai.yaml");
 const codexHookEvents = ["SessionStart", "UserPromptSubmit", "Stop", "PostToolUse"];
 const opencodeTemplatePath = path.join(root, "templates", "opencode", "plugins", "nams-hooks.js");
 const rootPackagePath = path.join(root, "package.json");
@@ -97,6 +99,8 @@ async function verifyCodexPluginFiles() {
   await access(codexPluginManifestPath);
   await access(codexPluginHooksPath);
   await assertExecutable(codexPluginCliPath);
+  await access(codexPluginSkillPath);
+  await access(codexPluginSkillPolicyPath);
 
   const packageJson = JSON.parse(await readFile(rootPackagePath, "utf8"));
   const marketplaceSource = await readFile(codexMarketplacePath, "utf8");
@@ -153,6 +157,9 @@ async function verifyCodexPluginFiles() {
   }
   if (plugin.license !== packageJson.license) {
     throw new Error("Codex plugin manifest license must match package.json.");
+  }
+  if (plugin.skills !== "./skills/") {
+    throw new Error("Codex plugin manifest must expose bundled skills from ./skills/.");
   }
   if (Object.hasOwn(plugin, "userConfig") || Object.hasOwn(plugin, "authentication")) {
     throw new Error("Codex plugin manifest must not define NAMS credential prompts.");
@@ -321,6 +328,8 @@ function codexPackedFiles(packageDir) {
     `${prefix}plugins/codex-nams-hooks/.codex-plugin/plugin.json`,
     `${prefix}plugins/codex-nams-hooks/hooks/hooks.json`,
     `${prefix}plugins/codex-nams-hooks/bin/cli.js`,
+    `${prefix}plugins/codex-nams-hooks/skills/workspace/SKILL.md`,
+    `${prefix}plugins/codex-nams-hooks/skills/workspace/agents/openai.yaml`,
   ];
 }
 
