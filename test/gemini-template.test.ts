@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { test } from "node:test";
+import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const execFileAsync = promisify(execFile);
 
 test("Gemini extension template exposes NAMS environment settings in order", async () => {
   const template = JSON.parse(await readFile(path.join(repoRoot, "templates", "gemini", "gemini-extension.json"), "utf8"));
@@ -48,5 +51,28 @@ test("Gemini extension template packages nams workspace custom command", async (
   assert.match(command, /nams:workspace/);
   assert.match(command, /workspaces run gemini --event CustomCommand/);
   assert.match(command, /\{\{args\}\}/);
+  assert.match(command, /process\.argv\.slice\(1\)\.join\(" "\)/);
+  assert.doesNotMatch(command, /process\.argv\[1\]/);
   assert.doesNotMatch(command, /workspaces configure/);
 });
+
+test("Gemini workspace custom command preserves selectors and normalizes use prefix", async () => {
+  const command = await readFile(path.join(repoRoot, "templates", "gemini", "commands", "nams", "workspace.toml"), "utf8");
+
+  assert.deepEqual(await renderGeminiWorkspaceCommandArgs(command, ["Engineering", "Team"]), {
+    command_name: "nams:workspace",
+    command_args: "use Engineering Team",
+  });
+  assert.deepEqual(await renderGeminiWorkspaceCommandArgs(command, ["use", "Engineering", "Team"]), {
+    command_name: "nams:workspace",
+    command_args: "use Engineering Team",
+  });
+});
+
+async function renderGeminiWorkspaceCommandArgs(command: string, args: string[]) {
+  const script = command.match(/node -e '([^']+)'/)?.[1];
+  assert.ok(script, "Gemini workspace command must use a node -e JSON bridge.");
+
+  const { stdout } = await execFileAsync(process.execPath, ["-e", script, ...args]);
+  return JSON.parse(stdout.trim().replace(/\\n$/, ""));
+}

@@ -1,5 +1,5 @@
 description = "Select the NAMS workspace for this Gemini session."
 
 prompt = """
-!{node -e 'const args = process.argv[1] ?? ""; process.stdout.write(JSON.stringify({ command_name: "nams:workspace", command_args: `use ${args}`.trim() }) + "\\n");' {{args}} | node "${extensionPath}/bin/cli.js" workspaces run gemini --event CustomCommand}
+!{node -e 'const raw = process.argv.slice(1).join(" ").trim(); const selector = raw.replace(/^use(?:\s+|$)/i, "").trim(); process.stdout.write(JSON.stringify({ command_name: "nams:workspace", command_args: `use ${selector}`.trim() }) + "\\n");' {{args}} | node "${extensionPath}/bin/cli.js" workspaces run gemini --event CustomCommand}
 """
