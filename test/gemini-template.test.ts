@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { execFile, spawn } from "node:child_process";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
@@ -51,8 +52,10 @@ test("Gemini extension template packages nams workspace custom command", async (
   assert.match(command.prompt, /nams:workspace/);
   assert.match(command.prompt, /workspaces run gemini --event CustomCommand/);
   assert.match(command.prompt, /\{\{args\}\}/);
-  assert.match(command.prompt, /process\.argv\.slice\(1\)\.join\(" "\)/);
-  assert.doesNotMatch(command.prompt, /process\.argv\[1\]/);
+  assert.match(command.prompt, /<<'NAMS_WORKSPACE_ARGS'/);
+  assert.match(command.prompt, /process\.stdin/);
+  assert.doesNotMatch(command.prompt, /process\.argv/);
+  assert.doesNotMatch(command.prompt, /'\s+\{\{args\}\}\s*\|/);
   assert.doesNotMatch(command.prompt, /workspaces configure/);
 });
 
@@ -77,12 +80,96 @@ test("Gemini workspace custom command preserves selectors and normalizes use pre
   });
 });
 
+test("Gemini workspace custom command passes shell-sensitive args through heredoc literally", async () => {
+  const source = await readFile(path.join(repoRoot, "templates", "gemini", "commands", "nams", "workspace.toml"), "utf8");
+  const command = parseGeminiWorkspaceCommandToml(source);
+  const tempDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-command-"));
+
+  try {
+    const sentinelPath = path.join(tempDir, "sentinel");
+    const payloadPath = path.join(tempDir, "payload.json");
+    const binDir = path.join(tempDir, "bin");
+    const stubCliPath = path.join(binDir, "cli.js");
+    await mkdir(binDir, { recursive: true });
+    await writeFile(stubCliPath, stubCliSource(payloadPath), "utf8");
+
+    const sensitiveArgs = `O'Reilly; $(touch ${sentinelPath}) "quoted"`;
+    const shellCommand = shellCommandForGeminiPrompt(command.prompt, stubCliPath, sensitiveArgs);
+    await execFileAsync("/bin/sh", ["-c", shellCommand], { cwd: tempDir });
+
+    const payload = JSON.parse(await readFile(payloadPath, "utf8"));
+    assert.deepEqual(payload.argv, ["workspaces", "run", "gemini", "--event", "CustomCommand"]);
+    assert.equal(payload.body.command_name, "nams:workspace");
+    assert.equal(payload.body.command_args, `use ${sensitiveArgs}`);
+    assert.doesNotMatch(payload.body.command_args, /^use\s+use(?:\s|$)/);
+    await assertFileMissing(sentinelPath);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 async function renderGeminiWorkspaceCommandArgs(command: string, args: string[]) {
   const script = command.match(/node -e '([^']+)'/)?.[1];
   assert.ok(script, "Gemini workspace command must use a node -e JSON bridge.");
 
-  const { stdout } = await execFileAsync(process.execPath, ["-e", script, ...args]);
+  const { stdout } = await execFileWithInput(process.execPath, ["-e", script], args.join(" "));
   return JSON.parse(stdout.trim().replace(/\\n$/, ""));
+}
+
+function shellCommandForGeminiPrompt(prompt: string, stubCliPath: string, args: string) {
+  const trimmed = prompt.trim();
+  assert.ok(trimmed.startsWith("!{") && trimmed.endsWith("}"), "Gemini prompt must wrap a shell command in !{...}.");
+
+  return trimmed
+    .slice(2, -1)
+    .trim()
+    .replaceAll("${extensionPath}/bin/cli.js", stubCliPath)
+    .replace("{{args}}", args);
+}
+
+function stubCliSource(payloadPath: string) {
+  return `
+const { writeFileSync } = require("node:fs");
+let input = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => { input += chunk; });
+process.stdin.on("end", () => {
+  writeFileSync(${JSON.stringify(payloadPath)}, JSON.stringify({
+    argv: process.argv.slice(2),
+    body: JSON.parse(input),
+  }));
+});
+`;
+}
+
+async function assertFileMissing(filePath: string) {
+  await assert.rejects(access(filePath), (error: NodeJS.ErrnoException) => error.code === "ENOENT");
+}
+
+async function execFileWithInput(command: string, args: string[], input: string) {
+  return await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+    const child = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve({ stdout, stderr });
+      } else {
+        reject(new Error(`${command} exited with ${code}: ${stderr}`));
+      }
+    });
+    child.stdin.end(input);
+  });
 }
 
 function parseGeminiWorkspaceCommandToml(source: string) {
