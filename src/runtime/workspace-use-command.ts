@@ -1,4 +1,5 @@
 import type { WorkspaceHookInvocation } from "../interfaces.js";
+import { resolveActiveWorkspaceSession } from "./active-workspace-session.js";
 import { configureWorkspaceSelection } from "./workspace-configuration.js";
 
 const workspaceCommandName = "nams:workspace";
@@ -16,22 +17,28 @@ export interface WorkspaceUseCommandInput {
   sessionLabel: string;
 }
 
+export interface ActiveSessionWorkspaceUseCommandInput {
+  commandName?: string;
+  arguments: unknown;
+  projectDirectory: string;
+  sessionLabel: string;
+}
+
 export async function runSessionWorkspaceUseCommand(
   invocation: WorkspaceHookInvocation,
   input: WorkspaceUseCommandInput,
 ): Promise<WorkspaceUseCommandResult> {
-  if (input.commandName !== workspaceCommandName) {
-    return { status: "ignored" };
+  const parsedCommand = parseWorkspaceUseCommand(input.commandName, input.arguments);
+  if (parsedCommand.status === "ignored") {
+    return parsedCommand;
   }
-
-  const selectorResult = workspaceSelectorFromArguments(input.arguments);
-  if (selectorResult.status === "invalid") {
+  if (parsedCommand.status === "invalid") {
     if (input.invalidSubcommandMode === "ignore") {
       return { status: "ignored" };
     }
     return commandFailure(workspaceCommandUsage);
   }
-  if (selectorResult.selector === "") {
+  if (parsedCommand.selector === "") {
     return commandFailure(workspaceCommandUsage);
   }
 
@@ -39,17 +46,59 @@ export async function runSessionWorkspaceUseCommand(
   if (sessionId === "") {
     return commandFailure([
       `${input.sessionLabel} session id is unavailable; cannot configure a session workspace automatically.`,
-      `Run manually: nams-hooks workspaces configure ${invocation.platform} --scope session --session-id <session-id> --workspace ${shellQuote(selectorResult.selector)}`,
+      manualConfigureCommand(invocation.platform, parsedCommand.selector),
     ].join("\n"));
   }
 
+  return configureSessionWorkspace(invocation, sessionId, parsedCommand.selector, invocation.processCwd);
+}
+
+export async function runActiveSessionWorkspaceUseCommand(
+  invocation: WorkspaceHookInvocation,
+  input: ActiveSessionWorkspaceUseCommandInput,
+): Promise<WorkspaceUseCommandResult> {
+  const parsedCommand = parseWorkspaceUseCommand(input.commandName, input.arguments);
+  if (parsedCommand.status === "ignored") {
+    return parsedCommand;
+  }
+  if (parsedCommand.status === "invalid" || parsedCommand.selector === "") {
+    return commandFailure(workspaceCommandUsage);
+  }
+
+  const activeSession = await resolveActiveWorkspaceSession({
+    platform: invocation.platform,
+    projectDirectory: input.projectDirectory,
+  });
+  if (activeSession.status === "missing") {
+    return commandFailure([
+      `${input.sessionLabel} session id is unavailable; no recent active NAMS workspace session matched this project.`,
+      manualConfigureCommand(invocation.platform, parsedCommand.selector),
+    ].join("\n"));
+  }
+  if (activeSession.status === "ambiguous") {
+    return commandFailure([
+      `${input.sessionLabel} session id is unavailable; multiple recent active NAMS workspace sessions matched this project.`,
+      manualConfigureCommand(invocation.platform, parsedCommand.selector),
+    ].join("\n"));
+  }
+
+  return configureSessionWorkspace(invocation, activeSession.sessionId, parsedCommand.selector, input.projectDirectory);
+}
+
+async function configureSessionWorkspace(
+  invocation: WorkspaceHookInvocation,
+  sessionId: string,
+  selector: string,
+  projectDirectory: string,
+): Promise<WorkspaceUseCommandResult> {
   const configureResult = await configureWorkspaceSelection({
     ...invocation,
     event: "InstallConfigure",
+    processCwd: projectDirectory,
     rawPayload: {
       scope: "session",
       sessionId,
-      workspace: selectorResult.selector,
+      workspace: selector,
     },
   });
   const code = typeof configureResult.stdout.exitCode === "number" ? configureResult.stdout.exitCode : 0;
@@ -63,6 +112,16 @@ export async function runSessionWorkspaceUseCommand(
     stdout: code === 0 ? message : "",
     stderr: code === 0 ? "" : message,
   };
+}
+
+function parseWorkspaceUseCommand(
+  commandName: string | undefined,
+  argumentValue: unknown,
+): { status: "ignored" } | { status: "ok"; selector: string } | { status: "invalid" } {
+  if (commandName !== workspaceCommandName) {
+    return { status: "ignored" };
+  }
+  return workspaceSelectorFromArguments(argumentValue);
 }
 
 function workspaceSelectorFromArguments(argumentValue: unknown): { status: "ok"; selector: string } | { status: "invalid" } {
@@ -97,6 +156,15 @@ function commandFailure(stderr: string): WorkspaceUseCommandResult {
     stdout: "",
     stderr,
   };
+}
+
+function manualConfigureCommand(platform: WorkspaceHookInvocation["platform"], selector: string): string {
+  return [
+    "Run manually: nams-hooks workspaces configure",
+    platform,
+    "--scope session --session-id <session-id> --workspace",
+    shellQuote(selector),
+  ].join(" ");
 }
 
 function shellQuote(value: string): string {
