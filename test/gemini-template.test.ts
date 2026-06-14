@@ -44,26 +44,34 @@ test("Gemini hook template routes BeforeAgent through the memory hook only", asy
 });
 
 test("Gemini extension template packages nams workspace custom command", async () => {
-  const command = await readFile(path.join(repoRoot, "templates", "gemini", "commands", "nams", "workspace.toml"), "utf8");
+  const source = await readFile(path.join(repoRoot, "templates", "gemini", "commands", "nams", "workspace.toml"), "utf8");
+  const command = parseGeminiWorkspaceCommandToml(source);
 
-  assert.match(command, /description\s*=\s*"Select the NAMS workspace for this Gemini session\."/);
-  assert.match(command, /prompt\s*=/);
-  assert.match(command, /nams:workspace/);
-  assert.match(command, /workspaces run gemini --event CustomCommand/);
-  assert.match(command, /\{\{args\}\}/);
-  assert.match(command, /process\.argv\.slice\(1\)\.join\(" "\)/);
-  assert.doesNotMatch(command, /process\.argv\[1\]/);
-  assert.doesNotMatch(command, /workspaces configure/);
+  assert.equal(command.description, "Select the NAMS workspace for this Gemini session.");
+  assert.match(command.prompt, /nams:workspace/);
+  assert.match(command.prompt, /workspaces run gemini --event CustomCommand/);
+  assert.match(command.prompt, /\{\{args\}\}/);
+  assert.match(command.prompt, /process\.argv\.slice\(1\)\.join\(" "\)/);
+  assert.doesNotMatch(command.prompt, /process\.argv\[1\]/);
+  assert.doesNotMatch(command.prompt, /workspaces configure/);
+});
+
+test("Gemini workspace command TOML parser rejects invalid basic string escapes", () => {
+  assert.throws(
+    () => parseGeminiWorkspaceCommandToml('description = "x"\n\nprompt = """\ninvalid \\s escape\n"""\n'),
+    /invalid TOML basic string escape: \\s/,
+  );
 });
 
 test("Gemini workspace custom command preserves selectors and normalizes use prefix", async () => {
-  const command = await readFile(path.join(repoRoot, "templates", "gemini", "commands", "nams", "workspace.toml"), "utf8");
+  const source = await readFile(path.join(repoRoot, "templates", "gemini", "commands", "nams", "workspace.toml"), "utf8");
+  const command = parseGeminiWorkspaceCommandToml(source);
 
-  assert.deepEqual(await renderGeminiWorkspaceCommandArgs(command, ["Engineering", "Team"]), {
+  assert.deepEqual(await renderGeminiWorkspaceCommandArgs(command.prompt, ["Engineering", "Team"]), {
     command_name: "nams:workspace",
     command_args: "use Engineering Team",
   });
-  assert.deepEqual(await renderGeminiWorkspaceCommandArgs(command, ["use", "Engineering", "Team"]), {
+  assert.deepEqual(await renderGeminiWorkspaceCommandArgs(command.prompt, ["use", "Engineering", "Team"]), {
     command_name: "nams:workspace",
     command_args: "use Engineering Team",
   });
@@ -75,4 +83,44 @@ async function renderGeminiWorkspaceCommandArgs(command: string, args: string[])
 
   const { stdout } = await execFileAsync(process.execPath, ["-e", script, ...args]);
   return JSON.parse(stdout.trim().replace(/\\n$/, ""));
+}
+
+function parseGeminiWorkspaceCommandToml(source: string) {
+  const descriptionSource = source.match(/^description\s*=\s*"((?:\\.|[^"\\])*)"\s*$/m)?.[1];
+  const promptSource = source.match(/^prompt\s*=\s*"""([\s\S]*)"""\s*$/m)?.[1]?.replace(/^\r?\n/, "");
+  assert.ok(descriptionSource !== undefined, "Gemini workspace command TOML must define a basic string description.");
+  assert.ok(promptSource !== undefined, "Gemini workspace command TOML must define a multiline basic string prompt.");
+
+  return {
+    description: parseTomlBasicString(descriptionSource),
+    prompt: parseTomlBasicString(promptSource),
+  };
+}
+
+function parseTomlBasicString(source: string) {
+  let parsed = "";
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (char !== "\\") {
+      parsed += char;
+      continue;
+    }
+
+    index += 1;
+    const escaped = source[index];
+    if (escaped === undefined) {
+      throw new Error("invalid TOML basic string escape at end of string");
+    }
+    if (escaped === "b") parsed += "\b";
+    else if (escaped === "t") parsed += "\t";
+    else if (escaped === "n") parsed += "\n";
+    else if (escaped === "f") parsed += "\f";
+    else if (escaped === "r") parsed += "\r";
+    else if (escaped === '"') parsed += '"';
+    else if (escaped === "\\") parsed += "\\";
+    else {
+      throw new Error(`invalid TOML basic string escape: \\${escaped}`);
+    }
+  }
+  return parsed;
 }
