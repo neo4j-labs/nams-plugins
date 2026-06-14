@@ -6,28 +6,33 @@ Repository: nams-hooks
 
 ## Summary
 
-Add a platform command UX for selecting the NAMS workspace used by the current
-agent session:
+Add platform command UX for selecting the NAMS workspace used by the current
+agent session. Claude Code, OpenCode, and Gemini CLI expose the command as:
 
 ```text
 /nams:workspace use <workspace-id-or-name>
 ```
 
-For Claude Code, both project-template installs and plugin installs use this
-direct command.
+Codex exposes the same workspace command namespace through an explicit skill
+invocation:
 
-The slash command is a convenience wrapper only. The existing shared command
-remains the source of truth for workspace validation and state mutation:
+```text
+$nams:workspace use <workspace-id-or-name>
+```
+
+These command surfaces are convenience wrappers only. The existing shared
+configure command remains the source of truth for workspace validation and
+state mutation:
 
 ```bash
 nams-hooks workspaces configure <platform> --scope session --session-id <session-id> --workspace <workspace-id-or-name>
 ```
 
 This design covers all currently supported platforms: Claude Code, OpenCode,
-Gemini CLI, and Codex. Implementation should start with Claude Code and
-OpenCode because their user-command surfaces can deterministically run local
-commands and provide the current session ID. Gemini and Codex are designed here
-but deferred until their command/session bridge constraints are resolved.
+Gemini CLI, and Codex. Claude Code and OpenCode can pass the current session ID
+directly through their command contexts. Gemini and Codex use a shared
+active-session bridge recorded by the workspace-ambiguity hook path, then
+resolved by the user-invoked workspace command within a short freshness window.
 
 This design follows the research note in
 `docs/session-workspace-command-support.md` and builds on
@@ -43,9 +48,9 @@ resolution already treats session selection as the strongest workspace source.
 
 When a NAMS key can see multiple workspaces and no effective workspace is
 configured, current hook notices show the explicit configure command. That is
-deterministic but not ergonomic inside an agent harness. A slash-invocable
-command should let the user make the same session-local choice without copying
-the platform, scope, and session ID by hand.
+deterministic but not ergonomic inside an agent harness. A platform command
+should let the user make the same session-local choice without copying the
+platform, scope, and session ID by hand.
 
 The command surface must not make the agent responsible for deciding whether
 memory is written. It should only let the user choose the workspace for the
@@ -54,20 +59,19 @@ memory persistence.
 
 ## Goals
 
-- Provide one memorable user-facing command shape,
-  `/nams:workspace use <workspace-id-or-name>`, behind each platform's
-  deterministic command surface.
+- Provide one memorable workspace command namespace, `nams:workspace`.
+- Use `/nams:workspace use <workspace-id-or-name>` on slash-capable platforms.
+- Use `$nams:workspace use <workspace-id-or-name>` for Codex skill invocation.
 - Keep workspace validation, ambiguity handling, and state writes in the
   existing shared configure runtime.
-- Keep platform-specific command mechanics in platform templates or plugin
-  shims, not in `src/cli.ts`.
+- Keep platform-specific command mechanics in platform templates, plugin shims,
+  or platform adapters, not in `src/cli.ts`.
 - Make session workspace selection local to the current session and avoid
   writing project or user config.
-- Design behavior for all supported platforms while implementing only the
-  deterministic first tier initially.
+- Provide an active-session bridge that can be shared by Gemini and Codex.
 - Update existing documentation, README/installation docs, and user-facing hook
-  or system messages where relevant to include the slash command while keeping
-  the explicit bash configure command available.
+  or system messages where relevant to include the command while keeping the
+  explicit bash configure command available.
 - Preserve zero runtime npm dependencies in generated release artifacts.
 - Avoid printing API keys, bearer tokens, raw config contents, or backend error
   details.
@@ -78,83 +82,149 @@ memory persistence.
 - Add an interactive workspace picker.
 - Add a new NAMS endpoint or runtime OpenAPI discovery.
 - Duplicate workspace list validation inside platform wrappers.
-- Promise deterministic slash-to-shell behavior for platforms that do not expose
-  it yet.
+- Use agent prompts as mutable session storage.
+- Promise Codex pre-turn shell execution from skills before Codex documents such
+  a handler.
 - Change memory hook behavior beyond using the already-selected session
   workspace on later turns.
 
 ## UX Contract
 
-The cross-platform user command is:
+Slash-capable platforms use:
 
 ```text
 /nams:workspace use <workspace-id-or-name>
 ```
 
-After the platform command surface has matched `nams:workspace`, the wrapper
-must interpret only this subcommand:
+Codex uses:
+
+```text
+$nams:workspace use <workspace-id-or-name>
+```
+
+After the platform command surface has matched `nams:workspace`, the wrapper or
+adapter must interpret only this subcommand:
 
 ```text
 use <selector>
 ```
 
-`<selector>` is the full remaining argument text after `use`. It may
-be an exact workspace ID or exact workspace name. If the selector contains
-spaces, the wrapper should pass it to the shared CLI as one argv value where the
-platform command API permits it.
+`<selector>` is the full remaining argument text after `use`. It may be an
+exact workspace ID or exact workspace name. If the selector contains spaces,
+the wrapper should preserve it as one selector value when invoking the shared
+configure runtime.
 
-The wrapper supplies:
+The wrapper supplies, directly or through the active-session bridge:
 
 - platform ID
 - current harness session ID
 - workspace selector
 
-The wrapper then invokes:
+The wrapper then delegates to:
 
 ```bash
 nams-hooks workspaces configure <platform> --scope session --session-id <session-id> --workspace <selector>
 ```
 
 For self-contained plugin artifacts, wrappers should invoke the bundled
-`bin/cli.js` with `node` and an argv array. For project-level fallback templates,
-wrappers may invoke `nams-hooks` from `PATH`.
+`bin/cli.js` with `node` and an argv array where the platform can do so. For
+project-level fallback templates, wrappers may invoke `nams-hooks` from `PATH`.
 
-Wrappers must not call NAMS directly, store workspace IDs themselves, inspect
-OpenAPI, infer hook event names from payload fields, or edit durable config.
+Wrappers must not call NAMS directly, store selected workspace IDs themselves,
+inspect OpenAPI, infer hook event names from payload fields, or edit durable
+config.
 
 ## Capability Tiers
 
-### Tier 1: Deterministic Slash UX
+### Tier 1: Direct Session Command Context
 
-Claude Code and OpenCode are the first implementation tier.
+Claude Code and OpenCode can expose user-invoked command surfaces that run
+local commands, accept command arguments, and provide the current session ID.
+Their wrappers can therefore call the existing session configure command before
+the next memory hook turn.
 
-Both platforms can expose user-invoked command surfaces that run local commands,
-accept command arguments, and provide the current session ID. Their wrappers can
-therefore call the existing session configure command before the next memory
-hook turn.
+### Tier 2: Active Workspace Session Bridge
 
-Implementation planning should focus on this tier first.
+Gemini CLI and Codex are the second implementation tier.
 
-### Tier 2: Designed, Deferred Session Bridge
+Gemini custom commands and Codex skills provide a useful user command surface,
+but they do not both expose a documented, direct current-session substitution
+that can be treated like the Claude and OpenCode command contexts. Both
+platforms do, however, run NAMS hooks at the moment workspace ambiguity is
+detected, and that hook path has access to the platform session ID.
 
-Gemini CLI is the second tier.
+When the ambiguity notice is produced, the adapter records a short-lived active
+workspace-session marker. A later `/nams:workspace use ...` or
+`$nams:workspace use ...` invocation resolves that marker, obtains the session
+ID, and delegates to the shared configure runtime.
 
-Gemini custom commands can run shell snippets, and Gemini hooks expose
-`GEMINI_SESSION_ID`. The unresolved gap is whether custom-command shell
-execution reliably receives that session ID. Gemini should not ship this slash
-command until the runtime has a deterministic bridge from the user-invoked
-command to the current Gemini session.
+### Future Tier: Native Codex Command Handler
 
-### Tier 3: Prompt Helper Until Deterministic Commands Exist
+If Codex later provides a documented user command handler with deterministic
+shell execution and current-session metadata, the Codex skill can be replaced
+or supplemented by a direct wrapper. The wrapper contract remains the same:
+match `nams:workspace`, parse `use <selector>`, obtain the current Codex
+session ID, and delegate to the shared configure command without duplicating
+workspace validation or state writes.
 
-Codex is the third tier.
+## Active Workspace Session Bridge
 
-Codex hooks can run shell commands, and hook notices can include a parsed
-session ID when available. Current custom prompt or skill surfaces expand into
-model instructions rather than a documented deterministic pre-turn command
-handler. Codex should therefore expose a helper workflow, not a guaranteed
-slash-to-shell command, until Codex provides a direct user command handler or a
-documented current-session substitution.
+The bridge is generic across platforms and stores only the session candidates
+that recently hit workspace-selection ambiguity.
+
+The marker file path is:
+
+```text
+~/.nams/state/<platform>/active-workspace-sessions.json
+```
+
+The marker file shape is:
+
+```json
+{
+  "sessions": [
+    {
+      "sessionId": "10c34bad-1b86-497c-91d4-0c711dedee7a",
+      "sessionKey": "10c34bad-1b86-497c-91d4-0c711dedee7a",
+      "projectDirectory": "/absolute/project/path",
+      "statePath": "/home/user/.nams/state/gemini/session-...json",
+      "touchedAt": "2026-06-14T10:00:00.000Z"
+    }
+  ]
+}
+```
+
+The file has no explicit version field, matching the existing runtime state
+style. If the file is missing, unreadable, malformed, or lacks a valid
+`sessions` array, the bridge treats it as empty and rewrites the clean shape on
+the next successful record.
+
+Adapters record a marker only when workspace resolution reaches the
+multi-workspace selection-required path, the same path that emits:
+
+```text
+No memory messages were stored. Multiple NAMS workspaces are available, and no workspaceId is configured.
+```
+
+Recording is best-effort. If the marker cannot be written, the hook still emits
+the ambiguity notice and remains fail-open for the agent harness. The marker
+write must use existing private directory and file helpers so state directories
+stay owner-only and marker files are written as owner-only files.
+
+Resolution uses these rules:
+
+1. Filter records to the current platform marker file, current project
+   directory, and records touched within 60 seconds.
+2. Prune stale records when reading or writing the marker file.
+3. If exactly one fresh record remains, use its `sessionId`.
+4. If more than one fresh record remains, choose the newest only when it is at
+   least 15 seconds newer than the next candidate.
+5. Otherwise fail closed and show the explicit manual configure command with
+   `<session-id>`.
+
+This accepts the common case where the user runs the command immediately after
+the ambiguity notice, while avoiding guesses across several plausible active
+sessions.
 
 ## Platform Designs
 
@@ -184,9 +254,9 @@ node ${CLAUDE_PLUGIN_ROOT}/bin/cli.js workspaces run claude --event UserPromptEx
 ```
 
 The workspace runner reads the `UserPromptExpansion` JSON from stdin, obtains
-the current session ID from `session_id`, normalizes `use <selector>` from
-`command_args`, and delegates to the existing session-scoped configure runtime.
-The runner should preserve all text after `use` as the selector.
+the current session ID from the Claude payload, normalizes `use <selector>` from
+the command arguments, and delegates to the existing session-scoped configure
+runtime. The runner should preserve all text after `use` as the selector.
 
 If no session ID is available, the runner blocks the slash expansion without
 writing state and prints a short message that includes the equivalent manual
@@ -211,12 +281,12 @@ nams-hooks workspaces run opencode --event CommandExecuteBefore
 
 The shared CLI workspace runner then:
 
-1. derive the selector from the remaining arguments;
-2. require a nonblank `sessionID` from the OpenCode command event;
-3. delegate to `nams-hooks workspaces configure opencode --scope session --session-id
+1. derives the selector from the remaining arguments;
+2. requires a nonblank `sessionID` from the OpenCode command event;
+3. delegates to `nams-hooks workspaces configure opencode --scope session --session-id
    <sessionID> --workspace <selector>`;
-4. surface the command stdout or stderr to the user; and
-5. prevent a normal model turn for this command when the OpenCode plugin API
+4. surfaces the command stdout or stderr to the user; and
+5. prevents a normal model turn for this command when the OpenCode plugin API
    supports doing so.
 
 The plugin should ignore unrelated `nams:workspace` subcommands so future
@@ -228,66 +298,135 @@ the current shim.
 
 ### Gemini CLI
 
-Design Gemini around a custom command packaged with the Gemini extension:
+Package a Gemini custom command with the Gemini extension:
 
 ```text
 /nams:workspace use Engineering
 ```
 
-The command eventually calls:
+The command invokes the bundled workspace runner:
 
 ```bash
-node "${extensionPath}/bin/cli.js" workspaces configure gemini --scope session --session-id <resolved-session-id> --workspace <selector>
+node "${extensionPath}/bin/cli.js" workspaces run gemini --event CustomCommand
 ```
 
-Before shipping the command, add a deterministic session bridge. The bridge
-should be local, session-scoped, and built from data Gemini hooks already expose.
-Two acceptable bridge shapes are:
+The command passes a small JSON payload on stdin containing the matched command
+name and raw argument text, for example:
 
-- hook-recorded current-session metadata that the custom command can resolve
-  from the project directory and current process context; or
-- a small shared CLI helper that resolves the active Gemini session from local
-  NAMS session state when invoked from Gemini.
+```json
+{
+  "command_name": "nams:workspace",
+  "command_args": "use Engineering"
+}
+```
 
-The bridge must avoid relying on mutable agent prompts as state. It must also
-avoid guessing across multiple plausible active Gemini sessions. If the current
-session cannot be resolved uniquely, the command should fail and print the
-manual configure command with `<session-id>`.
+The Gemini adapter owns parsing this payload. It validates the command name,
+extracts the selector from `use <selector>`, resolves the current session ID
+through `~/.nams/state/gemini/active-workspace-sessions.json`, and delegates to
+the shared configure runtime.
+
+The Gemini memory hook records the active-session marker only when it reaches
+the workspace-selection ambiguity path. If the user runs the command after the
+60 second freshness window or while multiple fresh sessions are ambiguous, the
+command fails without writing state and prints the explicit manual configure
+command with `<session-id>`.
 
 ### Codex
 
-Codex should not advertise a deterministic slash command for this feature yet.
+Package a Codex skill with the Codex plugin. The skill name is:
 
-The designed interim UX is a prompt helper or skill that tells Codex to run the
-existing configure command through its normal command tool:
-
-```bash
-nams-hooks workspaces configure codex --scope session --session-id <session-id> --workspace <workspace-id-or-name>
+```text
+nams:workspace
 ```
 
-Hook notices should remain the primary Codex path. When the Codex adapter can
-parse the harness session ID, the notice should include the concrete session ID.
-Otherwise it should keep the `<session-id>` placeholder.
+The user invokes:
 
-Any future Codex deterministic command implementation must follow the same
-wrapper contract: match `nams:workspace`, parse `use <selector>`, obtain the
-current Codex session ID, and delegate to the shared configure command without
-duplicating workspace validation or state writes.
+```text
+$nams:workspace use Engineering
+```
+
+The Codex plugin manifest should add:
+
+```json
+{
+  "skills": "./skills/"
+}
+```
+
+The skill should include `agents/openai.yaml` with:
+
+```yaml
+policy:
+  allow_implicit_invocation: false
+```
+
+The skill remains script-free. Its instructions tell Codex to run the NAMS
+workspace runner with a payload equivalent to:
+
+```json
+{
+  "command_name": "nams:workspace",
+  "command_args": "use Engineering"
+}
+```
+
+The preferred command uses the plugin-bundled CLI when the loaded skill path
+makes the plugin root obvious:
+
+```bash
+node <plugin-root>/bin/cli.js workspaces run codex --event CustomCommand
+```
+
+If the plugin root cannot be resolved from the skill context, the skill may
+fall back to:
+
+```bash
+nams-hooks workspaces run codex --event CustomCommand
+```
+
+This fallback is explicit because Codex documents plugin-bundled hooks with
+`${PLUGIN_ROOT}`, but does not document `${PLUGIN_ROOT}` as a shell variable
+available to skill-instructed commands.
+
+The Codex adapter implements the same `CustomCommand` behavior as Gemini:
+validate `nams:workspace`, parse `use <selector>`, resolve the session ID from
+`~/.nams/state/codex/active-workspace-sessions.json`, and delegate to the shared
+configure runtime. Codex skill activation is deterministic when the user types
+`$nams:workspace`, but the actual shell execution still happens through
+Codex's normal tool loop until Codex provides a direct command handler.
 
 ## Data Flow
 
+Direct command-context platforms use this flow:
+
 1. The user invokes `/nams:workspace use <selector>`.
 2. The platform wrapper parses `use <selector>` and extracts `<selector>`.
-3. The wrapper obtains the current platform session ID from the platform command
-   context or a deterministic local bridge.
+3. The wrapper obtains the current platform session ID from the command event.
 4. The wrapper invokes the shared configure command with platform, session ID,
    and selector.
-5. The shared runtime loads connection config for `apiKey` and `baseUrl`.
-6. The shared runtime lists available workspaces without `X-Workspace-Id`.
-7. The shared runtime selects by exact ID or exact unambiguous name.
-8. The shared runtime writes `state.workspace = { id, source:
-   "session-selection", selectedAt }`.
-9. The next memory hook for the same session uses the session-selected
+
+Active-session bridge platforms use this flow:
+
+1. A memory hook detects multiple NAMS workspaces and no effective workspace ID.
+2. The platform adapter records the session ID, session key, project directory,
+   optional state path, and touch timestamp in
+   `~/.nams/state/<platform>/active-workspace-sessions.json`.
+3. The hook emits the existing ambiguity notice, including the command UX and
+   the explicit manual configure fallback.
+4. The user invokes `/nams:workspace use <selector>` for Gemini or
+   `$nams:workspace use <selector>` for Codex.
+5. The platform adapter resolves a fresh active-session marker.
+6. The adapter invokes the shared configure command with platform, resolved
+   session ID, and selector.
+
+The shared configure runtime then:
+
+1. loads connection config for `apiKey` and `baseUrl`;
+2. lists available workspaces without `X-Workspace-Id`;
+3. selects by exact ID or exact unambiguous name;
+4. writes `state.workspace = { id, source: "session-selection", selectedAt }`;
+   and
+5. lets the next memory hook for the same session use the session-selected
    workspace before durable config or environment workspace IDs.
 
 ## Error Handling
@@ -305,12 +444,20 @@ The shared configure command remains responsible for:
 - unsafe config or session-state paths; and
 - writing state only after successful validation.
 
-Wrappers are responsible for:
+Wrappers and platform adapters are responsible for:
 
+- rejecting command names other than `nams:workspace`;
 - rejecting command forms other than `use <selector>`;
-- rejecting a blank selector before invoking the CLI;
-- rejecting missing current session ID before invoking the CLI; and
-- showing the manual configure command when a session ID cannot be supplied.
+- rejecting a blank selector before invoking the configure runtime;
+- rejecting missing current session ID for direct command-context platforms;
+- resolving or failing closed on missing or ambiguous active-session markers;
+- showing the manual configure command when a session ID cannot be supplied; and
+- surfacing sanitized configure stdout or stderr to the user.
+
+Marker recording failures must not block normal hook output. Marker parsing
+failures must not print raw file contents and should be treated as an empty
+marker file. Bridge resolution must not guess when multiple fresh sessions are
+too close together.
 
 Wrappers must not print API keys, bearer tokens, raw config contents, raw
 backend exception text, or hidden reasoning. Workspace IDs and workspace names
@@ -322,26 +469,42 @@ selection flow.
 All command assets belong in source templates and are copied or rendered into
 `dist/` by `npm run dist`.
 
-Claude command assets should live under the Claude plugin template tree so the
-self-contained Claude plugin gets the slash command alongside hooks and bundled
-`bin/cli.js`.
+Claude command assets should live in both the baseline Claude template tree and
+the Claude plugin template tree so the self-contained Claude plugin gets the
+slash command alongside hooks and bundled `bin/cli.js`.
 
 OpenCode command handling should live in the existing OpenCode plugin shim.
 OpenCode currently uses the template directly rather than a generated plugin
 marketplace artifact, so tests should cover the source template.
 
-Gemini command assets, when implemented, should live under the Gemini extension
-template tree. The session bridge must be designed before adding user-visible
-Gemini command files.
+Gemini command assets should live under the Gemini extension template tree, in
+the command directory structure Gemini expects for the `nams` namespace and
+`workspace` command. The generated extension should include the command asset
+alongside hooks and bundled `bin/cli.js`.
 
-Codex helper assets, if added, should make clear that they are prompt helpers
-unless Codex provides deterministic user command execution.
+Codex skill assets should live under
+`templates/codex/plugins/codex-nams-hooks/skills/`. The Codex plugin manifest
+should expose `"skills": "./skills/"`, and the generated Codex plugin should
+include the skill, `agents/openai.yaml`, hooks, and bundled `bin/cli.js`.
 
 Generated `dist/` output must not be hand-edited.
 
 ## Testing
 
-The first implementation plan should cover Claude Code and OpenCode.
+The implementation plan should cover all four platforms, with behavior tiered
+by platform capability.
+
+Shared active-session bridge tests should assert:
+
+- marker files are written under `~/.nams/state/<platform>/active-workspace-sessions.json`;
+- malformed or missing marker files are treated as empty;
+- stale records older than 60 seconds are pruned;
+- exactly one fresh session resolves;
+- multiple fresh sessions resolve only when the newest is at least 15 seconds
+  newer than the next candidate;
+- ambiguous fresh sessions fail closed;
+- platform and project directory isolation are preserved; and
+- marker writes use existing private path helpers where tests can assert it.
 
 Claude tests should assert:
 
@@ -362,24 +525,65 @@ OpenCode tests should simulate the plugin command event and assert:
 - unrelated commands do not invoke the workspace runner; and
 - failed CLI output is surfaced to the user.
 
+Gemini tests should assert:
+
+- the ambiguity hook path records an active-session marker;
+- marker write failure does not block the ambiguity notice;
+- `/nams:workspace use Engineering` invokes `workspaces run gemini --event
+  CustomCommand`;
+- command payload parsing preserves selectors with spaces;
+- resolved active sessions delegate to `configure gemini --scope session`; and
+- missing or ambiguous active sessions fail without writing workspace state.
+
+Codex tests should assert:
+
+- the ambiguity hook path records an active-session marker;
+- marker write failure does not block the ambiguity notice;
+- `$nams:workspace use Engineering` is documented by a packaged skill named
+  `nams:workspace`;
+- the Codex plugin manifest exposes `"skills": "./skills/"`;
+- the skill includes `allow_implicit_invocation: false`;
+- `CustomCommand` parsing preserves selectors with spaces;
+- resolved active sessions delegate to `configure codex --scope session`; and
+- missing or ambiguous active sessions fail without writing workspace state.
+
+Documentation and packaging tests should assert:
+
+- generated `dist/` contains the Gemini command asset;
+- generated `dist/` contains the Codex skill asset and manifest `skills` field;
+- docs, README/installation docs, and relevant user-facing hook or system
+  messages mention `/nams:workspace` for slash-capable platforms;
+- Codex docs mention `$nams:workspace`; and
+- the explicit bash configure command remains present as the reliable fallback.
+
 Existing shared CLI tests already cover workspace selector validation, session
 state writes, state preservation, workspace precedence, and no-write failures.
 Wrapper tests should not duplicate those cases.
 
-Gemini and Codex can remain spec-only for the first implementation plan. When
-their deferred tiers begin, add tests for the session bridge or prompt-helper
-assets before implementation.
+Manual verification should include:
+
+- `npm run check`;
+- `npm run dist`;
+- `npm run dist:check` when available;
+- a Gemini extension smoke test for `/nams:workspace use ...`; and
+- a Codex plugin and skill smoke test focused on whether the skill can locate
+  the bundled CLI or fall back clearly to `nams-hooks` on `PATH`.
 
 ## Implementation Boundary
 
-The next implementation plan should implement only Tier 1:
+The next implementation plan should implement:
 
-- Claude Code command asset and template tests.
-- OpenCode plugin command interception and template tests.
-- Documentation, README/installation docs, and relevant user-facing hook or
-  system message updates that describe the Tier 1 slash UX, keep the explicit
-  bash configure command, and explain the Gemini/Codex limitations.
+- the shared active workspace-session bridge helper;
+- Gemini marker recording, `CustomCommand` handling, command packaging, tests,
+  and docs;
+- Codex marker recording, `CustomCommand` handling, skill packaging, tests, and
+  docs;
+- any small updates needed to keep Claude and OpenCode behavior aligned with
+  the `nams:workspace` namespace; and
+- documentation, README/installation docs, and relevant user-facing hook or
+  system message updates that describe the command UX while keeping the
+  explicit bash configure command.
 
-Gemini and Codex should remain designed but deferred until a later plan. This
-keeps the cross-platform product direction visible without expanding behavior
-where the platform command surface is not yet deterministic.
+The implementation must keep `src/cli.ts` as a gateway. Typed events are added
+to shared contracts before platform adapters handle them, and payload parsing
+stays in platform-specific code.
