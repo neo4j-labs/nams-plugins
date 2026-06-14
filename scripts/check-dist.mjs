@@ -10,6 +10,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const distDir = path.join(root, "dist");
 const generatedClientPath = path.join(root, "dist", "bin", "generated", "nams-client.js");
 const geminiExtensionPath = path.join(root, "dist", "gemini-extension.json");
+const geminiCommandPath = path.join(root, "dist", "commands", "nams", "workspace.toml");
 const claudeMarketplacePath = path.join(root, "dist", ".claude-plugin", "marketplace.json");
 const claudePluginManifestPath = path.join(root, "dist", "plugins", "nams-hooks", ".claude-plugin", "plugin.json");
 const claudePluginHooksPath = path.join(root, "dist", "plugins", "nams-hooks", "hooks", "hooks.json");
@@ -27,6 +28,7 @@ const execFileAsync = promisify(execFile);
 
 await access(generatedClientPath);
 await access(geminiExtensionPath);
+await access(geminiCommandPath);
 await access(opencodeTemplatePath);
 await verifyRootPackageFiles(rootPackagePath);
 const rootPackageJson = await verifySourcePackageIdentity(rootPackagePath);
@@ -287,11 +289,18 @@ async function checkPackedPackage(packageDir, binTarget, options = {}) {
   if (!packedFiles.includes(binTarget)) {
     throw new Error(`packed package is missing nams-hooks bin target: ${binTarget}`);
   }
-  for (const expectedFile of [...claudePackedFiles(packageDir), ...codexPackedFiles(packageDir)]) {
+  for (const expectedFile of [...geminiPackedFiles(packageDir), ...claudePackedFiles(packageDir), ...codexPackedFiles(packageDir)]) {
     if (!packedFiles.includes(expectedFile)) {
       throw new Error(`packed package is missing plugin file: ${expectedFile}`);
     }
   }
+}
+
+function geminiPackedFiles(packageDir) {
+  const prefix = packageDir === root ? "dist/" : "";
+  return [
+    `${prefix}commands/nams/workspace.toml`,
+  ];
 }
 
 function claudePackedFiles(packageDir) {

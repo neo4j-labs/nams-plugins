@@ -39,3 +39,14 @@ test("Gemini hook template routes BeforeAgent through the memory hook only", asy
     ],
   );
 });
+
+test("Gemini extension template packages nams workspace custom command", async () => {
+  const command = await readFile(path.join(repoRoot, "templates", "gemini", "commands", "nams", "workspace.toml"), "utf8");
+
+  assert.match(command, /description\s*=\s*"Select the NAMS workspace for this Gemini session\."/);
+  assert.match(command, /prompt\s*=/);
+  assert.match(command, /nams:workspace/);
+  assert.match(command, /workspaces run gemini --event CustomCommand/);
+  assert.match(command, /\{\{args\}\}/);
+  assert.doesNotMatch(command, /workspaces configure/);
+});
