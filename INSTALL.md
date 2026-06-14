@@ -72,16 +72,23 @@ Workspace selection has three lifetimes:
 For multi-workspace inactive memory notices, the recommended quick fix is a
 session selection.
 
-When the platform command is installed, Claude Code and OpenCode expose the
-direct command:
+When the platform command is installed, Claude Code, OpenCode, and Gemini expose
+the direct command:
 
 ```text
-# Claude Code and OpenCode
+# Claude Code, OpenCode, and Gemini CLI
 /nams:workspace use <workspace-id-or-name>
 ```
 
-These slash commands wrap the explicit shell command. Keep using the shell
-command for Gemini, Codex, scripts, and troubleshooting:
+Codex exposes the same namespace as an explicit skill:
+
+```text
+$nams:workspace use <workspace-id-or-name>
+```
+
+These command surfaces wrap the explicit shell command. Keep using the shell
+command for scripts, troubleshooting, and any session where the platform command
+cannot resolve the current session:
 
 ```bash
 nams-hooks workspaces configure <platform> --scope session --session-id <session-id> --workspace <workspace-id-or-name>
@@ -182,8 +189,15 @@ Codex plugin installs do not currently define a custom NAMS credential prompt.
 Configure NAMS through `~/.nams/config.json`, project `.nams/config.json`, or the
 `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment variables.
 
-Codex does not currently expose deterministic `/nams:workspace use`.
-Use the explicit shell command from the hook notice:
+Codex exposes workspace selection as the explicit skill:
+
+```text
+$nams:workspace use <workspace-id-or-name>
+```
+
+The explicit skill asks Codex to run the bundled workspace command for the
+current session. If the current active NAMS session cannot be resolved, use the
+explicit shell command from the hook notice:
 
 ```bash
 nams-hooks workspaces configure codex --scope session --session-id <session-id> --workspace <workspace-id-or-name>
@@ -213,8 +227,14 @@ You can provide those values through Gemini extension settings, through
 `~/.nams/config.json`, through project `.nams/config.json`, or through the
 `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment variables.
 
-Gemini CLI slash-command support is designed but deferred until the current
-session ID can be resolved deterministically from a custom command. Use the
+Gemini exposes workspace selection through the extension custom command:
+
+```text
+/nams:workspace use <workspace-id-or-name>
+```
+
+The custom command resolves the recent active Gemini session recorded by the
+workspace ambiguity hook. If the active session is missing or ambiguous, use the
 explicit shell command from the hook notice:
 
 ```bash

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
 const workspaceSlash = "/nams:workspace use <workspace-id-or-name>";
+const codexSkillCommand = "$nams:workspace use <workspace-id-or-name>";
 const genericSessionConfigure =
   "nams-hooks workspaces configure <platform> --scope session --session-id <session-id> --workspace <workspace-id-or-name>";
 const durableProjectConfigure =
@@ -58,12 +59,23 @@ function sectionByHeading(content: string, heading: string): string {
   return lines.slice(headingIndex + 1, endIndex).join("\n");
 }
 
+function tableRowByFirstCell(markdownTable: string, firstCell: string): string {
+  const row = markdownTable
+    .split("\n")
+    .find((line) => line.trim().startsWith(`| ${firstCell} |`));
+
+  assert.ok(row, `Missing table row for ${firstCell}`);
+  return row;
+}
+
 test("README documents Tier 1 workspace selection and the portable shell command", async () => {
   const content = await readDoc("README.md");
 
   assert.match(content, /session-scoped selection/i);
   assertMentionsPlatformCommand(content, "Claude Code", workspaceSlash);
   assertMentionsPlatformCommand(content, "OpenCode", workspaceSlash);
+  assertMentionsPlatformCommand(content, "Gemini", workspaceSlash);
+  assertMentionsPlatformCommand(content, "Codex", codexSkillCommand);
   assertIncludesCommand(content, genericSessionConfigure);
   assertIncludesCommand(content, durableProjectConfigure);
   assert.doesNotMatch(content, /nams-hooks:nams-hooks/);
@@ -77,9 +89,10 @@ test("INSTALL workspace selection documents slash commands and shell fallback", 
   assert.match(workspaceSelection, /multi-workspace inactive memory notices/i);
   assertMentionsPlatformCommand(workspaceSelection, "Claude Code", workspaceSlash);
   assertMentionsPlatformCommand(workspaceSelection, "OpenCode", workspaceSlash);
-  assert.match(workspaceSelection, /slash commands[\s\S]{0,160}explicit shell command/i);
-  assert.match(workspaceSelection, /shell command[\s\S]{0,160}Gemini/i);
-  assert.match(workspaceSelection, /shell command[\s\S]{0,160}Codex/i);
+  assertMentionsPlatformCommand(workspaceSelection, "Gemini", workspaceSlash);
+  assertMentionsPlatformCommand(workspaceSelection, "Codex", codexSkillCommand);
+  assert.match(workspaceSelection, /command surfaces[\s\S]{0,160}explicit shell command/i);
+  assert.doesNotMatch(workspaceSelection, /Keep using the shell command for Gemini, Codex/);
   assertIncludesCommand(workspaceSelection, genericSessionConfigure);
   assertIncludesCommand(workspaceSelection, opencodeSessionExample);
   assert.doesNotMatch(workspaceSelection, /nams-hooks:nams-hooks/);
@@ -101,15 +114,17 @@ test("INSTALL platform notes keep platform-specific workspace command guidance",
     "nams-hooks workspaces configure claude --scope session --session-id <session-id> --workspace <workspace-id-or-name>",
   );
 
-  assert.match(codex, /does not currently expose deterministic/i);
-  assert.match(codex, /\/nams:workspace use/);
+  assert.match(codex, /explicit skill/i);
+  assertIncludesCommand(codex, codexSkillCommand);
+  assert.doesNotMatch(codex, /does not currently expose deterministic/);
   assertIncludesCommand(
     codex,
     "nams-hooks workspaces configure codex --scope session --session-id <session-id> --workspace <workspace-id-or-name>",
   );
 
-  assert.match(gemini, /slash-command support/i);
-  assert.match(gemini, /deferred/i);
+  assert.match(gemini, /custom command/i);
+  assertIncludesCommand(gemini, workspaceSlash);
+  assert.doesNotMatch(gemini, /deferred/i);
   assertIncludesCommand(
     gemini,
     "nams-hooks workspaces configure gemini --scope session --session-id <session-id> --workspace <workspace-id-or-name>",
@@ -125,15 +140,49 @@ test("INSTALL platform notes keep platform-specific workspace command guidance",
 test("session workspace research note reflects Tier 1 support and safe Claude handling", async () => {
   const content = await readDoc("docs/session-workspace-command-support.md");
   const intro = content.slice(0, content.indexOf("## Current Repo State"));
+  const platformMatrix = sectionByHeading(content, "## Platform Matrix");
+  const geminiMatrixRow = tableRowByFirstCell(platformMatrix, "Gemini CLI");
+  const codexMatrixRow = tableRowByFirstCell(platformMatrix, "Codex");
+  const gemini = sectionByHeading(content, "### Gemini CLI");
+  const codex = sectionByHeading(content, "### Codex");
   const remainingUxWork = sectionByHeading(content, "## Remaining UX Work");
 
   assertMentionsPlatformCommand(intro, "Claude Code", workspaceSlash);
   assertMentionsPlatformCommand(intro, "OpenCode", workspaceSlash);
+  assertMentionsPlatformCommand(intro, "Gemini", workspaceSlash);
+  assertMentionsPlatformCommand(intro, "Codex", codexSkillCommand);
   assertIncludesCommand(intro, genericSessionConfigure);
+  assert.doesNotMatch(intro, /Tier 1 user-facing forms are/i);
+  assert.doesNotMatch(intro, /# Claude Code and OpenCode/);
+  assertIncludesCommand(geminiMatrixRow, workspaceSlash);
+  assert.match(geminiMatrixRow, /active-session\s+bridge/i);
+  assert.match(geminiMatrixRow, /shell fallback/i);
+  assert.doesNotMatch(geminiMatrixRow, /bridge is still needed/i);
+  assertIncludesCommand(codexMatrixRow, codexSkillCommand);
+  assert.match(codexMatrixRow, /active-session\s+bridge/i);
+  assert.match(codexMatrixRow, /shell fallback/i);
+  assert.doesNotMatch(codexMatrixRow, /Prompt-helper only/i);
+  assert.doesNotMatch(codexMatrixRow, /custom prompts/i);
+  assert.match(gemini, /extension custom command/i);
+  assertIncludesCommand(gemini, workspaceSlash);
+  assert.match(gemini, /active-session\s+bridge/i);
+  assert.match(gemini, /missing or ambiguous/i);
+  assert.doesNotMatch(gemini, /close, but not quite direct/i);
+  assert.doesNotMatch(gemini, /bridge is implemented/i);
+  assert.doesNotMatch(gemini, /Keep Gemini on the current runtime auto-selection/i);
+  assert.match(codex, /explicit skill/i);
+  assertIncludesCommand(codex, codexSkillCommand);
+  assert.match(codex, /active NAMS session cannot be resolved/i);
+  assert.doesNotMatch(codex, /does not expose deterministic/i);
+  assert.doesNotMatch(codex, /prompt-only helper skill/i);
+  assert.doesNotMatch(codex, /optionally provide a prompt/i);
   assertIncludesCommand(remainingUxWork, workspaceSlash);
+  assertIncludesCommand(remainingUxWork, codexSkillCommand);
   assertIncludesCommand(remainingUxWork, genericSessionConfigure);
-  assert.match(remainingUxWork, /Gemini CLI[\s\S]{0,160}deferred/i);
-  assert.match(remainingUxWork, /Codex[\s\S]{0,160}explicit shell configuration/i);
+  assert.match(remainingUxWork, /Gemini CLI[\s\S]{0,240}active-session\s+bridge/i);
+  assert.match(remainingUxWork, /Codex[\s\S]{0,240}\$nams:workspace/i);
+  assert.doesNotMatch(remainingUxWork, /Gemini CLI[\s\S]{0,160}deferred/i);
+  assert.doesNotMatch(remainingUxWork, /Codex[\s\S]{0,160}explicit shell configuration/i);
   assert.doesNotMatch(remainingUxWork, /Add Claude Code UX first/);
   assert.doesNotMatch(content, /current shim does not yet intercept a user command/);
   assert.doesNotMatch(content, /nams-hooks:nams-hooks/);

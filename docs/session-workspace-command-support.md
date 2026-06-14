@@ -7,14 +7,21 @@ landed.
 
 This note tracks the implemented session-scoped workspace configure command and
 which currently supported `nams-hooks` platforms expose a user-invoked command
-surface that can wrap it. Tier 1 user-facing forms are:
+surface that can wrap it. Claude Code, OpenCode, and Gemini expose:
 
 ```text
-# Claude Code and OpenCode
+# Claude Code, OpenCode, and Gemini CLI
 /nams:workspace use <workspace-id-or-name>
 ```
 
-implemented as a deterministic local command:
+Codex exposes the same namespace as an explicit skill:
+
+```text
+$nams:workspace use <workspace-id-or-name>
+```
+
+The explicit shell configure command remains the fallback and source of truth
+for all platforms:
 
 ```bash
 nams-hooks workspaces configure <platform> --scope session --session-id <session-id> --workspace <workspace-id-or-name>
@@ -74,8 +81,8 @@ Session scope includes filesystem preflights before listing workspaces:
 | --- | --- | --- | --- | --- | --- |
 | Claude Code | Yes | Yes | Yes | Best | Template and plugin custom commands are slash-invocable as `/nams:workspace`. `UserPromptExpansion` hooks can intercept the command before Claude sees it and receive `session_id` plus raw `command_args`. |
 | OpenCode | Yes | Yes | Yes | Best with plugin shim | The plugin shim intercepts `command.execute.before`, preserves `/nams:workspace use <workspace-id-or-name>`, and runs the shared configure command. |
-| Gemini CLI | Yes | Yes | Partial | Good with bridge | Custom commands support shell injection, and hooks expose `GEMINI_SESSION_ID`. The custom-command shell execution path appears to set only the general `GEMINI_CLI=1` identity variable, so a session-id bridge is still needed for slash-command UX. |
-| Codex | Yes | Partial | Payload-dependent | Prompt-helper only | Codex hooks run shell commands and workspace notices now include parsed session IDs when available. Custom prompts expand into model instructions rather than deterministic pre-shell command execution. |
+| Gemini CLI | Yes | Yes | Yes, through bridge | Implemented with bridge | The extension custom command `/nams:workspace use <workspace-id-or-name>` resolves the recent active Gemini session through the active-session bridge recorded by ambiguity hooks; the explicit configure command remains the shell fallback. |
+| Codex | Yes | Skill-mediated | Bridge when available | Explicit skill | The explicit skill `$nams:workspace use <workspace-id-or-name>` resolves through the active-session bridge where available; the explicit configure command remains the shell fallback. |
 
 ## Platform Notes
 
@@ -149,53 +156,45 @@ and reports the result without starting a normal model turn.
 
 ### Gemini CLI
 
-Gemini CLI is close, but not quite direct.
+Gemini CLI exposes workspace selection through the extension custom command:
+
+```text
+/nams:workspace use <workspace-id-or-name>
+```
 
 Gemini custom commands are TOML files under user, project, or extension command
-directories. They support `{{args}}`, shell injection with `!{...}`, and command
-packaging through extensions. Gemini hooks also expose `GEMINI_SESSION_ID` in
-the hook environment, along with `GEMINI_PROJECT_DIR`, `GEMINI_PLANS_DIR`, and
-`GEMINI_CWD`.
+directories. The NAMS extension packages the command and resolves the recent
+active Gemini session through the active-session bridge recorded when the
+workspace ambiguity hook fires. The hook-side bridge uses the session context
+Gemini exposes during hook execution, including `GEMINI_SESSION_ID`, and lets
+the user-facing custom command configure the same session without asking users
+to copy the session ID manually.
 
-The caveat is that the documented session id belongs to hook execution. The
-custom-command shell execution path appears to use the general shell execution
-service, which sets `GEMINI_CLI=1` but does not clearly set
-`GEMINI_SESSION_ID`. That means the slash command can run shell, but cannot be
-assumed to know the current session id directly.
+If the active session is missing or ambiguous, the notice keeps the explicit
+configure fallback:
 
-Good options:
-
-1. Add a Gemini hook that records `GEMINI_SESSION_ID` into NAMS session state or
-   a small local bridge file, then let the custom command call `nams-hooks`
-   without passing `--session-id`.
-2. Add a dedicated `nams-hooks workspaces use` mode that resolves the current
-   Gemini session from existing NAMS state when run inside Gemini.
-3. Keep Gemini on the current runtime auto-selection and project/user configure
-   flow until a clean command-session bridge is implemented.
+```bash
+nams-hooks workspaces configure gemini --scope session --session-id <session-id> --workspace <workspace-id-or-name>
+```
 
 ### Codex
 
-Codex is the weakest fit for the exact slash-command-to-shell UX, even though
-the shared `nams-hooks workspaces configure codex --scope session ...` command
-itself is now implemented.
+Codex exposes workspace selection as an explicit skill invocation:
 
-Codex has lifecycle hooks that run command handlers. It also has custom prompts,
-but they are deprecated and expand into model instructions; they do not provide
-the same documented pre-prompt shell injection contract as Claude skills or
-Gemini/OpenCode custom commands. Codex skills are reusable workflows and can
-include scripts as resources, but invocation means Codex follows instructions,
-not that Codex deterministically runs a declared shell snippet before the turn.
+```text
+$nams:workspace use <workspace-id-or-name>
+```
 
-For Codex, the safer current UX recommendation is:
+The explicit skill asks Codex to run the bundled workspace command against the
+current active NAMS session. This keeps the NAMS namespace visible to users
+without presenting it as a Codex slash command.
 
-- keep project/user workspace configuration as the primary user-facing path;
-- use the session configure command manually when the notice includes a parsed
-  session id;
-- optionally provide a prompt-only helper skill that instructs Codex to run the
-  configure command through its normal command tool;
-- avoid promising a deterministic custom slash command until Codex exposes a
-  direct user command handler or a documented session-id substitution for
-  user-invoked commands.
+If the active NAMS session cannot be resolved, the notice keeps the explicit
+configure fallback:
+
+```bash
+nams-hooks workspaces configure codex --scope session --session-id <session-id> --workspace <workspace-id-or-name>
+```
 
 ## Implemented Command Behavior
 
@@ -221,8 +220,7 @@ Behavior:
 
 ## Remaining UX Work
 
-After Tier 1, Claude Code project-template and plugin installs expose the direct
-command:
+Claude Code project-template and plugin installs expose the direct command:
 
 ```text
 /nams:workspace use <workspace-id-or-name>
@@ -234,6 +232,20 @@ OpenCode exposes the direct plugin shim command:
 /nams:workspace use <workspace-id-or-name>
 ```
 
+Gemini CLI uses the same slash command through the extension custom-command
+surface. The command resolves the current session through the active-session
+bridge recorded when the workspace ambiguity hook fires:
+
+```text
+/nams:workspace use <workspace-id-or-name>
+```
+
+Codex exposes the namespace as an explicit skill invocation:
+
+```text
+$nams:workspace use <workspace-id-or-name>
+```
+
 The explicit configure command remains documented for all platforms, scripts,
 and troubleshooting:
 
@@ -241,15 +253,10 @@ and troubleshooting:
 nams-hooks workspaces configure <platform> --scope session --session-id <session-id> --workspace <workspace-id-or-name>
 ```
 
-Gemini CLI slash-command support remains designed but deferred until the current
-session ID can be resolved deterministically from a custom command. Codex remains
-on explicit shell configuration because it does not currently expose a
-deterministic `/nams:workspace use` command path.
-
-The runtime notices emitted by supported adapters now point users at the session
-command when multiple NAMS workspaces are available. When the adapter can parse
-the harness session id, the notice includes it directly; otherwise it uses the
-`<session-id>` placeholder.
+The runtime notices emitted by supported adapters now point users at the
+platform command and keep the session configure fallback. When the adapter can
+parse the current session ID, the fallback includes the concrete session ID.
+Otherwise it keeps the `<session-id>` placeholder.
 
 ## Sources
 
