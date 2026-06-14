@@ -498,6 +498,32 @@ test("workspaces run codex CustomCommand fails closed without an active session"
   }
 });
 
+test("workspaces run codex CustomCommand reports Codex skill usage for invalid forms", async () => {
+  const projectDir = await realpath(await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-")));
+  try {
+    const result = await runCli(
+      ["workspaces", "run", "codex", "--event", "CustomCommand"],
+      {
+        command_name: "nams:workspace",
+        command_args: "select Engineering",
+      },
+      runtimeEnv(path.join(projectDir, "home"), "http://127.0.0.1"),
+      projectDir,
+    );
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(result.stderr, "");
+    const stdout = JSON.parse(result.stdout);
+    assert.equal(stdout.continue, false);
+    assert.equal(stdout.suppressOutput, false);
+    assert.equal(stdout.exitCode, 1);
+    assert.match(stdout.message, /Usage: \$nams:workspace use <workspace-id-or-name>/);
+    assert.doesNotMatch(stdout.message, /Usage: \/nams:workspace/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("workspaces rejects unsupported workspace events with usage", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-"));
   try {

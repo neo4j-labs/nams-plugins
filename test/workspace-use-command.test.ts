@@ -6,7 +6,7 @@ import path from "node:path";
 import { test } from "node:test";
 import type { Platform, WorkspaceHookInvocation } from "../src/interfaces.js";
 import { recordActiveWorkspaceSession } from "../src/runtime/active-workspace-session.js";
-import { runActiveSessionWorkspaceUseCommand } from "../src/runtime/workspace-use-command.js";
+import { runActiveSessionWorkspaceUseCommand, slashWorkspaceCommandUsage } from "../src/runtime/workspace-use-command.js";
 import { sessionStateFiles } from "./support/runtime-home.js";
 
 interface RecordedRequest {
@@ -131,6 +131,7 @@ test("bridged workspace command configures resolved active session", async () =>
         arguments: "use Research",
         projectDirectory: projectDir,
         sessionLabel: "Gemini",
+        usage: slashWorkspaceCommandUsage,
       });
 
       assert.equal(result.status, "completed");
@@ -162,6 +163,7 @@ test("bridged workspace command fails closed when active session is missing", as
       arguments: "use Engineering",
       projectDirectory: projectDir,
       sessionLabel: "Gemini",
+      usage: slashWorkspaceCommandUsage,
     });
 
     assert.deepEqual(result, {
@@ -205,6 +207,7 @@ test("bridged workspace command fails closed when active session is ambiguous", 
       arguments: ["use", "Engineering Team"],
       projectDirectory: projectDir,
       sessionLabel: "Codex",
+      usage: slashWorkspaceCommandUsage,
     });
 
     assert.equal(result.status, "completed");

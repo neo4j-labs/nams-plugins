@@ -3,7 +3,8 @@ import { resolveActiveWorkspaceSession } from "./active-workspace-session.js";
 import { configureWorkspaceSelection } from "./workspace-configuration.js";
 
 const workspaceCommandName = "nams:workspace";
-const workspaceCommandUsage = "Usage: /nams:workspace use <workspace-id-or-name>";
+export const slashWorkspaceCommandUsage = "Usage: /nams:workspace use <workspace-id-or-name>";
+export const codexWorkspaceCommandUsage = "Usage: $nams:workspace use <workspace-id-or-name>";
 
 export type WorkspaceUseCommandResult =
   | { status: "ignored" }
@@ -15,6 +16,7 @@ export interface WorkspaceUseCommandInput {
   sessionId?: string;
   invalidSubcommandMode: "ignore" | "usage";
   sessionLabel: string;
+  usage: string;
 }
 
 export interface ActiveSessionWorkspaceUseCommandInput {
@@ -22,6 +24,7 @@ export interface ActiveSessionWorkspaceUseCommandInput {
   arguments: unknown;
   projectDirectory: string;
   sessionLabel: string;
+  usage: string;
 }
 
 export async function runSessionWorkspaceUseCommand(
@@ -36,10 +39,10 @@ export async function runSessionWorkspaceUseCommand(
     if (input.invalidSubcommandMode === "ignore") {
       return { status: "ignored" };
     }
-    return commandFailure(workspaceCommandUsage);
+    return commandFailure(input.usage);
   }
   if (parsedCommand.selector === "") {
-    return commandFailure(workspaceCommandUsage);
+    return commandFailure(input.usage);
   }
 
   const sessionId = input.sessionId?.trim() ?? "";
@@ -62,7 +65,7 @@ export async function runActiveSessionWorkspaceUseCommand(
     return parsedCommand;
   }
   if (parsedCommand.status === "invalid" || parsedCommand.selector === "") {
-    return commandFailure(workspaceCommandUsage);
+    return commandFailure(input.usage);
   }
 
   const activeSession = await resolveActiveWorkspaceSession({

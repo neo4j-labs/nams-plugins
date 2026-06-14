@@ -1,6 +1,6 @@
 import type { WorkspaceHookInvocation, WorkspaceHookResult, WorkspacePlatformAdapter } from "../../interfaces.js";
 import { configureWorkspaceSelection } from "../../runtime/workspace-configuration.js";
-import { runActiveSessionWorkspaceUseCommand } from "../../runtime/workspace-use-command.js";
+import { codexWorkspaceCommandUsage, runActiveSessionWorkspaceUseCommand } from "../../runtime/workspace-use-command.js";
 
 export class CodexWorkspaceAdapter implements WorkspacePlatformAdapter {
   async installConfigure(invocation: WorkspaceHookInvocation<"InstallConfigure">): Promise<WorkspaceHookResult> {
@@ -13,6 +13,7 @@ export class CodexWorkspaceAdapter implements WorkspacePlatformAdapter {
       arguments: invocation.rawPayload.command_args,
       projectDirectory: invocation.processCwd,
       sessionLabel: "Codex",
+      usage: codexWorkspaceCommandUsage,
     });
 
     if (result.status === "ignored") {

@@ -1,6 +1,6 @@
 import type { WorkspaceHookInvocation, WorkspaceHookResult, WorkspacePlatformAdapter } from "../../interfaces.js";
 import { configureWorkspaceSelection } from "../../runtime/workspace-configuration.js";
-import { runSessionWorkspaceUseCommand } from "../../runtime/workspace-use-command.js";
+import { runSessionWorkspaceUseCommand, slashWorkspaceCommandUsage } from "../../runtime/workspace-use-command.js";
 
 export class OpenCodeWorkspaceAdapter implements WorkspacePlatformAdapter {
   async installConfigure(invocation: WorkspaceHookInvocation<"InstallConfigure">): Promise<WorkspaceHookResult> {
@@ -14,6 +14,7 @@ export class OpenCodeWorkspaceAdapter implements WorkspacePlatformAdapter {
       sessionId: stringValue(invocation.rawPayload.sessionID),
       invalidSubcommandMode: "ignore",
       sessionLabel: "OpenCode",
+      usage: slashWorkspaceCommandUsage,
     });
 
     if (result.status === "ignored") {

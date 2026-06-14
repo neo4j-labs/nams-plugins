@@ -1,6 +1,6 @@
 import type { WorkspaceHookInvocation, WorkspaceHookResult, WorkspacePlatformAdapter } from "../../interfaces.js";
 import { configureWorkspaceSelection } from "../../runtime/workspace-configuration.js";
-import { runSessionWorkspaceUseCommand } from "../../runtime/workspace-use-command.js";
+import { runSessionWorkspaceUseCommand, slashWorkspaceCommandUsage } from "../../runtime/workspace-use-command.js";
 
 export class ClaudeWorkspaceAdapter implements WorkspacePlatformAdapter {
   async installConfigure(invocation: WorkspaceHookInvocation<"InstallConfigure">): Promise<WorkspaceHookResult> {
@@ -14,6 +14,7 @@ export class ClaudeWorkspaceAdapter implements WorkspacePlatformAdapter {
       sessionId: stringValue(invocation.rawPayload.session_id),
       invalidSubcommandMode: "usage",
       sessionLabel: "Claude",
+      usage: slashWorkspaceCommandUsage,
     });
 
     if (result.status === "ignored") {
