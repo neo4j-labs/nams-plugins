@@ -7,10 +7,10 @@ landed.
 
 This note tracks the implemented session-scoped workspace configure command and
 which currently supported `nams-hooks` platforms expose a user-invoked command
-surface that can wrap it. Claude Code, OpenCode, and Gemini expose:
+surface that can wrap it. Claude Code and Gemini expose:
 
 ```text
-# Claude Code, OpenCode, and Gemini CLI
+# Claude Code and Gemini CLI
 /nams:workspace use <workspace-id-or-name>
 ```
 
@@ -19,6 +19,10 @@ Codex exposes the same namespace as an explicit skill:
 ```text
 $nams:workspace use <workspace-id-or-name>
 ```
+
+OpenCode currently uses the explicit shell command because its markdown command
+files are prompt templates and do not expose a documented model-invocation
+disable flag.
 
 The explicit shell configure command remains the fallback and source of truth
 for all platforms:
@@ -80,7 +84,7 @@ Session scope includes filesystem preflights before listing workspaces:
 | Platform | Shared session command implemented? | User-invoked command can run shell? | Current-session id available? | Fit | Notes |
 | --- | --- | --- | --- | --- | --- |
 | Claude Code | Yes | Yes | Yes | Best | Template and plugin custom commands are slash-invocable as `/nams:workspace`. `UserPromptExpansion` hooks can intercept the command before Claude sees it and receive `session_id` plus raw `command_args`. |
-| OpenCode | Yes | Yes | Yes | Best with plugin shim | The `.opencode/commands/nams:workspace.md` command file exposes `/nams:workspace use <workspace-id-or-name>` in the TUI, while the plugin shim intercepts `command.execute.before` and runs the shared workspace command before a model turn starts. |
+| OpenCode | Yes | Yes | Yes | Shell fallback | OpenCode markdown command files are prompt templates. The plugin shim can observe `command.execute.before`, but OpenCode ignores hook return values and then unconditionally prompts the model, so nams-hooks must not package `.opencode/commands/nams:workspace.md` until OpenCode exposes a non-prompt command surface. |
 | Gemini CLI | Yes | Yes | Yes, through bridge | Implemented with bridge | The extension custom command `/nams:workspace use <workspace-id-or-name>` resolves the recent active Gemini session through the active-session bridge recorded by ambiguity hooks; the explicit configure command remains the shell fallback. |
 | Codex | Yes | Skill-mediated | Bridge when available | Explicit skill | The explicit skill `$nams:workspace use <workspace-id-or-name>` resolves through the active-session bridge where available; the explicit configure command remains the shell fallback. |
 
@@ -121,9 +125,13 @@ treating the word `use` as part of the workspace name.
 
 ### OpenCode
 
-OpenCode is also a strong fit. The project template follows OpenCode's command
-file convention with `.opencode/commands/nams:workspace.md`, but deterministic
-execution still lives in the OpenCode plugin shim.
+OpenCode is not currently a safe slash-command fit for this side-effect-only
+workflow. OpenCode markdown command files are prompt templates: their content is
+sent to the model when the command is executed. Packaging
+`.opencode/commands/nams:workspace.md` therefore configures the workspace through
+the plugin and then still sends the command template as a second prompt.
+nams-hooks must not package `.opencode/commands/nams:workspace.md` until
+OpenCode exposes a documented non-prompt command path.
 
 OpenCode custom commands support arguments and shell output injection with
 inline shell snippets such as `` !`npm test` ``. OpenCode plugins can run
@@ -141,21 +149,26 @@ plugin.trigger(
 )
 ```
 
-The command file exposes this command in the TUI:
+That trigger receives mutable prompt `parts`, but OpenCode ignores the plugin
+hook return value and then unconditionally calls its prompt path. The prompt
+input type supports `noReply`, but the command execution path does not pass a
+mutable `noReply` output to plugins. Returning `{ stop: true }` or throwing from
+the hook is therefore not a documented command-consume mechanism.
 
-```text
-/nams:workspace use <workspace-id-or-name>
-```
-
-The plugin intercepts it before model execution and calls:
+The OpenCode shim keeps the workspace runner code path for future command API
+support. If OpenCode later exposes a non-prompt command handler, the shim can
+call:
 
 ```bash
 nams-hooks workspaces run opencode --event CommandExecuteBefore
 ```
 
-with the raw command event payload on stdin. The shared workspace runner then
-delegates to the session-scoped configure runtime and reports the result without
-starting a normal model turn.
+with the raw command event payload on stdin. Until then, OpenCode users should
+use the explicit configure command from the hook notice:
+
+```bash
+nams-hooks workspaces configure opencode --scope session --session-id <session-id> --workspace <workspace-id-or-name>
+```
 
 ### Gemini CLI
 
@@ -229,11 +242,8 @@ Claude Code project-template and plugin installs expose the direct command:
 /nams:workspace use <workspace-id-or-name>
 ```
 
-OpenCode exposes the direct plugin shim command:
-
-```text
-/nams:workspace use <workspace-id-or-name>
-```
+OpenCode remains on the explicit configure command until OpenCode exposes a
+non-prompt command handler or a documented command-consume mechanism.
 
 Gemini CLI uses the same slash command through the extension custom-command
 surface. The command resolves the current session through the active-session
@@ -256,10 +266,11 @@ and troubleshooting:
 nams-hooks workspaces configure <platform> --scope session --session-id <session-id> --workspace <workspace-id-or-name>
 ```
 
-The runtime notices emitted by supported adapters now point users at the
-platform command and keep the session configure fallback. When the adapter can
-parse the current session ID, the fallback includes the concrete session ID.
-Otherwise it keeps the `<session-id>` placeholder.
+The runtime notices emitted by adapters with a direct command surface point
+users at the platform command and keep the session configure fallback. OpenCode
+notices keep only the explicit shell fallback. When the adapter can parse the
+current session ID, the fallback includes the concrete session ID. Otherwise it
+keeps the `<session-id>` placeholder.
 
 ## Sources
 
@@ -271,7 +282,6 @@ Otherwise it keeps the `<session-id>` placeholder.
 - Session state workspace source type: `src/runtime/session-state.ts`
 - Workspace-selection notice formatting: `src/platforms/workspace-selection.ts`
 - Current OpenCode plugin shim: `templates/opencode/.opencode/plugins/nams-hooks.js`
-- Current OpenCode command file: `templates/opencode/.opencode/commands/nams:workspace.md`
 - Existing workspace resolution design note: `docs/superpowers/specs/2026-06-08-nams-key-scope-workspace-resolution-design.md`
 - Claude Code skills: <https://code.claude.com/docs/en/skills>
 - Claude Code hooks: <https://code.claude.com/docs/en/hooks>

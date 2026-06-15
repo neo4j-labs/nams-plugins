@@ -20,14 +20,12 @@ test("opencode plugin template routes session-created events through the typed h
   assert.match(source, /\["run", "opencode", "--event", event\]/);
 });
 
-test("opencode command markdown is packaged with the local template", async () => {
-  const source = await readFile(
-    path.join(repoRoot, "templates", "opencode", ".opencode", "commands", "nams:workspace.md"),
-    "utf8",
+test("opencode template does not package workspace command markdown prompt", async () => {
+  await assert.rejects(
+    readFile(
+      path.join(repoRoot, "templates", "opencode", ".opencode", "commands", "nams:workspace.md"),
+      "utf8",
+    ),
+    /ENOENT/,
   );
-
-  assert.match(source, /description: Select the NAMS workspace for this OpenCode session\./);
-  assert.match(source, /\/nams:workspace use <workspace-id-or-name>/);
-  assert.match(source, /OpenCode plugin/);
-  assert.doesNotMatch(source, /!\s*`/);
 });

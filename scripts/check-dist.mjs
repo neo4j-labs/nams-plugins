@@ -24,7 +24,6 @@ const codexPluginSkillPath = path.join(root, "dist", "plugins", "codex-nams-hook
 const codexPluginSkillPolicyPath = path.join(root, "dist", "plugins", "codex-nams-hooks", "skills", "workspace", "agents", "openai.yaml");
 const codexHookEvents = ["SessionStart", "UserPromptSubmit", "Stop", "PostToolUse"];
 const opencodeTemplatePath = path.join(root, "templates", "opencode", ".opencode", "plugins", "nams-hooks.js");
-const opencodeCommandPath = path.join(root, "templates", "opencode", ".opencode", "commands", "nams:workspace.md");
 const rootPackagePath = path.join(root, "package.json");
 const releasePackageName = "@neo4j-labs/nams-plugins";
 const execFileAsync = promisify(execFile);
@@ -33,7 +32,6 @@ await access(generatedClientPath);
 await access(geminiExtensionPath);
 await access(geminiCommandPath);
 await access(opencodeTemplatePath);
-await access(opencodeCommandPath);
 await verifyRootPackageFiles(rootPackagePath);
 const rootPackageJson = await verifySourcePackageIdentity(rootPackagePath);
 await verifyGeminiExtensionSettings(geminiExtensionPath);
@@ -346,7 +344,6 @@ function opencodePackedFiles(packageDir) {
   }
   return [
     "templates/opencode/.opencode/plugins/nams-hooks.js",
-    "templates/opencode/.opencode/commands/nams:workspace.md",
   ];
 }
 

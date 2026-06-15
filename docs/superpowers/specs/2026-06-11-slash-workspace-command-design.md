@@ -7,7 +7,7 @@ Repository: nams-hooks
 ## Summary
 
 Add platform command UX for selecting the NAMS workspace used by the current
-agent session. Claude Code, OpenCode, and Gemini CLI expose the command as:
+agent session. Claude Code and Gemini CLI expose the command as:
 
 ```text
 /nams:workspace use <workspace-id-or-name>
@@ -29,10 +29,12 @@ nams-hooks workspaces configure <platform> --scope session --session-id <session
 ```
 
 This design covers all currently supported platforms: Claude Code, OpenCode,
-Gemini CLI, and Codex. Claude Code and OpenCode can pass the current session ID
-directly through their command contexts. Gemini and Codex use a shared
+Gemini CLI, and Codex. Claude Code can pass the current session ID directly
+through its command context. Gemini and Codex use a shared
 active-session bridge recorded by the workspace-ambiguity hook path, then
 resolved by the user-invoked workspace command within a short freshness window.
+OpenCode remains on the explicit shell fallback until it exposes a non-prompt
+command handler or a documented command-consume mechanism.
 
 This design follows the research note in
 `docs/session-workspace-command-support.md` and builds on
@@ -85,6 +87,8 @@ memory persistence.
 - Use agent prompts as mutable session storage.
 - Promise Codex pre-turn shell execution from skills before Codex documents such
   a handler.
+- Promise OpenCode slash-to-shell behavior while OpenCode markdown commands
+  still invoke a model prompt after plugin hooks run.
 - Change memory hook behavior beyond using the already-selected session
   workspace on later turns.
 
@@ -138,10 +142,10 @@ config.
 
 ### Tier 1: Direct Session Command Context
 
-Claude Code and OpenCode can expose user-invoked command surfaces that run
-local commands, accept command arguments, and provide the current session ID.
-Their wrappers can therefore call the existing session configure command before
-the next memory hook turn.
+Claude Code can expose a user-invoked command surface that runs local commands,
+accepts command arguments, and provides the current session ID. Its wrapper can
+therefore call the existing session configure command before the next memory
+hook turn.
 
 ### Tier 2: Active Workspace Session Bridge
 
@@ -166,6 +170,21 @@ or supplemented by a direct wrapper. The wrapper contract remains the same:
 match `nams:workspace`, parse `use <selector>`, obtain the current Codex
 session ID, and delegate to the shared configure command without duplicating
 workspace validation or state writes.
+
+### Future Tier: Native OpenCode Command Handler
+
+OpenCode plugins can observe `command.execute.before`, and that event includes
+the command name, arguments, and session ID. However, current OpenCode markdown
+commands are prompt templates. The command execution path triggers plugins with
+mutable prompt `parts`, ignores hook return values, and then unconditionally
+calls the prompt path. Because the plugin cannot set `noReply` or consume the
+command, nams-hooks must not package `.opencode/commands/nams:workspace.md`.
+
+If OpenCode later exposes a non-prompt command handler or documented consume
+mechanism, the existing shim contract can be used: match `nams:workspace`, parse
+`use <selector>`, obtain the current OpenCode session ID, and delegate to the
+shared configure command without duplicating workspace validation or state
+writes.
 
 ## Active Workspace Session Bridge
 
@@ -264,22 +283,32 @@ command with `<session-id>`.
 
 ### OpenCode
 
-Implement OpenCode command handling inside
-`templates/opencode/.opencode/plugins/nams-hooks.js`.
+Keep OpenCode session workspace selection on the explicit shell command for now:
 
-Package a companion command markdown file at
-`templates/opencode/.opencode/commands/nams:workspace.md` so OpenCode exposes
-`/nams:workspace` through its documented per-project command-file surface. The
-markdown command is for TUI discovery and fallback guidance only; it must not
-run shell snippets or duplicate workspace configuration itself.
+```bash
+nams-hooks workspaces configure opencode --scope session --session-id <session-id> --workspace <workspace-id-or-name>
+```
 
-The plugin should intercept the earliest deterministic OpenCode command event
-that can stop or replace normal command execution. The research note identifies
-the source-level `command.execute.before` trigger as the best fit; current
-public docs also list command and TUI command events, so implementation must
-verify the exact trigger against the supported OpenCode plugin API before
-shipping. For command `nams:workspace`, the plugin should forward the raw
-command event payload to:
+The OpenCode plugin shim may retain an internal `command.execute.before` handler
+for future compatibility, but nams-hooks must not package an OpenCode markdown
+command file for `nams:workspace`. OpenCode command files are prompt templates,
+and testing showed that a command file configures the workspace through the
+plugin and then still sends the command template to the model.
+
+The source-level `command.execute.before` trigger receives:
+
+```ts
+{ command: input.command, sessionID: input.sessionID, arguments: input.arguments }
+```
+
+with mutable prompt `parts`. OpenCode ignores the hook return value and then
+unconditionally calls its prompt path. The prompt input type supports
+`noReply`, but the command execution path does not expose that field as mutable
+plugin output. Returning `{ stop: true }` or throwing from the hook is therefore
+not a safe, documented model-invocation disable mechanism.
+
+If a future OpenCode release adds a non-prompt command surface, the plugin
+should forward the raw command event payload to:
 
 ```bash
 nams-hooks workspaces run opencode --event CommandExecuteBefore
@@ -293,7 +322,7 @@ The shared CLI workspace runner then:
    <sessionID> --workspace <selector>`;
 4. surfaces the command stdout or stderr to the user; and
 5. prevents a normal model turn for this command when the OpenCode plugin API
-   supports doing so.
+   supports doing so through a documented mechanism.
 
 The plugin should ignore unrelated `nams:workspace` subcommands so future
 command surfaces remain possible. It should also ignore other slash commands.
@@ -479,9 +508,11 @@ Claude command assets should live in both the baseline Claude template tree and
 the Claude plugin template tree so the self-contained Claude plugin gets the
 slash command alongside hooks and bundled `bin/cli.js`.
 
-OpenCode command handling should live in the existing OpenCode plugin shim.
+OpenCode hook handling should live in the existing OpenCode plugin shim.
 OpenCode currently uses the template directly rather than a generated plugin
-marketplace artifact, so tests should cover the source template.
+marketplace artifact, so tests should cover the source template. The template
+must not include `.opencode/commands/nams:workspace.md` until OpenCode exposes a
+non-prompt command surface or a documented command-consume mechanism.
 
 Gemini command assets should live under the Gemini extension template tree, in
 the command directory structure Gemini expects for the `nams` namespace and
@@ -524,10 +555,8 @@ Claude tests should assert:
 
 OpenCode tests should simulate the plugin command event and assert:
 
-- the OpenCode template includes `.opencode/commands/nams:workspace.md`;
-- the command markdown names `/nams:workspace use <workspace-id-or-name>` and
-  does not run shell snippets;
-- `/nams:workspace use Engineering` spawns `workspaces run opencode --event
+- the OpenCode template does not include `.opencode/commands/nams:workspace.md`;
+- a simulated `nams:workspace` command event spawns `workspaces run opencode --event
   CommandExecuteBefore`;
 - command payloads, including selectors with spaces, are forwarded to the CLI
   over stdin;
@@ -561,7 +590,8 @@ Documentation and packaging tests should assert:
 - generated `dist/` contains the Gemini command asset;
 - generated `dist/` contains the Codex skill asset and manifest `skills` field;
 - docs, README/installation docs, and relevant user-facing hook or system
-  messages mention `/nams:workspace` for slash-capable platforms;
+  messages mention `/nams:workspace` for slash-capable platforms and avoid
+  advertising it for OpenCode until OpenCode has a non-prompt command surface;
 - Codex docs mention `$nams:workspace`; and
 - the explicit bash configure command remains present as the reliable fallback.
 
@@ -587,8 +617,8 @@ The next implementation plan should implement:
   and docs;
 - Codex marker recording, `CustomCommand` handling, skill packaging, tests, and
   docs;
-- any small updates needed to keep Claude and OpenCode behavior aligned with
-  the `nams:workspace` namespace; and
+- any small updates needed to keep Claude behavior aligned with the
+  `nams:workspace` namespace and keep OpenCode on the explicit fallback; and
 - documentation, README/installation docs, and relevant user-facing hook or
   system message updates that describe the command UX while keeping the
   explicit bash configure command.

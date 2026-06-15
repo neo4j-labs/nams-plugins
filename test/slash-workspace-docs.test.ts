@@ -73,9 +73,10 @@ test("README documents Tier 1 workspace selection and the portable shell command
 
   assert.match(content, /session-scoped selection/i);
   assertMentionsPlatformCommand(content, "Claude Code", workspaceSlash);
-  assertMentionsPlatformCommand(content, "OpenCode", workspaceSlash);
   assertMentionsPlatformCommand(content, "Gemini", workspaceSlash);
   assertMentionsPlatformCommand(content, "Codex", codexSkillCommand);
+  assert.match(content, /OpenCode[\s\S]{0,240}explicit shell command/i);
+  assert.match(content, /OpenCode[\s\S]{0,240}markdown commands are prompt templates/i);
   assertIncludesCommand(content, genericSessionConfigure);
   assertIncludesCommand(content, durableProjectConfigure);
   assert.doesNotMatch(content, /nams-hooks:nams-hooks/);
@@ -88,9 +89,10 @@ test("INSTALL workspace selection documents slash commands and shell fallback", 
 
   assert.match(workspaceSelection, /multi-workspace inactive memory notices/i);
   assertMentionsPlatformCommand(workspaceSelection, "Claude Code", workspaceSlash);
-  assertMentionsPlatformCommand(workspaceSelection, "OpenCode", workspaceSlash);
   assertMentionsPlatformCommand(workspaceSelection, "Gemini", workspaceSlash);
   assertMentionsPlatformCommand(workspaceSelection, "Codex", codexSkillCommand);
+  assert.match(workspaceSelection, /OpenCode[\s\S]{0,240}explicit shell command/i);
+  assert.match(workspaceSelection, /OpenCode markdown\s+commands are prompt\s+templates/i);
   assert.match(workspaceSelection, /command surfaces[\s\S]{0,160}explicit shell command/i);
   assert.doesNotMatch(workspaceSelection, /Keep using the shell command for Gemini, Codex/);
   assertIncludesCommand(workspaceSelection, genericSessionConfigure);
@@ -130,7 +132,9 @@ test("INSTALL platform notes keep platform-specific workspace command guidance",
     "nams-hooks workspaces configure gemini --scope session --session-id <session-id> --workspace <workspace-id-or-name>",
   );
 
-  assertIncludesCommand(opencode, workspaceSlash);
+  assert.match(opencode, /OpenCode markdown\s+commands are prompt templates/i);
+  assert.match(opencode, /does not package\s+`.opencode\/commands\/nams:workspace.md`/i);
+  assert.doesNotMatch(opencode, /\/nams:workspace use <workspace-id-or-name>/);
   assertIncludesCommand(
     opencode,
     "nams-hooks workspaces configure opencode --scope session --session-id <session-id> --workspace <workspace-id-or-name>",
@@ -141,16 +145,21 @@ test("session workspace research note reflects Tier 1 support and safe Claude ha
   const content = await readDoc("docs/session-workspace-command-support.md");
   const intro = content.slice(0, content.indexOf("## Current Repo State"));
   const platformMatrix = sectionByHeading(content, "## Platform Matrix");
+  const opencodeMatrixRow = tableRowByFirstCell(platformMatrix, "OpenCode");
   const geminiMatrixRow = tableRowByFirstCell(platformMatrix, "Gemini CLI");
   const codexMatrixRow = tableRowByFirstCell(platformMatrix, "Codex");
+  const opencode = sectionByHeading(content, "### OpenCode");
   const gemini = sectionByHeading(content, "### Gemini CLI");
   const codex = sectionByHeading(content, "### Codex");
   const remainingUxWork = sectionByHeading(content, "## Remaining UX Work");
 
   assertMentionsPlatformCommand(intro, "Claude Code", workspaceSlash);
-  assertMentionsPlatformCommand(intro, "OpenCode", workspaceSlash);
   assertMentionsPlatformCommand(intro, "Gemini", workspaceSlash);
   assertMentionsPlatformCommand(intro, "Codex", codexSkillCommand);
+  assert.match(intro, /OpenCode[\s\S]{0,240}explicit shell/i);
+  assert.match(opencodeMatrixRow, /Shell fallback/i);
+  assert.match(opencodeMatrixRow, /markdown command files are prompt templates/i);
+  assert.match(opencodeMatrixRow, /must not package/i);
   assertIncludesCommand(intro, genericSessionConfigure);
   assert.doesNotMatch(intro, /Tier 1 user-facing forms are/i);
   assert.doesNotMatch(intro, /# Claude Code and OpenCode/);
@@ -163,6 +172,10 @@ test("session workspace research note reflects Tier 1 support and safe Claude ha
   assert.match(codexMatrixRow, /shell fallback/i);
   assert.doesNotMatch(codexMatrixRow, /Prompt-helper only/i);
   assert.doesNotMatch(codexMatrixRow, /custom prompts/i);
+  assert.match(opencode, /not currently a safe slash-command fit/i);
+  assert.match(opencode, /must not package\s+`.opencode\/commands\/nams:workspace.md`/i);
+  assert.match(opencode, /unconditionally calls its prompt path/i);
+  assertIncludesCommand(opencode, "nams-hooks workspaces configure opencode --scope session --session-id <session-id> --workspace <workspace-id-or-name>");
   assert.match(gemini, /extension custom command/i);
   assertIncludesCommand(gemini, workspaceSlash);
   assert.match(gemini, /active-session\s+bridge/i);
@@ -179,6 +192,7 @@ test("session workspace research note reflects Tier 1 support and safe Claude ha
   assertIncludesCommand(remainingUxWork, workspaceSlash);
   assertIncludesCommand(remainingUxWork, codexSkillCommand);
   assertIncludesCommand(remainingUxWork, genericSessionConfigure);
+  assert.match(remainingUxWork, /OpenCode[\s\S]{0,240}explicit configure command/i);
   assert.match(remainingUxWork, /Gemini CLI[\s\S]{0,240}active-session\s+bridge/i);
   assert.match(remainingUxWork, /Codex[\s\S]{0,240}\$nams:workspace/i);
   assert.doesNotMatch(remainingUxWork, /Gemini CLI[\s\S]{0,160}deferred/i);

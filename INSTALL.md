@@ -72,11 +72,11 @@ Workspace selection has three lifetimes:
 For multi-workspace inactive memory notices, the recommended quick fix is a
 session selection.
 
-When the platform command is installed, Claude Code, OpenCode, and Gemini expose
-the direct command:
+When the platform command is installed, Claude Code and Gemini expose the direct
+slash command:
 
 ```text
-# Claude Code, OpenCode, and Gemini CLI
+# Claude Code and Gemini CLI
 /nams:workspace use <workspace-id-or-name>
 ```
 
@@ -86,9 +86,11 @@ Codex exposes the same namespace as an explicit skill:
 $nams:workspace use <workspace-id-or-name>
 ```
 
-These command surfaces wrap the explicit shell command. Keep using the shell
-command for scripts, troubleshooting, and any session where the platform command
-cannot resolve the current session:
+These command surfaces wrap the explicit shell command. OpenCode currently uses
+the explicit shell command because OpenCode markdown commands are prompt
+templates and do not expose a Claude-style model-invocation disable flag. Keep
+using the shell command for scripts, troubleshooting, OpenCode sessions, and any
+session where the platform command cannot resolve the current session:
 
 ```bash
 nams-hooks workspaces configure <platform> --scope session --session-id <session-id> --workspace <workspace-id-or-name>
@@ -243,14 +245,11 @@ nams-hooks workspaces configure gemini --scope session --session-id <session-id>
 
 ## OpenCode
 
-OpenCode uses the generated plugin shim for hook execution and session workspace
-selection. The shim preserves the direct command UX:
-
-```text
-/nams:workspace use <workspace-id-or-name>
-```
-
-It wraps the explicit OpenCode session command:
+OpenCode uses the generated plugin shim for hook execution. OpenCode markdown
+commands are prompt templates, so nams-hooks does not package
+`.opencode/commands/nams:workspace.md`; that file would configure the workspace
+and then still send a prompt to the model. Use the explicit OpenCode session
+command from the hook notice:
 
 ```bash
 nams-hooks workspaces configure opencode --scope session --session-id <session-id> --workspace <workspace-id-or-name>

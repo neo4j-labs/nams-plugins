@@ -48,17 +48,8 @@ test("opencode plugin template exposes NAMS hook handlers", async () => {
   assert.match(source, /nams-hooks/);
 });
 
-test("opencode template exposes workspace command markdown for TUI discovery", async () => {
-  const source = await readFile(commandPath, "utf8");
-
-  assert.match(source, /^---\n/);
-  assert.match(source, /description: Select the NAMS workspace for this OpenCode session\./);
-  assert.match(source, /\/nams:workspace use <workspace-id-or-name>/);
-  assert.match(source, /\$ARGUMENTS/);
-  assert.match(source, /OpenCode plugin/);
-  assert.doesNotMatch(source, /!\s*`/);
-  assert.doesNotMatch(source, /workspaces configure/);
-  assert.doesNotMatch(source, /workspaces run/);
+test("opencode template does not expose workspace command markdown prompt", async () => {
+  await assert.rejects(readFile(commandPath, "utf8"), /ENOENT/);
 });
 
 test("command.execute.before forwards OpenCode workspace command to workspace runtime", async () => {
