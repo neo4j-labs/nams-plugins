@@ -190,6 +190,13 @@ test("workspace resolution runtime does not format platform hook output", async 
   assert.doesNotMatch(content, /\bgemini\b|\bclaude\b|\bcodex\b|\bopencode\b/);
 });
 
+test("workspace selection notice formatter does not branch by platform", async () => {
+  const content = await readFile("src/platforms/workspace-selection.ts", "utf8");
+
+  assert.doesNotMatch(content, /\bplatform\s*===\s*["']/);
+  assert.doesNotMatch(content, /\bswitch\s*\(\s*platform\s*\)/);
+});
+
 test("platform session-start contract names local session initialization", async () => {
   const interfaceContent = await readFile("src/interfaces.ts", "utf8");
   const cliContent = await readFile("src/cli.ts", "utf8");

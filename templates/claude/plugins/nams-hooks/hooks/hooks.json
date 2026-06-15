@@ -35,6 +35,25 @@
         ]
       }
     ],
+    "UserPromptExpansion": [
+      {
+        "matcher": "^nams:workspace$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/bin/cli.js",
+              "workspaces",
+              "run",
+              "claude",
+              "--event",
+              "UserPromptExpansion"
+            ]
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "*",

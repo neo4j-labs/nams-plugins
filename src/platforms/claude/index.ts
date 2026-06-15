@@ -271,7 +271,7 @@ function workspaceResultOutput(
   sessionId?: string,
 ): HookResult {
   if (result.reason === "selection-required") {
-    const message = formatWorkspaceSelectionNotice("claude", result.workspaces, sessionId);
+    const message = formatWorkspaceSelectionNotice("claude", result.workspaces, sessionId, claudeSlashCommandLines());
     return {
       stdout: {
         continue: true,
@@ -285,6 +285,12 @@ function workspaceResultOutput(
     };
   }
   return allowOutput();
+}
+
+function claudeSlashCommandLines(): string[] {
+  return [
+    "In Claude Code sessions with nams-hooks installed, you can select a workspace with: /nams:workspace use <workspace-id-or-name>",
+  ];
 }
 
 function claudeToolCallDedupeKeys(

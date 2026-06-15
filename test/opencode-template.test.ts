@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 test("opencode plugin template routes session-created events through the typed hook gateway", async () => {
-  const source = await readFile(path.join(repoRoot, "templates", "opencode", "plugins", "nams-hooks.js"), "utf8");
+  const source = await readFile(path.join(repoRoot, "templates", "opencode", ".opencode", "plugins", "nams-hooks.js"), "utf8");
 
   assert.match(source, /session\.created/);
   assert.match(source, /nams-hooks/);
@@ -16,6 +16,16 @@ test("opencode plugin template routes session-created events through the typed h
   assert.doesNotMatch(source, /runWorkspace/);
   assert.match(source, /memoryResult\?\.namsWorkspaceSelectionRequired === true/);
   assert.match(source, /showToast/);
-  assert.match(source, /invokeNams\(event,/);
+  assert.match(source, /invokeNams\(command, event,/);
   assert.match(source, /\["run", "opencode", "--event", event\]/);
+});
+
+test("opencode template does not package workspace command markdown prompt", async () => {
+  await assert.rejects(
+    readFile(
+      path.join(repoRoot, "templates", "opencode", ".opencode", "commands", "nams:workspace.md"),
+      "utf8",
+    ),
+    /ENOENT/,
+  );
 });

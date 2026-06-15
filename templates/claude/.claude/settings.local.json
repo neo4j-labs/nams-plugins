@@ -21,6 +21,17 @@
         ]
       }
     ],
+    "UserPromptExpansion": [
+      {
+        "matcher": "^nams:workspace$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "nams-hooks workspaces run claude --event UserPromptExpansion"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "*",

@@ -279,6 +279,7 @@ test("Codex beforeAgent skips memory when multiple listed workspaces require sel
     assert.match(hookSpecificOutput(result).additionalContext, /NAMS memory is inactive for this turn/);
     assert.match(hookSpecificOutput(result).additionalContext, /No memory messages were stored/);
     assert.match(hookSpecificOutput(result).additionalContext, /Multiple NAMS workspaces are available/);
+    assert.match(hookSpecificOutput(result).additionalContext, /\$nams:workspace use <workspace-id-or-name>/);
     assert.match(
       hookSpecificOutput(result).additionalContext,
       /nams-hooks workspaces configure codex --scope session --session-id session-1 --workspace <workspace-id-or-name>/,
@@ -289,6 +290,14 @@ test("Codex beforeAgent skips memory when multiple listed workspaces require sel
     const state = (await loadSessionState("codex", "session-1"))!;
     assert.equal(state.workspace, undefined);
     assert.equal(state.conversationId, undefined);
+    const markerPath = path.join(namsHome(testEnv(projectDir).HOME), "state", "codex", "active-workspace-sessions.json");
+    const marker = JSON.parse(await readFile(markerPath, "utf8"));
+    assert.equal(marker.sessions.length, 1);
+    assert.equal(marker.sessions[0].sessionId, "session-1");
+    assert.equal(marker.sessions[0].sessionKey, "session-1");
+    assert.equal(marker.sessions[0].projectDirectory, path.resolve(projectDir));
+    assert.equal(typeof marker.sessions[0].touchedAt, "string");
+    assert.equal(Object.hasOwn(marker, "version"), false);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
