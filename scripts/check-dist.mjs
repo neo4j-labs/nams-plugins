@@ -7,74 +7,132 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const distDir = path.join(root, "dist");
-const generatedClientPath = path.join(root, "dist", "bin", "generated", "nams-client.js");
-const geminiExtensionPath = path.join(root, "dist", "gemini-extension.json");
-const geminiCommandPath = path.join(root, "dist", "commands", "nams", "workspace.toml");
-const claudeMarketplacePath = path.join(root, "dist", ".claude-plugin", "marketplace.json");
-const claudePluginManifestPath = path.join(root, "dist", "plugins", "nams-hooks", ".claude-plugin", "plugin.json");
-const claudePluginHooksPath = path.join(root, "dist", "plugins", "nams-hooks", "hooks", "hooks.json");
-const claudePluginCommandPath = path.join(root, "dist", "plugins", "nams-hooks", "commands", "nams", "workspace.md");
-const claudePluginCliPath = path.join(root, "dist", "plugins", "nams-hooks", "bin", "cli.js");
-const codexMarketplacePath = path.join(root, "dist", ".agents", "plugins", "marketplace.json");
-const codexPluginManifestPath = path.join(root, "dist", "plugins", "codex-nams-hooks", ".codex-plugin", "plugin.json");
-const codexPluginHooksPath = path.join(root, "dist", "plugins", "codex-nams-hooks", "hooks", "hooks.json");
-const codexPluginCliPath = path.join(root, "dist", "plugins", "codex-nams-hooks", "bin", "cli.js");
-const codexPluginSkillPath = path.join(root, "dist", "plugins", "codex-nams-hooks", "skills", "workspace", "SKILL.md");
-const codexPluginSkillPolicyPath = path.join(root, "dist", "plugins", "codex-nams-hooks", "skills", "workspace", "agents", "openai.yaml");
-const codexHookEvents = ["SessionStart", "UserPromptSubmit", "Stop", "PostToolUse"];
-const opencodeTemplatePath = path.join(root, "templates", "opencode", ".opencode", "plugins", "nams-hooks.js");
+const npmDistDir = path.join(root, "dist");
+const marketplaceDistDir = path.join(root, "dist-marketplace");
+const localDistDir = path.join(root, "dist-local");
+const generatedClientPath = path.join(npmDistDir, "bin", "generated", "nams-client.js");
 const rootPackagePath = path.join(root, "package.json");
 const releasePackageName = "@neo4j-labs/nams-plugins";
 const execFileAsync = promisify(execFile);
+const codexHookEvents = ["SessionStart", "UserPromptSubmit", "Stop", "PostToolUse"];
 
-await access(generatedClientPath);
-await access(geminiExtensionPath);
-await access(geminiCommandPath);
-await access(opencodeTemplatePath);
-await verifyRootPackageFiles(rootPackagePath);
 const rootPackageJson = await verifySourcePackageIdentity(rootPackagePath);
-await verifyGeminiExtensionSettings(geminiExtensionPath);
-await verifyClaudePluginFiles();
-await verifyCodexPluginFiles();
-
-const source = await readFile(generatedClientPath, "utf8");
-if (/nams-openapi|readFile/.test(source)) {
-  throw new Error("dist/bin/generated/nams-client.js must not read OpenAPI at runtime.");
-}
-
-const distFiles = await listFiles(distDir);
-const openApiArtifacts = distFiles.filter((file) => /openapi|nams-openapi/i.test(file));
-if (openApiArtifacts.length > 0) {
-  throw new Error(`dist must not include runtime OpenAPI artifacts: ${openApiArtifacts.join(", ")}`);
-}
-
+await verifyNpmDist(rootPackageJson);
+await verifyMarketplaceDist();
+await verifyLocalDist();
 await checkPackedPackage(root, "dist/bin/cli.js", { packageJson: rootPackageJson, identityAlreadyVerified: true });
-await checkPackedPackage(distDir, "bin/cli.js");
+await checkPackedPackage(npmDistDir, "bin/cli.js");
 
-async function verifyClaudePluginFiles() {
-  await access(claudeMarketplacePath);
-  await access(claudePluginManifestPath);
-  await access(claudePluginHooksPath);
-  await access(claudePluginCommandPath);
-  await assertExecutable(claudePluginCliPath);
+async function verifyNpmDist(rootPackageJson) {
+  await assertExecutable(path.join(npmDistDir, "bin", "cli.js"));
+  await access(generatedClientPath);
+
+  const packageJson = JSON.parse(await readFile(path.join(npmDistDir, "package.json"), "utf8"));
+  assertPackageIdentity(packageJson, npmDistDir, "./bin/cli.js");
+  if (packageJson.version !== rootPackageJson.version || packageJson.license !== rootPackageJson.license) {
+    throw new Error("dist/package.json version and license must match package.json.");
+  }
+
+  const source = await readFile(generatedClientPath, "utf8");
+  if (/nams-openapi|readFile/.test(source)) {
+    throw new Error("dist/bin/generated/nams-client.js must not read OpenAPI at runtime.");
+  }
+
+  const files = await listFiles(npmDistDir);
+  assertNoMatchingFiles(files, /(^|\/)(\.agents|\.claude-plugin|\.opencode|hooks|plugins|templates)(\/|$)/, "dist must not include marketplace or template files");
+  assertNoMatchingFiles(files, /openapi|nams-openapi/i, "dist must not include OpenAPI artifacts");
+}
+
+async function verifyMarketplaceDist() {
+  await verifyGeminiMarketplaceFiles();
+  await verifyClaudeMarketplaceFiles();
+  await verifyCodexMarketplaceFiles();
+  await verifyOpenCodeMarketplaceFiles();
+
+  const files = await listFiles(marketplaceDistDir);
+  assertNoMatchingFiles(files, /openapi|nams-openapi/i, "dist-marketplace must not include OpenAPI artifacts");
+  const unresolved = await filesWithPattern(marketplaceDistDir, /__PACKAGE_VERSION__|__PACKAGE_LICENSE__|__NAMS_HOOKS_COMMAND__/);
+  if (unresolved.length > 0) {
+    throw new Error(`dist-marketplace contains unresolved template placeholders: ${unresolved.join(", ")}`);
+  }
+}
+
+async function verifyLocalDist() {
+  await verifyLocalCommandJson(path.join(localDistDir, "claude", ".claude", "settings.local.json"), "claude");
+  await verifyLocalClaudeWorkspaceCommand(path.join(localDistDir, "claude", ".claude", "commands", "nams", "workspace.md"));
+  await verifyLocalCommandJson(path.join(localDistDir, "codex", ".codex", "hooks.json"), "codex");
+  await verifyLocalCommandJson(path.join(localDistDir, "gemini", ".gemini", "extensions", "gemini-nams-hooks", "hooks", "hooks.json"), "gemini");
+  await verifyLocalGeminiWorkspaceCommand(path.join(localDistDir, "gemini", ".gemini", "extensions", "gemini-nams-hooks", "commands", "nams", "workspace.toml"));
+
+  const opencodeSource = await readFile(path.join(localDistDir, "opencode", ".opencode", "plugins", "nams-hooks.js"), "utf8");
+  if (!/"nams-hooks"/.test(opencodeSource) || /new URL\("\.\/bin\/cli\.js"/.test(opencodeSource)) {
+    throw new Error("dist-local OpenCode plugin must default to the installed nams-hooks executable.");
+  }
+
+  const files = await listFiles(localDistDir);
+  assertNoMatchingFiles(files, /(^|\/)bin\/cli\.js$/, "dist-local must not include compiled runtime");
+  assertNoMatchingFiles(files, /(^|\/)(\.agents\/plugins\/marketplace\.json|\.claude-plugin\/marketplace\.json)$/, "dist-local must not include marketplace roots");
+  assertNoMatchingFiles(files, /(^|\/)plugins\/(claude-nams-hooks|codex-nams-hooks|gemini-nams-hooks|opencode-nams-hooks)(\/|$)/, "dist-local must not include marketplace plugin roots");
+
+  const unresolved = await filesWithPattern(localDistDir, /__PACKAGE_VERSION__|__PACKAGE_LICENSE__|__NAMS_HOOKS_COMMAND__/);
+  if (unresolved.length > 0) {
+    throw new Error(`dist-local contains unresolved template placeholders: ${unresolved.join(", ")}`);
+  }
+}
+
+async function verifyGeminiMarketplaceFiles() {
+  const extensionPath = path.join(marketplaceDistDir, "gemini-extension.json");
+  const hooksPath = path.join(marketplaceDistDir, "hooks", "hooks.json");
+  const commandPath = path.join(marketplaceDistDir, "commands", "nams", "workspace.toml");
+  const cliPath = path.join(marketplaceDistDir, "plugins", "gemini-nams-hooks", "bin", "cli.js");
+
+  await access(extensionPath);
+  await access(hooksPath);
+  await access(commandPath);
+  await assertExecutable(cliPath);
+  await verifyGeminiExtensionSettings(extensionPath);
+
+  const hooks = JSON.parse(await readFile(hooksPath, "utf8"));
+  assertGeminiMarketplaceCommand(hooks, "SessionStart", "SessionStart");
+  assertGeminiMarketplaceCommand(hooks, "BeforeAgent", "BeforeAgent");
+  assertGeminiMarketplaceCommand(hooks, "AfterAgent", "AfterAgent");
+  assertGeminiMarketplaceCommand(hooks, "AfterTool", "AfterTool");
+  await verifyGeminiMarketplaceWorkspaceCommand(commandPath);
+}
+
+async function verifyClaudeMarketplaceFiles() {
+  const marketplacePath = path.join(marketplaceDistDir, ".claude-plugin", "marketplace.json");
+  const manifestPath = path.join(marketplaceDistDir, "plugins", "claude-nams-hooks", ".claude-plugin", "plugin.json");
+  const hooksPath = path.join(marketplaceDistDir, "plugins", "claude-nams-hooks", "hooks", "hooks.json");
+  const commandPath = path.join(marketplaceDistDir, "plugins", "claude-nams-hooks", "commands", "nams", "workspace.md");
+  const cliPath = path.join(marketplaceDistDir, "plugins", "claude-nams-hooks", "bin", "cli.js");
+
+  await access(marketplacePath);
+  await access(manifestPath);
+  await access(hooksPath);
+  await access(commandPath);
+  await assertExecutable(cliPath);
 
   const packageJson = JSON.parse(await readFile(rootPackagePath, "utf8"));
-  const marketplace = JSON.parse(await readFile(claudeMarketplacePath, "utf8"));
-  const plugin = JSON.parse(await readFile(claudePluginManifestPath, "utf8"));
-  const hooks = JSON.parse(await readFile(claudePluginHooksPath, "utf8"));
+  const marketplace = JSON.parse(await readFile(marketplacePath, "utf8"));
+  const plugin = JSON.parse(await readFile(manifestPath, "utf8"));
+  const hooks = JSON.parse(await readFile(hooksPath, "utf8"));
 
   if (marketplace.name !== "nams-plugins") {
-    throw new Error("dist/.claude-plugin/marketplace.json must name the marketplace nams-plugins.");
+    throw new Error("dist-marketplace/.claude-plugin/marketplace.json must name the marketplace nams-plugins.");
   }
-  if (marketplace.plugins?.[0]?.name !== "nams-hooks" || marketplace.plugins[0].source !== "./plugins/nams-hooks") {
-    throw new Error("Claude marketplace must expose nams-hooks from ./plugins/nams-hooks.");
+  if (marketplace.metadata?.version !== packageJson.version) {
+    throw new Error("Claude marketplace metadata version must match package.json.");
   }
-  if (marketplace.plugins[0].repository !== "https://github.com/neo4j-labs/nams-plugins") {
+  const marketplacePlugin = marketplace.plugins?.[0];
+  if (marketplacePlugin?.name !== "nams-hooks" || marketplacePlugin.source !== "./plugins/claude-nams-hooks") {
+    throw new Error("Claude marketplace must expose nams-hooks from ./plugins/claude-nams-hooks.");
+  }
+  if (marketplacePlugin.repository !== "https://github.com/neo4j-labs/nams-plugins") {
     throw new Error("Claude marketplace plugin repository must point to neo4j-labs/nams-plugins.");
   }
-  if (marketplace.plugins[0].version !== packageJson.version) {
-    throw new Error("Claude marketplace plugin version must match package.json.");
+  if (marketplacePlugin.version !== packageJson.version || marketplacePlugin.license !== packageJson.license) {
+    throw new Error("Claude marketplace plugin version and license must match package.json.");
   }
   if (plugin.name !== "nams-hooks" || plugin.version !== packageJson.version) {
     throw new Error("Claude plugin manifest must name nams-hooks and match package.json version.");
@@ -82,47 +140,48 @@ async function verifyClaudePluginFiles() {
   if (plugin.repository !== "https://github.com/neo4j-labs/nams-plugins") {
     throw new Error("Claude plugin manifest repository must point to neo4j-labs/nams-plugins.");
   }
+  if (plugin.license !== packageJson.license) {
+    throw new Error("Claude plugin manifest license must match package.json.");
+  }
   if (Object.hasOwn(plugin, "hooks")) {
     throw new Error("Claude plugin manifest must not reference standard hooks/hooks.json because Claude loads it automatically.");
   }
-  assertClaudePluginUserConfig(plugin);
 
+  assertClaudePluginUserConfig(plugin);
   assertClaudeHookCommand(hooks, "SessionStart", "SessionStart");
   assertClaudeHookCommand(hooks, "UserPromptSubmit", "BeforeAgent");
-  assertClaudeWorkspaceCommandHook(hooks);
   assertClaudeHookCommand(hooks, "PostToolUse", "AfterTool");
   assertClaudeHookCommand(hooks, "Stop", "AfterAgent");
+  assertClaudeWorkspaceCommand(hooks);
+  await verifyClaudeWorkspaceMarkdown(commandPath);
 }
 
-async function verifyCodexPluginFiles() {
-  await access(codexMarketplacePath);
-  await access(codexPluginManifestPath);
-  await access(codexPluginHooksPath);
-  await assertExecutable(codexPluginCliPath);
-  await access(codexPluginSkillPath);
-  await access(codexPluginSkillPolicyPath);
+async function verifyCodexMarketplaceFiles() {
+  const marketplacePath = path.join(marketplaceDistDir, ".agents", "plugins", "marketplace.json");
+  const manifestPath = path.join(marketplaceDistDir, "plugins", "codex-nams-hooks", ".codex-plugin", "plugin.json");
+  const hooksPath = path.join(marketplaceDistDir, "plugins", "codex-nams-hooks", "hooks", "hooks.json");
+  const skillPath = path.join(marketplaceDistDir, "plugins", "codex-nams-hooks", "skills", "workspace", "SKILL.md");
+  const skillPolicyPath = path.join(marketplaceDistDir, "plugins", "codex-nams-hooks", "skills", "workspace", "agents", "openai.yaml");
+  const cliPath = path.join(marketplaceDistDir, "plugins", "codex-nams-hooks", "bin", "cli.js");
+
+  await access(marketplacePath);
+  await access(manifestPath);
+  await access(hooksPath);
+  await access(skillPath);
+  await access(skillPolicyPath);
+  await assertExecutable(cliPath);
 
   const packageJson = JSON.parse(await readFile(rootPackagePath, "utf8"));
-  const marketplaceSource = await readFile(codexMarketplacePath, "utf8");
-  const pluginSource = await readFile(codexPluginManifestPath, "utf8");
-  const hooksSource = await readFile(codexPluginHooksPath, "utf8");
-  assertNoPackageTemplatePlaceholders([
-    [codexMarketplacePath, marketplaceSource],
-    [codexPluginManifestPath, pluginSource],
-    [codexPluginHooksPath, hooksSource],
-  ]);
-
-  const marketplace = JSON.parse(marketplaceSource);
-  const plugin = JSON.parse(pluginSource);
-  const hooks = JSON.parse(hooksSource);
+  const marketplace = JSON.parse(await readFile(marketplacePath, "utf8"));
+  const plugin = JSON.parse(await readFile(manifestPath, "utf8"));
+  const hooks = JSON.parse(await readFile(hooksPath, "utf8"));
 
   if (marketplace.name !== "nams-plugins") {
-    throw new Error("dist/.agents/plugins/marketplace.json must name the marketplace nams-plugins.");
+    throw new Error("dist-marketplace/.agents/plugins/marketplace.json must name the marketplace nams-plugins.");
   }
   if (marketplace.metadata?.version !== packageJson.version) {
     throw new Error("Codex marketplace metadata version must match package.json.");
   }
-
   const marketplacePlugin = marketplace.plugins?.[0];
   if (marketplacePlugin?.name !== "nams-hooks") {
     throw new Error("Codex marketplace must expose the nams-hooks plugin.");
@@ -142,11 +201,8 @@ async function verifyCodexPluginFiles() {
   if (Object.hasOwn(marketplacePlugin ?? {}, "userConfig") || Object.hasOwn(marketplacePlugin ?? {}, "authentication")) {
     throw new Error("Codex marketplace plugin must not define NAMS credential prompts.");
   }
-  if (marketplacePlugin.version !== packageJson.version) {
-    throw new Error("Codex marketplace plugin version must match package.json.");
-  }
-  if (marketplacePlugin.license !== packageJson.license) {
-    throw new Error("Codex marketplace plugin license must match package.json.");
+  if (marketplacePlugin.version !== packageJson.version || marketplacePlugin.license !== packageJson.license) {
+    throw new Error("Codex marketplace plugin version and license must match package.json.");
   }
 
   if (plugin.name !== "nams-hooks" || plugin.version !== packageJson.version) {
@@ -170,6 +226,124 @@ async function verifyCodexPluginFiles() {
   assertCodexHookCommand(hooks, "UserPromptSubmit", "BeforeAgent", "NAMS memory recall");
   assertCodexHookCommand(hooks, "Stop", "AfterAgent", "NAMS assistant persistence");
   assertCodexHookCommand(hooks, "PostToolUse", "AfterTool", "NAMS tool metadata");
+  await verifyCodexWorkspaceSkill(skillPath, skillPolicyPath);
+}
+
+async function verifyOpenCodeMarketplaceFiles() {
+  const pluginPath = path.join(marketplaceDistDir, "plugins", "opencode-nams-hooks", "nams-hooks.js");
+  const cliPath = path.join(marketplaceDistDir, "plugins", "opencode-nams-hooks", "bin", "cli.js");
+
+  await access(pluginPath);
+  await assertExecutable(cliPath);
+
+  const source = await readFile(pluginPath, "utf8");
+  if (!/new URL\("\.\/bin\/cli\.js", import\.meta\.url\)\.pathname/.test(source)) {
+    throw new Error("OpenCode marketplace plugin must default to its bundled bin/cli.js.");
+  }
+  if (/NAMS_HOOKS_COMMAND \?\? "nams-hooks"/.test(source)) {
+    throw new Error("OpenCode marketplace plugin must not default to a global nams-hooks executable.");
+  }
+  if (!/command\.execute\.before/.test(source) || !/workspaces",\s*"run",\s*"opencode"/.test(source)) {
+    throw new Error("OpenCode marketplace plugin must intercept nams:workspace and call workspaces run opencode.");
+  }
+}
+
+function assertGeminiMarketplaceCommand(hooks, eventName, namsEvent) {
+  const handler = hooks.hooks?.[eventName]?.[0]?.hooks?.[0];
+  const expected = `node "\${extensionPath}/plugins/gemini-nams-hooks/bin/cli.js" run gemini --event ${namsEvent}`;
+  if (handler?.type !== "command" || handler.command !== expected) {
+    throw new Error(`Gemini marketplace ${eventName} hook must invoke ${expected}.`);
+  }
+}
+
+async function verifyGeminiMarketplaceWorkspaceCommand(filePath) {
+  const source = await readFile(filePath, "utf8");
+  if (!/workspaces run gemini --event CustomCommand/.test(source)) {
+    throw new Error("Gemini marketplace workspace command must route through CustomCommand.");
+  }
+  if (!/\$\{extensionPath\}\/plugins\/gemini-nams-hooks\/bin\/cli\.js/.test(source)) {
+    throw new Error("Gemini marketplace workspace command must call the bundled Gemini runtime.");
+  }
+  if (/workspaces configure/.test(source)) {
+    throw new Error("Gemini marketplace workspace command must not call workspaces configure directly.");
+  }
+}
+
+async function verifyLocalGeminiWorkspaceCommand(filePath) {
+  const source = await readFile(filePath, "utf8");
+  if (!/nams-hooks workspaces run gemini --event CustomCommand/.test(source)) {
+    throw new Error("Gemini local workspace command must call the installed nams-hooks executable.");
+  }
+  if (/\$\{extensionPath\}|bin\/cli\.js|workspaces configure/.test(source)) {
+    throw new Error("Gemini local workspace command must not use bundled runtime paths or workspaces configure.");
+  }
+}
+
+function assertClaudeWorkspaceCommand(hooks) {
+  const group = hooks.hooks?.UserPromptExpansion?.[0];
+  const handler = group?.hooks?.[0];
+  const args = handler?.args ?? [];
+  const expectedArgs = ["${CLAUDE_PLUGIN_ROOT}/bin/cli.js", "workspaces", "run", "claude", "--event", "UserPromptExpansion"];
+
+  if (group?.matcher !== "^nams:workspace$") {
+    throw new Error("Claude marketplace workspace hook must match nams:workspace.");
+  }
+  if (handler?.type !== "command" || handler.command !== "node" || JSON.stringify(args) !== JSON.stringify(expectedArgs)) {
+    throw new Error("Claude marketplace workspace hook must call the bundled CLI workspace runner.");
+  }
+}
+
+async function verifyClaudeWorkspaceMarkdown(filePath) {
+  const source = await readFile(filePath, "utf8");
+  if (!/argument-hint: use <workspace-id-or-name>/.test(source) || !/disable-model-invocation: true/.test(source)) {
+    throw new Error("Claude workspace command markdown must disable model invocation and document the use argument.");
+  }
+  if (!/\/nams:workspace use <workspace-id-or-name>/.test(source)) {
+    throw new Error("Claude workspace command markdown must document /nams:workspace use.");
+  }
+  if (/workspaces configure|workspace-use\.mjs|\$ARGUMENTS/.test(source)) {
+    throw new Error("Claude workspace command markdown must not call configuration helpers directly.");
+  }
+}
+
+async function verifyLocalClaudeWorkspaceCommand(filePath) {
+  const source = await readFile(filePath, "utf8");
+  if (!/\/nams:workspace use <workspace-id-or-name>/.test(source)) {
+    throw new Error("Claude local workspace command markdown must document /nams:workspace use.");
+  }
+  if (/workspaces configure|workspace-use\.mjs|\$ARGUMENTS/.test(source)) {
+    throw new Error("Claude local workspace command markdown must not call configuration helpers directly.");
+  }
+}
+
+async function verifyCodexWorkspaceSkill(skillPath, policyPath) {
+  const skill = await readFile(skillPath, "utf8");
+  const policy = await readFile(policyPath, "utf8");
+
+  if (!/name: nams:workspace/.test(skill) || !/workspaces run codex --event CustomCommand/.test(skill)) {
+    throw new Error("Codex workspace skill must expose nams:workspace through the CustomCommand runner.");
+  }
+  if (!/node bin\/cli\.js workspaces run codex --event CustomCommand/.test(skill)) {
+    throw new Error("Codex workspace skill must prefer the bundled plugin CLI.");
+  }
+  if (!/nams-hooks workspaces run codex --event CustomCommand/.test(skill)) {
+    throw new Error("Codex workspace skill must document the installed executable fallback.");
+  }
+  if (!/allow_implicit_invocation: false/.test(policy)) {
+    throw new Error("Codex workspace skill policy must disable implicit invocation.");
+  }
+}
+
+async function verifyLocalCommandJson(filePath, platform) {
+  const source = await readFile(filePath, "utf8");
+  const parsed = JSON.parse(source);
+  const commands = JSON.stringify(parsed);
+  if (!commands.includes(`nams-hooks run ${platform} --event`)) {
+    throw new Error(`${path.relative(root, filePath)} must call installed nams-hooks for ${platform}.`);
+  }
+  if (/bin\/cli\.js|\$\{PLUGIN_ROOT\}|\$\{CLAUDE_PLUGIN_ROOT\}|\$\{extensionPath\}/.test(commands)) {
+    throw new Error(`${path.relative(root, filePath)} must not reference bundled runtime paths.`);
+  }
 }
 
 function assertClaudePluginUserConfig(plugin) {
@@ -203,29 +377,6 @@ function assertClaudeHookCommand(hooks, eventName, namsEvent) {
   const expectedArgs = ["${CLAUDE_PLUGIN_ROOT}/bin/cli.js", "run", "claude", "--event", namsEvent];
   if (JSON.stringify(handler.args) !== JSON.stringify(expectedArgs)) {
     throw new Error(`Claude plugin ${eventName} hook must invoke the bundled CLI with --event ${namsEvent}.`);
-  }
-}
-
-function assertClaudeWorkspaceCommandHook(hooks) {
-  const group = hooks.hooks?.UserPromptExpansion?.[0];
-  const handler = group?.hooks?.[0];
-  if (group?.matcher !== "^nams:workspace$") {
-    throw new Error("Claude plugin UserPromptExpansion hook must match the /nams:workspace command.");
-  }
-  if (handler?.type !== "command" || handler.command !== "node") {
-    throw new Error("Claude plugin UserPromptExpansion hook must run node.");
-  }
-  const expectedArgs = ["${CLAUDE_PLUGIN_ROOT}/bin/cli.js", "workspaces", "run", "claude", "--event", "UserPromptExpansion"];
-  if (JSON.stringify(handler.args) !== JSON.stringify(expectedArgs)) {
-    throw new Error("Claude plugin UserPromptExpansion hook must invoke the bundled CLI workspace runner with exec-form args.");
-  }
-}
-
-function assertNoPackageTemplatePlaceholders(files) {
-  for (const [filePath, source] of files) {
-    if (/__PACKAGE_VERSION__|__PACKAGE_LICENSE__/.test(source)) {
-      throw new Error(`${path.relative(root, filePath)} must not contain unresolved package template placeholders.`);
-    }
   }
 }
 
@@ -280,6 +431,25 @@ async function listFiles(directory, prefix = "") {
   return files;
 }
 
+function assertNoMatchingFiles(files, pattern, message) {
+  const matches = files.filter((file) => pattern.test(file));
+  if (matches.length > 0) {
+    throw new Error(`${message}: ${matches.join(", ")}`);
+  }
+}
+
+async function filesWithPattern(directory, pattern) {
+  const files = await listFiles(directory);
+  const matches = [];
+  for (const file of files) {
+    const source = await readFile(path.join(directory, file), "utf8");
+    if (pattern.test(source)) {
+      matches.push(file);
+    }
+  }
+  return matches;
+}
+
 async function checkPackedPackage(packageDir, binTarget, options = {}) {
   const packageJson = options.packageJson ?? JSON.parse(await readFile(path.join(packageDir, "package.json"), "utf8"));
   if (options.identityAlreadyVerified !== true) {
@@ -296,54 +466,19 @@ async function checkPackedPackage(packageDir, binTarget, options = {}) {
   if (!packedFiles.includes(binTarget)) {
     throw new Error(`packed package is missing nams-hooks bin target: ${binTarget}`);
   }
-  for (const expectedFile of [
-    ...geminiPackedFiles(packageDir),
-    ...claudePackedFiles(packageDir),
-    ...codexPackedFiles(packageDir),
-    ...opencodePackedFiles(packageDir),
-  ]) {
+  for (const expectedFile of npmPackedFiles(packageDir)) {
     if (!packedFiles.includes(expectedFile)) {
-      throw new Error(`packed package is missing plugin file: ${expectedFile}`);
+      throw new Error(`packed package is missing runtime file: ${expectedFile}`);
     }
   }
 }
 
-function geminiPackedFiles(packageDir) {
+function npmPackedFiles(packageDir) {
   const prefix = packageDir === root ? "dist/" : "";
   return [
-    `${prefix}commands/nams/workspace.toml`,
-  ];
-}
-
-function claudePackedFiles(packageDir) {
-  const prefix = packageDir === root ? "dist/" : "";
-  return [
-    `${prefix}.claude-plugin/marketplace.json`,
-    `${prefix}plugins/nams-hooks/.claude-plugin/plugin.json`,
-    `${prefix}plugins/nams-hooks/hooks/hooks.json`,
-    `${prefix}plugins/nams-hooks/commands/nams/workspace.md`,
-    `${prefix}plugins/nams-hooks/bin/cli.js`,
-  ];
-}
-
-function codexPackedFiles(packageDir) {
-  const prefix = packageDir === root ? "dist/" : "";
-  return [
-    `${prefix}.agents/plugins/marketplace.json`,
-    `${prefix}plugins/codex-nams-hooks/.codex-plugin/plugin.json`,
-    `${prefix}plugins/codex-nams-hooks/hooks/hooks.json`,
-    `${prefix}plugins/codex-nams-hooks/bin/cli.js`,
-    `${prefix}plugins/codex-nams-hooks/skills/workspace/SKILL.md`,
-    `${prefix}plugins/codex-nams-hooks/skills/workspace/agents/openai.yaml`,
-  ];
-}
-
-function opencodePackedFiles(packageDir) {
-  if (packageDir !== root) {
-    return [];
-  }
-  return [
-    "templates/opencode/.opencode/plugins/nams-hooks.js",
+    `${prefix}bin/cli.js`,
+    `${prefix}bin/generated/nams-client.js`,
+    `${prefix}package.json`,
   ];
 }
 
@@ -351,14 +486,7 @@ async function assertExecutable(filePath) {
   try {
     await access(filePath, constants.X_OK);
   } catch {
-    throw new Error(`${path.relative(root, filePath)} must be executable.`);
-  }
-}
-
-async function verifyRootPackageFiles(packagePath) {
-  const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
-  if (!Array.isArray(packageJson.files) || !packageJson.files.includes("templates/")) {
-    throw new Error("package.json files must include templates/ for the OpenCode plugin shim.");
+    throw new Error(`${path.relative(root, filePath)} must exist and be executable.`);
   }
 }
 
@@ -382,7 +510,7 @@ async function verifyGeminiExtensionSettings(extensionPath) {
   const extension = JSON.parse(await readFile(extensionPath, "utf8"));
   const envVars = extension.settings?.map((setting) => setting.envVar);
   if (!Array.isArray(envVars) || !envVars.includes("NAMS_API_KEY") || !envVars.includes("NAMS_WORKSPACE_ID") || !envVars.includes("NAMS_BASE_URL")) {
-    throw new Error("dist/gemini-extension.json settings must include NAMS_API_KEY, NAMS_WORKSPACE_ID, and NAMS_BASE_URL.");
+    throw new Error("Gemini extension settings must include NAMS_API_KEY, NAMS_WORKSPACE_ID, and NAMS_BASE_URL.");
   }
 }
 
