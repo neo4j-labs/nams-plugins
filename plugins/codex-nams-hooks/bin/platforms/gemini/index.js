@@ -1,6 +1,8 @@
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
+import { recordActiveWorkspaceSession } from "../../runtime/active-workspace-session.js";
 import { appendNamsFailureDiagnostic, appendRawPlatformLog, } from "../../runtime/logging.js";
 import { combineMemoryContexts, createNamsMemoryService, } from "../../runtime/memory-service.js";
+import { sessionStatePath } from "../../runtime/paths.js";
 import { createInitialSessionState, loadSessionState, saveSessionState, } from "../../runtime/session-state.js";
 import { loadEffectiveNamsConfigForMemory, resolveWorkspaceForMemory, } from "../../runtime/workspace-resolution.js";
 import { formatWorkspaceSelectionNotice } from "../workspace-selection.js";
@@ -41,6 +43,9 @@ export class GeminiAdapter {
         });
         if (workspaceResult.status !== "ready") {
             await saveSessionState(invocation.platform, state.sessionKey, state);
+            if (workspaceResult.reason === "selection-required") {
+                await recordSelectionRequiredWorkspaceSession(invocation, state, payloadInfo.projectDirectory, payloadInfo.sessionId);
+            }
             return workspaceResultOutput(workspaceResult, payloadInfo.sessionId);
         }
         const config = workspaceResult.config;
@@ -224,7 +229,9 @@ function allowOutput(additionalContext) {
 }
 function workspaceResultOutput(result, sessionId) {
     if (result.reason === "selection-required") {
-        const message = formatWorkspaceSelectionNotice("gemini", result.workspaces, sessionId);
+        const message = formatWorkspaceSelectionNotice("gemini", result.workspaces, sessionId, [
+            "Select a session workspace with: /nams:workspace use <workspace-id-or-name>",
+        ]);
         return {
             stdout: {
                 continue: true,
@@ -237,6 +244,20 @@ function workspaceResultOutput(result, sessionId) {
         };
     }
     return allowOutput();
+}
+async function recordSelectionRequiredWorkspaceSession(invocation, state, projectDirectory, sessionId) {
+    try {
+        await recordActiveWorkspaceSession({
+            platform: invocation.platform,
+            sessionId,
+            sessionKey: state.sessionKey,
+            projectDirectory,
+            statePath: sessionStatePath(invocation.platform, state.sessionKey, state.createdAt),
+        });
+    }
+    catch {
+        return;
+    }
 }
 function parseGeminiAfterToolPayload(payload) {
     const toolResponse = firstRecord(payload.tool_response);

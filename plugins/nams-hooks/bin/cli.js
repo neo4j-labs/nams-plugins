@@ -59,6 +59,14 @@ function parseArgs(argv) {
             };
         }
     }
+    if (command === "workspaces" && platformArg === "run") {
+        const platform = argv[2];
+        const workspaceEventFlag = argv[3];
+        const workspaceEvent = argv[4];
+        if (workspaceEventFlag === "--event" && isPlatform(platform) && isWorkspaceHookEvent(workspaceEvent)) {
+            return { command: "workspaces", platform, event: workspaceEvent };
+        }
+    }
     if (command === "run" && eventFlag === "--event" && isPlatform(platformArg) && isHookEvent(eventArg)) {
         return { command: "run", platform: platformArg, event: eventArg };
     }
@@ -99,6 +107,12 @@ async function routeWorkspaceEvent(adapter, invocation) {
             return adapter.beforeAgent?.({ ...invocation, event: "BeforeAgent" }) ?? allowHook();
         case "InstallConfigure":
             return adapter.installConfigure?.({ ...invocation, event: "InstallConfigure" }) ?? allowHook();
+        case "UserPromptExpansion":
+            return adapter.userPromptExpansion?.({ ...invocation, event: "UserPromptExpansion" }) ?? allowHook();
+        case "CommandExecuteBefore":
+            return adapter.commandExecuteBefore?.({ ...invocation, event: "CommandExecuteBefore" }) ?? allowHook();
+        case "CustomCommand":
+            return adapter.customCommand?.({ ...invocation, event: "CustomCommand" }) ?? allowHook();
     }
 }
 function allowHook() {
@@ -114,7 +128,7 @@ function writeWorkspaceConfigureResult(result) {
 function usage() {
     return [
         "Usage: nams-hooks run <gemini|claude|codex|opencode> --event <SessionStart|BeforeAgent|AfterAgent|AfterTool>",
-        "       nams-hooks workspaces <gemini|claude|codex|opencode> --event <BeforeAgent|InstallConfigure>",
+        "       nams-hooks workspaces run <gemini|claude|codex|opencode> --event <BeforeAgent|InstallConfigure|UserPromptExpansion|CommandExecuteBefore|CustomCommand>",
         "       nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope <project|user> [--workspace WORKSPACE_NAME_OR_ID]",
         "       nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope session --session-id ID [--workspace WORKSPACE_NAME_OR_ID]",
         "",

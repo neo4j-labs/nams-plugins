@@ -2,6 +2,7 @@
   "name": "nams-hooks",
   "version": "0.1.0",
   "description": "Persistent Neo4j Agent Memory Service hooks for Codex.",
+  "skills": "./skills/",
   "author": {
     "name": "Neo4j Labs"
   },
