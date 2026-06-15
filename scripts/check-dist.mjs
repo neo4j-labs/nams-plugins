@@ -24,7 +24,7 @@ const forbiddenNpmArtifactPatterns = [
   /^dist-marketplace(\/|$)/,
   /^dist-local(\/|$)/,
   /^(dist\/)?(plugins|commands|hooks)(\/|$)/,
-  /(^|\/)(\.agents|\.claude-plugin|\.opencode|\.claude|\.codex|\.gemini)(\/|$)/,
+  /(^|\/)(\.agents|\.claude-plugin|\.codex-plugin|\.opencode|\.claude|\.codex|\.gemini)(\/|$)/,
   /^(dist\/)?(claude|codex|gemini|opencode)(\/|$)/,
   /^(dist\/)?gemini-extension\.json$/,
   /(^|\/)settings\.local\.json$/,
@@ -32,6 +32,7 @@ const forbiddenNpmArtifactPatterns = [
 ];
 
 const rootPackageJson = await verifySourcePackageIdentity(rootPackagePath);
+await verifyRootPackageFiles(rootPackagePath);
 await verifyNpmDist(rootPackageJson);
 await verifyMarketplaceDist();
 await verifyLocalDist();
@@ -528,6 +529,16 @@ async function verifySourcePackageIdentity(packagePath) {
   const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
   assertPackageIdentity(packageJson, path.dirname(packagePath), "./dist/bin/cli.js");
   return packageJson;
+}
+
+async function verifyRootPackageFiles(packagePath) {
+  const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
+  if (!Array.isArray(packageJson.files) || packageJson.files.includes("templates/")) {
+    throw new Error("package.json files must not include templates/ in the npm package artifact.");
+  }
+  if (!packageJson.files.includes("dist/")) {
+    throw new Error("package.json files must include dist/ for the npm package artifact.");
+  }
 }
 
 function assertPackageIdentity(packageJson, packageDir, expectedBinTarget) {
