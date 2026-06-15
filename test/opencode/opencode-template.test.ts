@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -50,6 +50,52 @@ test("opencode plugin template exposes NAMS hook handlers", async () => {
 
 test("opencode template does not expose workspace command markdown prompt", async () => {
   await assert.rejects(readFile(commandPath, "utf8"), /ENOENT/);
+});
+
+test("bundled opencode plugin resolves sibling CLI when installed under a path with spaces", async () => {
+  const rootWithSpaces = await mkdtemp(path.join(os.tmpdir(), "nams opencode bundled "));
+  try {
+    const pluginRoot = path.join(rootWithSpaces, "plugin with spaces");
+    const binDir = path.join(pluginRoot, "bin");
+    const pluginPath = path.join(pluginRoot, "nams-hooks.js");
+    const cliPath = path.join(binDir, "cli.js");
+    const callsPath = path.join(rootWithSpaces, "calls.jsonl");
+    await mkdir(binDir, { recursive: true });
+    await writeFile(
+      cliPath,
+      `#!/usr/bin/env node
+import { appendFileSync } from "node:fs";
+
+const callsPath = ${JSON.stringify(callsPath)};
+let stdin = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => {
+  stdin += chunk;
+});
+process.stdin.on("end", () => {
+  appendFileSync(callsPath, JSON.stringify({ args: process.argv.slice(2), stdin }) + "\\n");
+  process.stdout.write(JSON.stringify({}));
+});
+`,
+      "utf8",
+    );
+    await chmod(cliPath, 0o755);
+    await renderBundledTemplate(pluginPath);
+
+    const imported = (await import(`${pathToFileURL(pluginPath).href}?test=${Date.now()}-${Math.random()}`)) as TemplateModule;
+    const plugin = await imported.NamsHooks({ directory: rootWithSpaces });
+
+    await plugin.event({
+      event: { type: "session.created", properties: { info: { id: "session with spaces" } } },
+    });
+
+    const calls = await readCalls(callsPath);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].args, ["run", "opencode", "--event", "SessionStart"]);
+    assert.match(calls[0].stdin, /session with spaces/);
+  } finally {
+    await rm(rootWithSpaces, { force: true, recursive: true });
+  }
 });
 
 test("command.execute.before forwards OpenCode workspace command to workspace runtime", async () => {
@@ -683,6 +729,15 @@ async function renderTemplateForImport(commandPath: string): Promise<string> {
   const renderedPath = path.join(path.dirname(commandPath), "nams-hooks-rendered.js");
   await writeFile(renderedPath, source.replaceAll("__NAMS_HOOKS_COMMAND__", JSON.stringify("nams-hooks")), "utf8");
   return renderedPath;
+}
+
+async function renderBundledTemplate(renderedPath: string): Promise<void> {
+  const source = await readFile(templatePath, "utf8");
+  await writeFile(
+    renderedPath,
+    source.replaceAll("__NAMS_HOOKS_COMMAND__", 'fileURLToPath(new URL("./bin/cli.js", import.meta.url))'),
+    "utf8",
+  );
 }
 
 async function readCalls(callsPath: string): Promise<TemplateCall[]> {

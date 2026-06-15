@@ -111,7 +111,7 @@ export async function renderOpenCodeProjection(outputRoot, projection) {
     throw new Error(`${projection.from} must point at the shared OpenCode template.`);
   }
   const commandExpression = projection.commandMode === "bundled"
-    ? 'new URL("./bin/cli.js", import.meta.url).pathname'
+    ? 'fileURLToPath(new URL("./bin/cli.js", import.meta.url))'
     : JSON.stringify("nams-hooks");
   const source = await readFile(path.join(root, "templates", "opencode", ".opencode", "plugins", "nams-hooks.js"), "utf8");
   const rendered = renderTemplate(source, { __NAMS_HOOKS_COMMAND__: commandExpression });

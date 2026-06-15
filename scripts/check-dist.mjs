@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { constants } from "node:fs";
-import { access, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { access, cp, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -68,6 +68,8 @@ async function verifyMarketplaceDist() {
   await verifyClaudeMarketplaceFiles();
   await verifyCodexMarketplaceFiles();
   await verifyOpenCodeMarketplaceFiles();
+  await verifyMarketplacePluginPackageMetadata();
+  await verifyMarketplaceCliRunsOutsidePackageScope();
 
   const files = await listFiles(marketplaceDistDir);
   assertNoMatchingFiles(files, /openapi|nams-openapi/i, "dist-marketplace must not include OpenAPI artifacts");
@@ -257,7 +259,7 @@ async function verifyOpenCodeMarketplaceFiles() {
   await assertExecutable(cliPath);
 
   const source = await readFile(pluginPath, "utf8");
-  if (!/new URL\("\.\/bin\/cli\.js", import\.meta\.url\)\.pathname/.test(source)) {
+  if (!/fileURLToPath\(new URL\("\.\/bin\/cli\.js", import\.meta\.url\)\)/.test(source)) {
     throw new Error("OpenCode marketplace plugin must default to its bundled bin/cli.js.");
   }
   if (/NAMS_HOOKS_COMMAND \?\? "nams-hooks"/.test(source)) {
@@ -265,6 +267,42 @@ async function verifyOpenCodeMarketplaceFiles() {
   }
   if (!/command\.execute\.before/.test(source) || !/workspaces",\s*"run",\s*"opencode"/.test(source)) {
     throw new Error("OpenCode marketplace plugin must intercept nams:workspace and call workspaces run opencode.");
+  }
+}
+
+async function verifyMarketplacePluginPackageMetadata() {
+  for (const platform of ["claude", "codex", "gemini", "opencode"]) {
+    const pluginRoot = path.join(marketplaceDistDir, "plugins", `${platform}-nams-hooks`);
+    const packageJson = JSON.parse(await readFile(path.join(pluginRoot, "package.json"), "utf8"));
+    if (packageJson.type !== "module") {
+      throw new Error(`dist-marketplace/plugins/${platform}-nams-hooks/package.json must set type to module.`);
+    }
+    if (packageJson.bin?.["nams-hooks"] !== "./bin/cli.js") {
+      throw new Error(`dist-marketplace/plugins/${platform}-nams-hooks/package.json must expose bin.nams-hooks at ./bin/cli.js.`);
+    }
+  }
+}
+
+async function verifyMarketplaceCliRunsOutsidePackageScope() {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), "nams hooks marketplace cli "));
+  try {
+    const pluginRoot = path.join(tempRoot, "copied plugin");
+    await cp(path.join(marketplaceDistDir, "plugins", "opencode-nams-hooks"), pluginRoot, { recursive: true });
+    const nodeArgs = await supportedNodeArgs(["--no-experimental-detect-module"]);
+    const result = await execFileSettled(process.execPath, [...nodeArgs, path.join(pluginRoot, "bin", "cli.js")], {
+      cwd: tempRoot,
+    });
+    if (result.code !== 1) {
+      throw new Error(`copied marketplace CLI should exit 1 with usage, got ${result.code}. stderr: ${result.stderr}`);
+    }
+    if (!/Usage: nams-hooks/.test(result.stderr)) {
+      throw new Error(`copied marketplace CLI should print usage, got stderr: ${result.stderr}`);
+    }
+    if (/SyntaxError|Cannot use import statement|Unexpected token/.test(`${result.stdout}\n${result.stderr}`)) {
+      throw new Error(`copied marketplace CLI failed module loading: ${result.stderr}`);
+    }
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
   }
 }
 
@@ -505,6 +543,33 @@ async function checkPackedPackage(packageDir, binTarget, options = {}) {
     if (!packedFiles.includes(expectedFile)) {
       throw new Error(`packed package is missing runtime file: ${expectedFile}`);
     }
+  }
+}
+
+async function supportedNodeArgs(candidateArgs) {
+  const supported = [];
+  for (const arg of candidateArgs) {
+    const result = await execFileSettled(process.execPath, [arg, "-e", ""], { cwd: root });
+    if (result.code === 0) {
+      supported.push(arg);
+    }
+  }
+  return supported;
+}
+
+async function execFileSettled(command, args, options) {
+  try {
+    const { stdout, stderr } = await execFileAsync(command, args, {
+      ...options,
+      maxBuffer: 1024 * 1024,
+    });
+    return { code: 0, stdout, stderr };
+  } catch (error) {
+    return {
+      code: typeof error?.code === "number" ? error.code : 1,
+      stdout: typeof error?.stdout === "string" ? error.stdout : "",
+      stderr: typeof error?.stderr === "string" ? error.stderr : String(error?.message ?? error),
+    };
   }
 }
 

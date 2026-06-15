@@ -66,7 +66,10 @@ This approach avoids per-harness logic drift while still respecting each platfor
 ```text
 nams-hooks/
   scripts/
-    build-dist.mjs
+    build-dist-common.mjs
+    build-dist-npm.mjs
+    build-dist-marketplace.mjs
+    build-dist-local.mjs
     generate-nams-client.mjs
   src/
     cli.ts
@@ -84,35 +87,52 @@ nams-hooks/
       opencode/
   install.mjs
   templates/
-    claude/
-      .claude-plugin/
-        marketplace.json
-      plugins/
-        nams-hooks/
-          .claude-plugin/
-            plugin.json
-          hooks/
-            hooks.json
-      .claude/
-        settings.local.json
-    codex/
-      .agents/
-        plugins/
+    local/
+      claude/
+        .claude/
+          settings.local.json
+      codex/
+        .codex/
+          hooks.json
+      gemini/
+        .gemini/
+          extensions/
+            gemini-nams-hooks/
+              gemini-extension.json
+              hooks/
+                hooks.json
+      opencode/
+        .opencode/
+          plugins/
+            nams-hooks.js
+    marketplace/
+      claude/
+        .claude-plugin/
           marketplace.json
-      plugins/
-        codex-nams-hooks/
-          .codex-plugin/
-            plugin.json
-          hooks/
-            hooks.json
-      hooks.json
+        plugins/
+          claude-nams-hooks/
+            .claude-plugin/
+              plugin.json
+            hooks/
+              hooks.json
+      codex/
+        .agents/
+          plugins/
+            marketplace.json
+        plugins/
+          codex-nams-hooks/
+            .codex-plugin/
+              plugin.json
+            hooks/
+              hooks.json
+      gemini/
+        gemini-extension.json
+        hooks/
+          hooks.json
     opencode/
-      plugins/
-        nams-hooks.js
-    gemini/
-      gemini-extension.json
-      hooks/
-        hooks.json
+      .opencode/
+        plugins/
+          nams-hooks.js
   docs/
     nams-openapi.json
     nams-skill.md
@@ -168,9 +188,9 @@ Dependency policy:
 Branch model:
 
 - `devel`: source branch containing TypeScript source, templates, docs, the pinned OpenAPI spec, the custom generator, and committed generated TypeScript client source.
-- `latest`: generated release/distribution branch containing validated npm, marketplace, and local configuration artifacts.
+- `latest`: generated release/distribution branch containing the validated marketplace release artifacts from `dist-marketplace/`.
 
-On `devel`, `dist/`, `dist-marketplace/`, and `dist-local/` are generated and ignored. `npm run dist` builds all three trees. `dist/` is the npm package artifact. `dist-marketplace/` is the self-contained marketplace release tree for Gemini, Claude Code, Codex, and OpenCode. `dist-local/` contains project-local configurations that call an installed `nams-hooks` executable.
+On `devel`, `dist/`, `dist-marketplace/`, and `dist-local/` are generated and ignored. `npm run dist` builds all three trees through the split projection scripts: `build-dist-npm.mjs`, `build-dist-marketplace.mjs`, and `build-dist-local.mjs`, with shared helpers in `build-dist-common.mjs`. `dist/` is the npm package artifact. `dist-marketplace/` is the self-contained marketplace release tree for Gemini, Claude Code, Codex, and OpenCode and is the only tree published to `latest`. `dist-local/` contains project-local configurations that call an installed `nams-hooks` executable. `dist/` and `dist-local/` are generated and verified on `devel` but are not published to `latest`.
 
 ```text
 dist/
@@ -196,6 +216,7 @@ dist-marketplace/
     hooks.json
   plugins/
     claude-nams-hooks/
+      package.json
       .claude-plugin/
         plugin.json
       commands/
@@ -206,6 +227,7 @@ dist-marketplace/
       bin/
         cli.js
     codex-nams-hooks/
+      package.json
       .codex-plugin/
         plugin.json
       hooks/
@@ -218,9 +240,11 @@ dist-marketplace/
       bin/
         cli.js
     gemini-nams-hooks/
+      package.json
       bin/
         cli.js
     opencode-nams-hooks/
+      package.json
       nams-hooks.js
       bin/
         cli.js
@@ -298,9 +322,9 @@ Manual or CI release flow:
 3. Run `npm run openapi:generate`.
 4. Commit `docs/nams-openapi.json` and `src/generated/nams-client.ts` if they changed.
 5. Run package verification.
-6. Run release preparation to create the release tree.
-7. Replace `latest` contents with the validated release tree.
-8. Commit the release artifact on `latest`.
+6. Run release preparation to create the marketplace release tree from `dist-marketplace/`.
+7. Replace `latest` contents with the validated `dist-marketplace/` release tree.
+8. Commit the marketplace release artifact on `latest`.
 9. Force-update the `latest` tag and recreate the GitHub Release named `latest`.
 
 Rules:
@@ -308,7 +332,8 @@ Rules:
 - Generated release artifacts are produced from `devel`; no hand edits.
 - The `latest` release tag is created from `latest`.
 - Gemini installs use `--ref latest`.
-- Codex, Claude, Gemini, and OpenCode release artifacts are produced from the same validated source tree.
+- Codex, Claude, Gemini, and OpenCode marketplace release artifacts are produced from the same validated source tree.
+- `dist/` and `dist-local/` are verification artifacts on `devel`; they are not copied to `latest`.
 - `npm run package:check` must verify all generated artifacts: npm package output in `dist/`, self-contained marketplace output in `dist-marketplace/`, local project configuration output in `dist-local/`, and npm dry-run package contents.
 
 ## Configuration
@@ -657,7 +682,7 @@ Manual validation:
 - Assistant response capture may be best-effort for some harness versions.
 - Prompt/context injection may be visible in some harness UIs even when intended as model context.
 - NAMS REST API shape may drift from the pinned OpenAPI copy. The build-time fetch and contract-test workflow should make drift explicit before release.
-- GitHub install from `master` means any accidental unreleased commit to `master` becomes installable immediately; branch protections should require release automation.
+- GitHub install from `latest` means any accidental unreleased commit to `latest` becomes installable immediately; branch protections should require release automation.
 
 ## Approval Record
 
@@ -676,4 +701,4 @@ Approved decisions from brainstorming:
 - Rely on NAMS async entity extraction from stored messages.
 - Use TypeScript for source and release vanilla JavaScript.
 - Use a custom generated `NamsClient` for REST calls.
-- Use `devel` for source and generated TypeScript, and generated release branches for validated npm, marketplace, and local configuration artifacts.
+- Use `devel` for source and generated TypeScript, and `latest` for validated marketplace release artifacts from `dist-marketplace/`; `dist/` and `dist-local/` remain generated verification artifacts on `devel`.
