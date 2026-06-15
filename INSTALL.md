@@ -1,8 +1,10 @@
 # Installation
 
-Use this guide to install `nams-hooks` from the generated `latest` branch.
-For local development, generated artifact testing, and `./dist` workflows, see
-[DEVELOPMENT.md](DEVELOPMENT.md).
+Use this guide to install `nams-hooks` from generated release artifacts.
+Marketplace installs are built from `dist-marketplace/`. Local project
+configurations are built from `dist-local/`. The npm-installable package is
+built from `dist/`.
+For local development and generated artifact testing, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Prerequisites
 
@@ -127,6 +129,10 @@ exits without changing config until you pass an explicit selection.
 Claude Code installs `nams-hooks` as a plugin marketplace entry. The plugin
 bundles the compiled runtime, hook configuration, and credential prompts.
 
+The generated Claude marketplace lives at
+`dist-marketplace/.claude-plugin/marketplace.json`. Its plugin source is
+`dist-marketplace/plugins/claude-nams-hooks/`.
+
 Add the release marketplace and install the plugin:
 
 ```bash
@@ -175,6 +181,11 @@ nams-hooks workspaces configure claude --scope session --session-id <session-id>
 
 Codex installs `nams-hooks` from the generated repo marketplace. The plugin
 bundles the compiled runtime and hook configuration.
+
+The generated Codex marketplace lives at
+`dist-marketplace/.agents/plugins/marketplace.json`. Its plugin source is
+`dist-marketplace/plugins/codex-nams-hooks/`, with standard hook configuration
+at `hooks/hooks.json` and the compiled CLI at `bin/cli.js`.
 
 Add the release marketplace:
 

@@ -29,6 +29,8 @@ It ensures deterministic memory persistence and context recall across different 
 - `src/interfaces.ts`: Shared contracts and hook event definitions.
 - `templates/`: Configuration templates for various harnesses.
 
+Generated artifacts are split by install mode. `dist/` is the npm-installable package, `dist-marketplace/` is the self-contained marketplace release tree, and `dist-local/` contains project-local configurations that call an installed `nams-hooks` executable.
+
 ## Getting Started
 
 Install the Claude Code marketplace release:
@@ -64,7 +66,7 @@ All platform-specific logic should be contained within its respective adapter in
 
 For more details on the design, see `docs/superpowers/specs/2026-05-10-nams-hooks-design.md`.
 
-For local development and generated marketplace testing, see [DEVELOPMENT.md](DEVELOPMENT.md).
+For local development and generated artifact testing, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ### Prerequisites
 
@@ -83,7 +85,7 @@ npm test
 # Run OpenAPI freshness check, build, and tests
 npm run check
 
-# Build and verify the generated release package, including Claude and Codex plugin files
+# Build and verify all generated artifacts: npm dist, marketplace dist, and local config dist
 npm run package:check
 
 # Regenerate and build the OpenAPI client, then run OpenAPI client tests directly
