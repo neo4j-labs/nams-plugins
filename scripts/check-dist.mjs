@@ -10,22 +10,27 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const distDir = path.join(root, "dist");
 const generatedClientPath = path.join(root, "dist", "bin", "generated", "nams-client.js");
 const geminiExtensionPath = path.join(root, "dist", "gemini-extension.json");
+const geminiCommandPath = path.join(root, "dist", "commands", "nams", "workspace.toml");
 const claudeMarketplacePath = path.join(root, "dist", ".claude-plugin", "marketplace.json");
 const claudePluginManifestPath = path.join(root, "dist", "plugins", "nams-hooks", ".claude-plugin", "plugin.json");
 const claudePluginHooksPath = path.join(root, "dist", "plugins", "nams-hooks", "hooks", "hooks.json");
+const claudePluginCommandPath = path.join(root, "dist", "plugins", "nams-hooks", "commands", "nams", "workspace.md");
 const claudePluginCliPath = path.join(root, "dist", "plugins", "nams-hooks", "bin", "cli.js");
 const codexMarketplacePath = path.join(root, "dist", ".agents", "plugins", "marketplace.json");
 const codexPluginManifestPath = path.join(root, "dist", "plugins", "codex-nams-hooks", ".codex-plugin", "plugin.json");
 const codexPluginHooksPath = path.join(root, "dist", "plugins", "codex-nams-hooks", "hooks", "hooks.json");
 const codexPluginCliPath = path.join(root, "dist", "plugins", "codex-nams-hooks", "bin", "cli.js");
+const codexPluginSkillPath = path.join(root, "dist", "plugins", "codex-nams-hooks", "skills", "workspace", "SKILL.md");
+const codexPluginSkillPolicyPath = path.join(root, "dist", "plugins", "codex-nams-hooks", "skills", "workspace", "agents", "openai.yaml");
 const codexHookEvents = ["SessionStart", "UserPromptSubmit", "Stop", "PostToolUse"];
-const opencodeTemplatePath = path.join(root, "templates", "opencode", "plugins", "nams-hooks.js");
+const opencodeTemplatePath = path.join(root, "templates", "opencode", ".opencode", "plugins", "nams-hooks.js");
 const rootPackagePath = path.join(root, "package.json");
 const releasePackageName = "@neo4j-labs/nams-plugins";
 const execFileAsync = promisify(execFile);
 
 await access(generatedClientPath);
 await access(geminiExtensionPath);
+await access(geminiCommandPath);
 await access(opencodeTemplatePath);
 await verifyRootPackageFiles(rootPackagePath);
 const rootPackageJson = await verifySourcePackageIdentity(rootPackagePath);
@@ -51,6 +56,7 @@ async function verifyClaudePluginFiles() {
   await access(claudeMarketplacePath);
   await access(claudePluginManifestPath);
   await access(claudePluginHooksPath);
+  await access(claudePluginCommandPath);
   await assertExecutable(claudePluginCliPath);
 
   const packageJson = JSON.parse(await readFile(rootPackagePath, "utf8"));
@@ -83,6 +89,7 @@ async function verifyClaudePluginFiles() {
 
   assertClaudeHookCommand(hooks, "SessionStart", "SessionStart");
   assertClaudeHookCommand(hooks, "UserPromptSubmit", "BeforeAgent");
+  assertClaudeWorkspaceCommandHook(hooks);
   assertClaudeHookCommand(hooks, "PostToolUse", "AfterTool");
   assertClaudeHookCommand(hooks, "Stop", "AfterAgent");
 }
@@ -92,6 +99,8 @@ async function verifyCodexPluginFiles() {
   await access(codexPluginManifestPath);
   await access(codexPluginHooksPath);
   await assertExecutable(codexPluginCliPath);
+  await access(codexPluginSkillPath);
+  await access(codexPluginSkillPolicyPath);
 
   const packageJson = JSON.parse(await readFile(rootPackagePath, "utf8"));
   const marketplaceSource = await readFile(codexMarketplacePath, "utf8");
@@ -149,6 +158,9 @@ async function verifyCodexPluginFiles() {
   if (plugin.license !== packageJson.license) {
     throw new Error("Codex plugin manifest license must match package.json.");
   }
+  if (plugin.skills !== "./skills/") {
+    throw new Error("Codex plugin manifest must expose bundled skills from ./skills/.");
+  }
   if (Object.hasOwn(plugin, "userConfig") || Object.hasOwn(plugin, "authentication")) {
     throw new Error("Codex plugin manifest must not define NAMS credential prompts.");
   }
@@ -191,6 +203,21 @@ function assertClaudeHookCommand(hooks, eventName, namsEvent) {
   const expectedArgs = ["${CLAUDE_PLUGIN_ROOT}/bin/cli.js", "run", "claude", "--event", namsEvent];
   if (JSON.stringify(handler.args) !== JSON.stringify(expectedArgs)) {
     throw new Error(`Claude plugin ${eventName} hook must invoke the bundled CLI with --event ${namsEvent}.`);
+  }
+}
+
+function assertClaudeWorkspaceCommandHook(hooks) {
+  const group = hooks.hooks?.UserPromptExpansion?.[0];
+  const handler = group?.hooks?.[0];
+  if (group?.matcher !== "^nams:workspace$") {
+    throw new Error("Claude plugin UserPromptExpansion hook must match the /nams:workspace command.");
+  }
+  if (handler?.type !== "command" || handler.command !== "node") {
+    throw new Error("Claude plugin UserPromptExpansion hook must run node.");
+  }
+  const expectedArgs = ["${CLAUDE_PLUGIN_ROOT}/bin/cli.js", "workspaces", "run", "claude", "--event", "UserPromptExpansion"];
+  if (JSON.stringify(handler.args) !== JSON.stringify(expectedArgs)) {
+    throw new Error("Claude plugin UserPromptExpansion hook must invoke the bundled CLI workspace runner with exec-form args.");
   }
 }
 
@@ -269,11 +296,23 @@ async function checkPackedPackage(packageDir, binTarget, options = {}) {
   if (!packedFiles.includes(binTarget)) {
     throw new Error(`packed package is missing nams-hooks bin target: ${binTarget}`);
   }
-  for (const expectedFile of [...claudePackedFiles(packageDir), ...codexPackedFiles(packageDir)]) {
+  for (const expectedFile of [
+    ...geminiPackedFiles(packageDir),
+    ...claudePackedFiles(packageDir),
+    ...codexPackedFiles(packageDir),
+    ...opencodePackedFiles(packageDir),
+  ]) {
     if (!packedFiles.includes(expectedFile)) {
       throw new Error(`packed package is missing plugin file: ${expectedFile}`);
     }
   }
+}
+
+function geminiPackedFiles(packageDir) {
+  const prefix = packageDir === root ? "dist/" : "";
+  return [
+    `${prefix}commands/nams/workspace.toml`,
+  ];
 }
 
 function claudePackedFiles(packageDir) {
@@ -282,6 +321,7 @@ function claudePackedFiles(packageDir) {
     `${prefix}.claude-plugin/marketplace.json`,
     `${prefix}plugins/nams-hooks/.claude-plugin/plugin.json`,
     `${prefix}plugins/nams-hooks/hooks/hooks.json`,
+    `${prefix}plugins/nams-hooks/commands/nams/workspace.md`,
     `${prefix}plugins/nams-hooks/bin/cli.js`,
   ];
 }
@@ -293,6 +333,17 @@ function codexPackedFiles(packageDir) {
     `${prefix}plugins/codex-nams-hooks/.codex-plugin/plugin.json`,
     `${prefix}plugins/codex-nams-hooks/hooks/hooks.json`,
     `${prefix}plugins/codex-nams-hooks/bin/cli.js`,
+    `${prefix}plugins/codex-nams-hooks/skills/workspace/SKILL.md`,
+    `${prefix}plugins/codex-nams-hooks/skills/workspace/agents/openai.yaml`,
+  ];
+}
+
+function opencodePackedFiles(packageDir) {
+  if (packageDir !== root) {
+    return [];
+  }
+  return [
+    "templates/opencode/.opencode/plugins/nams-hooks.js",
   ];
 }
 

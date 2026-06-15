@@ -1,4 +1,5 @@
 import type { HookInvocation, HookResult, MemoryPlatformAdapter } from "../../interfaces.js";
+import { recordActiveWorkspaceSession } from "../../runtime/active-workspace-session.js";
 import { sha256 } from "../../runtime/hashing.js";
 import {
   appendNamsFailureDiagnostic,
@@ -10,6 +11,7 @@ import {
   serializeToolInput,
   type NamsMemoryService,
 } from "../../runtime/memory-service.js";
+import { sessionStatePath } from "../../runtime/paths.js";
 import {
   createInitialSessionState,
   loadSessionState,
@@ -66,6 +68,14 @@ export class CodexAdapter implements MemoryPlatformAdapter {
     });
     if (workspaceResult.status !== "ready") {
       await saveSessionState(invocation.platform, state.sessionKey, state);
+      if (workspaceResult.reason === "selection-required") {
+        await recordSelectionRequiredWorkspaceSession(
+          invocation,
+          state,
+          payloadInfo.projectDirectory,
+          payloadInfo.sessionId,
+        );
+      }
       return workspaceResultOutput(workspaceResult, payloadInfo.sessionId);
     }
     const config = workspaceResult.config;
@@ -282,9 +292,30 @@ function workspaceResultOutput(
   sessionId?: string,
 ): HookResult {
   if (result.reason === "selection-required") {
-    return allowOutput(formatWorkspaceSelectionNotice("codex", result.workspaces, sessionId));
+    return allowOutput(formatWorkspaceSelectionNotice("codex", result.workspaces, sessionId, [
+      "Select a session workspace with: $nams:workspace use <workspace-id-or-name>",
+    ]));
   }
   return allowOutput();
+}
+
+async function recordSelectionRequiredWorkspaceSession(
+  invocation: HookInvocation,
+  state: SessionState,
+  projectDirectory: string,
+  sessionId?: string,
+): Promise<void> {
+  try {
+    await recordActiveWorkspaceSession({
+      platform: invocation.platform,
+      sessionId,
+      sessionKey: state.sessionKey,
+      projectDirectory,
+      statePath: sessionStatePath(invocation.platform, state.sessionKey, state.createdAt),
+    });
+  } catch {
+    return;
+  }
 }
 
 function allowPostToolUseOutput(): HookResult {

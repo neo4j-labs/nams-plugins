@@ -5,6 +5,8 @@ import { test } from "node:test";
 const marketplacePath = "templates/codex/.agents/plugins/marketplace.json";
 const pluginManifestPath = "templates/codex/plugins/codex-nams-hooks/.codex-plugin/plugin.json";
 const pluginHooksPath = "templates/codex/plugins/codex-nams-hooks/hooks/hooks.json";
+const pluginSkillPath = "templates/codex/plugins/codex-nams-hooks/skills/workspace/SKILL.md";
+const pluginSkillPolicyPath = "templates/codex/plugins/codex-nams-hooks/skills/workspace/agents/openai.yaml";
 const fallbackHooksPath = "templates/codex/hooks.json";
 const pluginRoot = "${PLUGIN_ROOT}";
 
@@ -43,6 +45,7 @@ test("Codex plugin manifest template declares metadata without credential prompt
   assert.equal(template.name, "nams-hooks");
   assert.equal(template.version, "__PACKAGE_VERSION__");
   assert.equal(template.description, "Persistent Neo4j Agent Memory Service hooks for Codex.");
+  assert.equal(template.skills, "./skills/");
   assert.equal(template.author.name, "Neo4j Labs");
   assert.equal(template.repository, "https://github.com/neo4j-labs/nams-plugins");
   assert.equal(template.license, "__PACKAGE_LICENSE__");
@@ -50,6 +53,21 @@ test("Codex plugin manifest template declares metadata without credential prompt
   assert.equal(Object.hasOwn(template, "userConfig"), false);
   assert.equal(Object.hasOwn(template, "authentication"), false);
   assert.equal(Object.hasOwn(template, "hooks"), false);
+});
+
+test("Codex plugin template packages explicit nams workspace skill", async () => {
+  const skill = await readFile(pluginSkillPath, "utf8");
+  const policy = await readFile(pluginSkillPolicyPath, "utf8");
+
+  assert.match(skill, /name: nams:workspace/);
+  assert.match(skill, /description: Explicitly use \$nams:workspace use/);
+  assert.match(skill, /workspaces run codex --event CustomCommand/);
+  assert.match(skill, /command_name/);
+  assert.match(skill, /command_args/);
+  assert.match(skill, /node bin\/cli\.js workspaces run codex --event CustomCommand/);
+  assert.match(skill, /nams-hooks workspaces run codex --event CustomCommand/);
+  assert.doesNotMatch(skill, /workspaces configure/);
+  assert.match(policy, /allow_implicit_invocation: false/);
 });
 
 test("Codex plugin hook template invokes the bundled CLI through plugin root", async () => {

@@ -1,13 +1,13 @@
 import { spawn } from "node:child_process";
 
-const command = process.env.NAMS_HOOKS_COMMAND ?? "nams-hooks";
-
 export const NamsHooks = async ({ client, directory, project, worktree }) => {
+  const command = process.env.NAMS_HOOKS_COMMAND ?? "nams-hooks";
+  const workspaceCommandTimeoutMs = readWorkspaceCommandTimeoutMs();
   const pendingWorkspaceSelectionContexts = new Map();
 
   async function run(event, payload) {
     try {
-      return await invokeNams(event, { directory, project, worktree, ...payload });
+      return await invokeNams(command, event, { directory, project, worktree, ...payload });
     } catch {
       await logDiagnostic(client, `NAMS OpenCode hook ${event} failed`);
       return undefined;
@@ -21,6 +21,19 @@ export const NamsHooks = async ({ client, directory, project, worktree }) => {
       }
 
       await run("SessionStart", { hook: "event", event });
+    },
+
+    "command.execute.before": async (input) => {
+      if (input?.command !== "nams:workspace") {
+        return undefined;
+      }
+
+      const result = await invokeWorkspaceRun(command, workspaceCommandTimeoutMs, "CommandExecuteBefore", input, directory);
+      if (result?.stop === true) {
+        await showCommandResult(client, result);
+        return { stop: true };
+      }
+      return undefined;
     },
 
     "chat.message": async (input, output) => {
@@ -70,7 +83,90 @@ export const NamsHooks = async ({ client, directory, project, worktree }) => {
 
 export default NamsHooks;
 
-async function invokeNams(event, payload) {
+async function invokeWorkspaceRun(command, workspaceCommandTimeoutMs, event, payload, directory) {
+  return await new Promise((resolve) => {
+    const cwd = typeof directory === "string" && directory.trim() !== "" ? directory : undefined;
+    const child = spawn(
+      command,
+      [
+        "workspaces",
+        "run",
+        "opencode",
+        "--event",
+        event,
+      ],
+      {
+        ...(cwd === undefined ? {} : { cwd }),
+        stdio: ["pipe", "pipe", "pipe"],
+      },
+    );
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    let timeout = setTimeout(() => {
+      finish({
+        stop: true,
+        code: 1,
+        stdout,
+        stderr: `nams-hooks workspace command timed out after ${workspaceCommandTimeoutMs}ms`,
+      });
+      child.kill();
+    }, workspaceCommandTimeoutMs);
+
+    function finish(value) {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timeout !== undefined) {
+        clearTimeout(timeout);
+        timeout = undefined;
+      }
+      resolve(value);
+    }
+
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", (error) => {
+      finish({ stop: true, code: 1, stdout, stderr: error.message });
+    });
+    child.on("close", (code) => {
+      if (code !== 0) {
+        finish({ stop: true, code: code ?? 1, stdout, stderr });
+        return;
+      }
+      const trimmed = stdout.trim();
+      if (trimmed === "") {
+        finish(undefined);
+        return;
+      }
+      try {
+        finish(JSON.parse(trimmed));
+      } catch {
+        finish({ stop: true, code: 1, stdout: "", stderr: "nams-hooks workspace command returned invalid JSON" });
+      }
+    });
+    child.stdin.on("error", () => {});
+    try {
+      child.stdin.end(`${JSON.stringify(payload)}\n`);
+    } catch (error) {
+      finish({ stop: true, code: 1, stdout, stderr: error instanceof Error ? error.message : String(error) });
+    }
+  });
+}
+
+function readPositiveInteger(value, fallback) {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+async function invokeNams(command, event, payload) {
   return await new Promise((resolve, reject) => {
     const child = spawn(command, ["run", "opencode", "--event", event], {
       stdio: ["pipe", "pipe", "pipe"],
@@ -130,6 +226,13 @@ async function invokeNams(event, payload) {
   });
 }
 
+function readWorkspaceCommandTimeoutMs() {
+  return readPositiveInteger(
+    process.env.NAMS_HOOKS_WORKSPACE_COMMAND_TIMEOUT_MS ?? process.env.NAMS_HOOKS_WORKSPACE_CONFIGURE_TIMEOUT_MS,
+    30000,
+  );
+}
+
 async function logDiagnostic(client, message) {
   try {
     await client?.app?.log?.({ body: { service: "nams-hooks", level: "warn", message } });
@@ -144,6 +247,21 @@ async function showWarning(client, message) {
         message,
         variant: "warning",
         duration: 30000,
+      },
+    });
+  } catch {}
+}
+
+async function showCommandResult(client, result) {
+  const success = result.code === 0;
+  const message = (success ? result.stdout : result.stderr || result.stdout).trim();
+  try {
+    await client?.tui?.showToast?.({
+      body: {
+        title: success ? "NAMS workspace selected" : "NAMS workspace selection failed",
+        message: message || (success ? "Workspace configured." : "Workspace selection failed."),
+        variant: success ? "success" : "danger",
+        duration: success ? 10000 : 30000,
       },
     });
   } catch {}

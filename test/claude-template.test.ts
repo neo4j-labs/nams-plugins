@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
+const claudeCommandPath = "templates/claude/plugins/nams-hooks/commands/nams/workspace.md";
+const claudeBaselineCommandPath = "templates/claude/.claude/commands/nams/workspace.md";
+
 test("Claude template maps native hooks to NAMS events", async () => {
   const template = JSON.parse(await readFile("templates/claude/.claude/settings.local.json", "utf8"));
 
@@ -63,6 +66,47 @@ test("Claude plugin manifest template declares user config without standard hook
   });
 });
 
+test("Claude plugin template packages slash workspace command hook", async () => {
+  const command = await readFile(claudeCommandPath, "utf8");
+  const template = JSON.parse(await readFile("templates/claude/plugins/nams-hooks/hooks/hooks.json", "utf8"));
+
+  assert.match(command, /argument-hint: use <workspace-id-or-name>/);
+  assert.match(command, /disable-model-invocation: true/);
+  assert.match(command, /\/nams:workspace use <workspace-id-or-name>/);
+  assert.doesNotMatch(command, /nams-hooks:nams-hooks/);
+  assert.doesNotMatch(command, /\/nams-hooks workspaces use/);
+  assert.doesNotMatch(command, /!\s*`/);
+  assert.doesNotMatch(command, /\$ARGUMENTS/);
+
+  assert.deepEqual(pluginCommandFor(template, "UserPromptExpansion"), [
+    "node",
+    "${CLAUDE_PLUGIN_ROOT}/bin/cli.js",
+    "workspaces",
+    "run",
+    "claude",
+    "--event",
+    "UserPromptExpansion",
+  ]);
+  assert.equal(pluginMatcherFor(template, "UserPromptExpansion"), "^nams:workspace$");
+  assert.doesNotMatch(JSON.stringify(template), /workspace-use\.mjs/);
+});
+
+test("Claude baseline template packages slash workspace command hook", async () => {
+  const command = await readFile(claudeBaselineCommandPath, "utf8");
+  const template = JSON.parse(await readFile("templates/claude/.claude/settings.local.json", "utf8"));
+
+  assert.match(command, /argument-hint: use <workspace-id-or-name>/);
+  assert.match(command, /disable-model-invocation: true/);
+  assert.match(command, /\/nams:workspace use <workspace-id-or-name>/);
+  assert.doesNotMatch(command, /\/nams-hooks workspaces use/);
+  assert.doesNotMatch(command, /!\s*`/);
+  assert.doesNotMatch(command, /\$ARGUMENTS/);
+
+  assert.equal(commandFor(template, "UserPromptExpansion"), "nams-hooks workspaces run claude --event UserPromptExpansion");
+  assert.equal(pluginMatcherFor(template, "UserPromptExpansion"), "^nams:workspace$");
+  assert.doesNotMatch(JSON.stringify(template), /workspace-use\.mjs/);
+});
+
 function commandFor(template: any, eventName: string): string | undefined {
   return template.hooks[eventName]?.[0]?.hooks?.[0]?.command;
 }
@@ -70,4 +114,8 @@ function commandFor(template: any, eventName: string): string | undefined {
 function pluginCommandFor(template: any, eventName: string): Array<string | undefined> {
   const handler = template.hooks[eventName]?.[0]?.hooks?.[0];
   return [handler?.command, ...(handler?.args ?? [])];
+}
+
+function pluginMatcherFor(template: any, eventName: string): string | undefined {
+  return template.hooks[eventName]?.[0]?.matcher;
 }

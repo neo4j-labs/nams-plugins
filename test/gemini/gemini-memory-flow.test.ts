@@ -428,6 +428,7 @@ test("Gemini BeforeAgent notifies and continues when multiple workspaces are ava
     assert.equal(result.stdout.suppressOutput, false);
     assert.equal(Object.hasOwn(result.stdout, "decision"), false);
     assert.match(String(result.stdout.systemMessage), /NAMS memory is inactive/);
+    assert.match(String(result.stdout.systemMessage), /\/nams:workspace use <workspace-id-or-name>/);
     assert.match(
       String(result.stdout.systemMessage),
       /nams-hooks workspaces configure gemini --scope session --session-id session-1 --workspace <workspace-id-or-name>/,
@@ -437,6 +438,14 @@ test("Gemini BeforeAgent notifies and continues when multiple workspaces are ava
     assert.match(String(hookSpecificOutput(result).additionalContext), /Multiple NAMS workspaces are available/);
     assert.equal(nams.calls("listMyWorkspaces").length, 1);
     assert.equal(nams.calls("createConversation").length, 0);
+    const markerPath = path.join(namsHome(testEnv(projectDir).HOME), "state", "gemini", "active-workspace-sessions.json");
+    const marker = JSON.parse(await readFile(markerPath, "utf8"));
+    assert.equal(marker.sessions.length, 1);
+    assert.equal(marker.sessions[0].sessionId, "session-1");
+    assert.equal(marker.sessions[0].sessionKey, "session-1");
+    assert.equal(marker.sessions[0].projectDirectory, path.resolve(projectDir));
+    assert.equal(typeof marker.sessions[0].touchedAt, "string");
+    assert.equal(Object.hasOwn(marker, "version"), false);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }

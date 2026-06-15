@@ -20,6 +20,7 @@ async function main() {
   await chmod(path.join(distDir, "bin", "cli.js"), 0o755);
   await cp(path.join(root, "templates", "gemini", "gemini-extension.json"), path.join(distDir, "gemini-extension.json"));
   await cp(path.join(root, "templates", "gemini", "hooks"), path.join(distDir, "hooks"), { recursive: true });
+  await cp(path.join(root, "templates", "gemini", "commands"), path.join(distDir, "commands"), { recursive: true });
   await writeClaudeTemplates(source);
   await writeCodexTemplates(source);
   await writeReleasePackageJson(source);
