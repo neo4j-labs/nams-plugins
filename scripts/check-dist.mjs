@@ -15,6 +15,21 @@ const rootPackagePath = path.join(root, "package.json");
 const releasePackageName = "@neo4j-labs/nams-plugins";
 const execFileAsync = promisify(execFile);
 const codexHookEvents = ["SessionStart", "UserPromptSubmit", "Stop", "PostToolUse"];
+const npmRuntimeFilePatterns = [
+  /^package\.json$/,
+  /^bin\/.+$/,
+];
+const forbiddenNpmArtifactPatterns = [
+  /^(dist\/)?templates(\/|$)/,
+  /^dist-marketplace(\/|$)/,
+  /^dist-local(\/|$)/,
+  /^(dist\/)?(plugins|commands|hooks)(\/|$)/,
+  /(^|\/)(\.agents|\.claude-plugin|\.opencode|\.claude|\.codex|\.gemini)(\/|$)/,
+  /^(dist\/)?(claude|codex|gemini|opencode)(\/|$)/,
+  /^(dist\/)?gemini-extension\.json$/,
+  /(^|\/)settings\.local\.json$/,
+  /(^|\/)nams-hooks\.js$/,
+];
 
 const rootPackageJson = await verifySourcePackageIdentity(rootPackagePath);
 await verifyNpmDist(rootPackageJson);
@@ -32,6 +47,9 @@ async function verifyNpmDist(rootPackageJson) {
   if (packageJson.version !== rootPackageJson.version || packageJson.license !== rootPackageJson.license) {
     throw new Error("dist/package.json version and license must match package.json.");
   }
+  if (Object.hasOwn(packageJson, "files")) {
+    throw new Error("dist/package.json must not define files because dist is already the package root.");
+  }
 
   const source = await readFile(generatedClientPath, "utf8");
   if (/nams-openapi|readFile/.test(source)) {
@@ -39,7 +57,8 @@ async function verifyNpmDist(rootPackageJson) {
   }
 
   const files = await listFiles(npmDistDir);
-  assertNoMatchingFiles(files, /(^|\/)(\.agents|\.claude-plugin|\.opencode|hooks|plugins|templates)(\/|$)/, "dist must not include marketplace or template files");
+  assertOnlyMatchingFiles(files, npmRuntimeFilePatterns, "dist must include only npm runtime/package files");
+  assertNoForbiddenNpmArtifacts(files, "dist must not include marketplace, local, template, or platform configuration artifacts");
   assertNoMatchingFiles(files, /openapi|nams-openapi/i, "dist must not include OpenAPI artifacts");
 }
 
@@ -438,6 +457,20 @@ function assertNoMatchingFiles(files, pattern, message) {
   }
 }
 
+function assertOnlyMatchingFiles(files, patterns, message) {
+  const matches = files.filter((file) => !patterns.some((pattern) => pattern.test(file)));
+  if (matches.length > 0) {
+    throw new Error(`${message}: ${matches.join(", ")}`);
+  }
+}
+
+function assertNoForbiddenNpmArtifacts(files, message) {
+  const forbiddenFiles = files.filter((file) => forbiddenNpmArtifactPatterns.some((pattern) => pattern.test(file)));
+  if (forbiddenFiles.length > 0) {
+    throw new Error(`${message}: ${forbiddenFiles.join(", ")}`);
+  }
+}
+
 async function filesWithPattern(directory, pattern) {
   const files = await listFiles(directory);
   const matches = [];
@@ -459,6 +492,7 @@ async function checkPackedPackage(packageDir, binTarget, options = {}) {
 
   const pack = await npmPackDryRun(packageDir);
   const packedFiles = pack.files.map((file) => file.path);
+  assertNoForbiddenNpmArtifacts(packedFiles, "packed package must not include template, marketplace, local, plugin, or platform configuration artifacts");
   const openApiPackedFiles = packedFiles.filter((file) => /openapi|nams-openapi/i.test(file));
   if (openApiPackedFiles.length > 0) {
     throw new Error(`packed package must not include OpenAPI artifacts: ${openApiPackedFiles.join(", ")}`);
