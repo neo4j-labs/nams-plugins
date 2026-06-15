@@ -270,7 +270,13 @@ Gemini marketplace artifacts place `gemini-extension.json`, `hooks/hooks.json`, 
 node "${extensionPath}/plugins/gemini-nams-hooks/bin/cli.js" run gemini --event SessionStart
 ```
 
-Claude Code users can add the generated release tree as a plugin marketplace and install the `nams-hooks` plugin. The marketplace root is `dist-marketplace/.claude-plugin/marketplace.json`, and its plugin source is `dist-marketplace/plugins/claude-nams-hooks/`. Claude loads the plugin's standard `hooks/hooks.json` automatically, so `.claude-plugin/plugin.json` must not point its `hooks` field at that file. The plugin manifest declares user configuration for a required sensitive `NAMS_API_KEY`, an optional non-sensitive `NAMS_WORKSPACE_ID`, and a non-sensitive `NAMS_BASE_URL` with the standard service URL as its configuration default. Plugin hooks call the bundled compiled runtime through `${CLAUDE_PLUGIN_ROOT}/bin/cli.js`, so Claude plugin installs do not require a global `nams-hooks` executable. Local project settings in `dist-local/claude/` call an installed `nams-hooks` executable:
+Claude Code users can add the generated release tree as a plugin marketplace and install the `nams-hooks` plugin. The marketplace root is `dist-marketplace/.claude-plugin/marketplace.json`, and its plugin source is `dist-marketplace/plugins/claude-nams-hooks/`. Claude loads the plugin's standard `hooks/hooks.json` automatically, so `.claude-plugin/plugin.json` must not point its `hooks` field at that file. The plugin manifest declares user configuration for:
+
+- a required sensitive `NAMS_API_KEY`;
+- an optional non-sensitive `NAMS_WORKSPACE_ID`;
+- a non-sensitive `NAMS_BASE_URL` with the standard service URL as its configuration default.
+
+Plugin hooks call the bundled compiled runtime through `${CLAUDE_PLUGIN_ROOT}/bin/cli.js`, so Claude plugin installs do not require a global `nams-hooks` executable. Local project settings in `dist-local/claude/` call an installed `nams-hooks` executable:
 
 ```bash
 claude plugin marketplace add neo4j-labs/nams-plugins@latest
@@ -333,7 +339,7 @@ Platform-specific discovery:
 Claude plugin discovery sources:
 
 - `CLAUDE_PLUGIN_OPTION_NAMS_API_KEY`: fills `apiKey` from the Claude plugin's required sensitive `NAMS_API_KEY` setting.
-- `CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID`: fills `workspaceId` from the Claude plugin's required non-sensitive `NAMS_WORKSPACE_ID` setting.
+- `CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID`: fills `workspaceId` from the Claude plugin's optional non-sensitive `NAMS_WORKSPACE_ID` setting.
 - `CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL`: fills `baseUrl` from the Claude plugin's optional `NAMS_BASE_URL` setting, whose plugin default is `https://memory.neo4jlabs.com`.
 
 Supported final environment overrides:

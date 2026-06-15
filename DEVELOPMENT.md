@@ -218,8 +218,8 @@ Claude Code plugin installs prompt for plugin user configuration:
 
 - `NAMS_API_KEY` is required, marked sensitive, and stored by Claude Code in
   secure storage.
-- `NAMS_WORKSPACE_ID` is required and routes memory requests to the selected
-  NAMS workspace.
+- `NAMS_WORKSPACE_ID` is optional. If omitted, nams-hooks auto-selects a single
+  available workspace before memory starts.
 - `NAMS_BASE_URL` is optional and defaults to `https://memory.neo4jlabs.com`.
 
 Claude exports those values to hook subprocesses as
@@ -251,6 +251,7 @@ OpenCode loads project plugins from `.opencode/plugins/`.
 
 ```bash
 npm run dist:local
+mkdir -p /path/to/project/.opencode/plugins
 cp dist-local/opencode/.opencode/plugins/nams-hooks.js /path/to/project/.opencode/plugins/nams-hooks.js
 ```
 
