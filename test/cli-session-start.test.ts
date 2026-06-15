@@ -9,7 +9,7 @@ import { namsHome, runtimeEnv, sessionStateFiles, singleSessionLogPath } from ".
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cliPath = path.join(repoRoot, ".build", "tsc", "cli.js");
-const codexHooksTemplatePath = path.join(repoRoot, "templates", "codex", "hooks.json");
+const codexHooksTemplatePath = path.join(repoRoot, "templates", "local", "codex", ".codex", "hooks.json");
 
 interface CliResult {
   code: number | null;
