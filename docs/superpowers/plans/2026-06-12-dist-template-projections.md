@@ -15,10 +15,10 @@
 - `package.json`: add `dist:npm`, `dist:marketplace`, and `dist:local`; keep `dist` as the umbrella; keep root npm package focused on `dist/`.
 - `.gitignore`: ignore `dist-marketplace/` and `dist-local/`.
 - `templates/`: move existing templates into shared, local, and marketplace roots.
-- `test/claude-template.test.ts`: update source template paths and Claude marketplace source path expectations.
-- `test/codex-template.test.ts`: update source template paths for local and marketplace Codex templates.
-- `test/gemini-template.test.ts`: update Gemini marketplace template path and add local Gemini hook expectations.
-- `test/opencode-template.test.ts`: assert the shared OpenCode template supports both installed and bundled command modes.
+- `test/claude-template.test.ts`: update source template paths, Claude marketplace source path expectations, and slash workspace command paths.
+- `test/codex-template.test.ts`: update source template paths for local hooks, marketplace Codex templates, and marketplace workspace skill files.
+- `test/gemini-template.test.ts`: update Gemini marketplace and local template paths, including workspace command TOML expectations.
+- `test/opencode-template.test.ts`: assert the shared OpenCode `.opencode` plugin template supports both installed and bundled command modes.
 - `test/opencode/opencode-template.test.ts`: render the shared OpenCode template in a temp file before importing it.
 - `test/package-metadata.test.ts`: assert new package scripts and package file inclusion rules.
 - `scripts/build-dist-common.mjs`: shared projection helpers for package metadata, runtime copying, template rendering, and OpenCode command rendering.
@@ -26,7 +26,7 @@
 - `scripts/build-dist-marketplace.mjs`: build only the self-contained marketplace tree in `dist-marketplace/`.
 - `scripts/build-dist-local.mjs`: build only local project configurations in `dist-local/`.
 - `scripts/build-dist.mjs`: delete after the target scripts are wired.
-- `scripts/check-dist.mjs`: verify all three generated trees.
+- `scripts/check-dist.mjs`: verify all three generated trees, including workspace-selection command and skill assets.
 - `README.md`, `INSTALL.md`, `DEVELOPMENT.md`, and `docs/superpowers/specs/2026-05-10-nams-hooks-design.md`: document the three output trees and updated local/marketplace install paths.
 
 ---
@@ -168,23 +168,29 @@ git commit -m "test: lock split dist package contract" -m "Co-authored-by: Codex
 
 **Files:**
 - Move: `templates/claude/.claude/settings.local.json` to `templates/local/claude/.claude/settings.local.json`
+- Move: `templates/claude/.claude/commands/nams/workspace.md` to `templates/local/claude/.claude/commands/nams/workspace.md`
 - Move: `templates/codex/hooks.json` to `templates/local/codex/.codex/hooks.json`
 - Move: `templates/claude/.claude-plugin/marketplace.json` to `templates/marketplace/claude/.claude-plugin/marketplace.json`
 - Move: `templates/claude/plugins/nams-hooks/.claude-plugin/plugin.json` to `templates/marketplace/claude/plugins/claude-nams-hooks/.claude-plugin/plugin.json`
 - Move: `templates/claude/plugins/nams-hooks/hooks/hooks.json` to `templates/marketplace/claude/plugins/claude-nams-hooks/hooks/hooks.json`
+- Move: `templates/claude/plugins/nams-hooks/commands/nams/workspace.md` to `templates/marketplace/claude/plugins/claude-nams-hooks/commands/nams/workspace.md`
 - Move: `templates/codex/.agents/plugins/marketplace.json` to `templates/marketplace/codex/.agents/plugins/marketplace.json`
 - Move: `templates/codex/plugins/codex-nams-hooks/.codex-plugin/plugin.json` to `templates/marketplace/codex/plugins/codex-nams-hooks/.codex-plugin/plugin.json`
 - Move: `templates/codex/plugins/codex-nams-hooks/hooks/hooks.json` to `templates/marketplace/codex/plugins/codex-nams-hooks/hooks/hooks.json`
+- Move: `templates/codex/plugins/codex-nams-hooks/skills/workspace` to `templates/marketplace/codex/plugins/codex-nams-hooks/skills/workspace`
 - Move: `templates/gemini/gemini-extension.json` to `templates/marketplace/gemini/gemini-extension.json`
 - Move: `templates/gemini/hooks/hooks.json` to `templates/marketplace/gemini/hooks/hooks.json`
-- Move: `templates/opencode/plugins/nams-hooks.js` to `templates/opencode/plugins/nams-hooks.js` stays shared
+- Move: `templates/gemini/commands/nams/workspace.toml` to `templates/marketplace/gemini/commands/nams/workspace.toml`
+- Keep: `templates/opencode/.opencode/plugins/nams-hooks.js` as the shared OpenCode plugin template
 - Create: `templates/local/gemini/.gemini/extensions/gemini-nams-hooks/gemini-extension.json`
 - Create: `templates/local/gemini/.gemini/extensions/gemini-nams-hooks/hooks/hooks.json`
+- Create: `templates/local/gemini/.gemini/extensions/gemini-nams-hooks/commands/nams/workspace.toml`
 - Create: `templates/local/opencode/.opencode/plugins/nams-hooks.js`
 - Create: `templates/marketplace/opencode/plugins/opencode-nams-hooks/nams-hooks.js`
 - Modify: `templates/marketplace/claude/.claude-plugin/marketplace.json`
 - Modify: `templates/marketplace/gemini/hooks/hooks.json`
-- Modify: `templates/opencode/plugins/nams-hooks.js`
+- Modify: `templates/marketplace/gemini/commands/nams/workspace.toml`
+- Modify: `templates/opencode/.opencode/plugins/nams-hooks.js`
 - Modify: `test/claude-template.test.ts`
 - Modify: `test/codex-template.test.ts`
 - Modify: `test/gemini-template.test.ts`
@@ -197,24 +203,32 @@ Run these commands:
 
 ```bash
 mkdir -p templates/local/claude/.claude
+mkdir -p templates/local/claude/.claude/commands/nams
 mkdir -p templates/local/codex/.codex
 mkdir -p templates/marketplace/claude/.claude-plugin
 mkdir -p templates/marketplace/claude/plugins/claude-nams-hooks/.claude-plugin
 mkdir -p templates/marketplace/claude/plugins/claude-nams-hooks/hooks
+mkdir -p templates/marketplace/claude/plugins/claude-nams-hooks/commands/nams
 mkdir -p templates/marketplace/codex/.agents/plugins
 mkdir -p templates/marketplace/codex/plugins/codex-nams-hooks/.codex-plugin
 mkdir -p templates/marketplace/codex/plugins/codex-nams-hooks/hooks
+mkdir -p templates/marketplace/codex/plugins/codex-nams-hooks/skills
 mkdir -p templates/marketplace/gemini/hooks
+mkdir -p templates/marketplace/gemini/commands/nams
 git mv templates/claude/.claude/settings.local.json templates/local/claude/.claude/settings.local.json
+git mv templates/claude/.claude/commands/nams/workspace.md templates/local/claude/.claude/commands/nams/workspace.md
 git mv templates/codex/hooks.json templates/local/codex/.codex/hooks.json
 git mv templates/claude/.claude-plugin/marketplace.json templates/marketplace/claude/.claude-plugin/marketplace.json
 git mv templates/claude/plugins/nams-hooks/.claude-plugin/plugin.json templates/marketplace/claude/plugins/claude-nams-hooks/.claude-plugin/plugin.json
 git mv templates/claude/plugins/nams-hooks/hooks/hooks.json templates/marketplace/claude/plugins/claude-nams-hooks/hooks/hooks.json
+git mv templates/claude/plugins/nams-hooks/commands/nams/workspace.md templates/marketplace/claude/plugins/claude-nams-hooks/commands/nams/workspace.md
 git mv templates/codex/.agents/plugins/marketplace.json templates/marketplace/codex/.agents/plugins/marketplace.json
 git mv templates/codex/plugins/codex-nams-hooks/.codex-plugin/plugin.json templates/marketplace/codex/plugins/codex-nams-hooks/.codex-plugin/plugin.json
 git mv templates/codex/plugins/codex-nams-hooks/hooks/hooks.json templates/marketplace/codex/plugins/codex-nams-hooks/hooks/hooks.json
+git mv templates/codex/plugins/codex-nams-hooks/skills/workspace templates/marketplace/codex/plugins/codex-nams-hooks/skills/workspace
 git mv templates/gemini/gemini-extension.json templates/marketplace/gemini/gemini-extension.json
 git mv templates/gemini/hooks/hooks.json templates/marketplace/gemini/hooks/hooks.json
+git mv templates/gemini/commands/nams/workspace.toml templates/marketplace/gemini/commands/nams/workspace.toml
 ```
 
 - [ ] **Step 2: Update Claude marketplace source path**
@@ -243,6 +257,14 @@ In `templates/marketplace/gemini/hooks/hooks.json`, replace each command so it p
 
 ```json
 "command": "node \"${extensionPath}/plugins/gemini-nams-hooks/bin/cli.js\" run gemini --event AfterTool"
+```
+
+In `templates/marketplace/gemini/commands/nams/workspace.toml`, replace the final pipe target so the prompt invokes the bundled Gemini runtime:
+
+```toml
+prompt = """
+!{node -e 'const raw = process.argv[1] ?? ""; const selector = raw.replace(/^use(?:\\s+|$)/i, "").trim(); process.stdout.write(JSON.stringify({ command_name: "nams:workspace", command_args: `use ${selector}`.trim() }) + "\\n");' {{args}} | node "${extensionPath}/plugins/gemini-nams-hooks/bin/cli.js" workspaces run gemini --event CustomCommand}
+"""
 ```
 
 - [ ] **Step 4: Create local Gemini project extension templates**
@@ -318,9 +340,19 @@ Create `templates/local/gemini/.gemini/extensions/gemini-nams-hooks/hooks/hooks.
 }
 ```
 
+Create `templates/local/gemini/.gemini/extensions/gemini-nams-hooks/commands/nams/workspace.toml` with this content:
+
+```toml
+description = "Select the NAMS workspace for this Gemini session."
+
+prompt = """
+!{node -e 'const raw = process.argv[1] ?? ""; const selector = raw.replace(/^use(?:\\s+|$)/i, "").trim(); process.stdout.write(JSON.stringify({ command_name: "nams:workspace", command_args: `use ${selector}`.trim() }) + "\\n");' {{args}} | nams-hooks workspaces run gemini --event CustomCommand}
+"""
+```
+
 - [ ] **Step 5: Make the shared OpenCode template command-mode renderable**
 
-Edit `templates/opencode/plugins/nams-hooks.js`. Replace:
+Edit `templates/opencode/.opencode/plugins/nams-hooks.js`. Replace:
 
 ```js
 const command = process.env.NAMS_HOOKS_COMMAND ?? "nams-hooks";
@@ -335,16 +367,16 @@ const command = process.env.NAMS_HOOKS_COMMAND ?? __NAMS_HOOKS_COMMAND__;
 Create `templates/local/opencode/.opencode/plugins/nams-hooks.js` with this one-line projection marker:
 
 ```js
-../../../../opencode/plugins/nams-hooks.js
+../../../../opencode/.opencode/plugins/nams-hooks.js
 ```
 
 Create `templates/marketplace/opencode/plugins/opencode-nams-hooks/nams-hooks.js` with this one-line projection marker:
 
 ```js
-../../../../opencode/plugins/nams-hooks.js
+../../../../opencode/.opencode/plugins/nams-hooks.js
 ```
 
-These marker files are not copied literally. Task 4 teaches the build script to detect a single-line `.js` file ending in `opencode/plugins/nams-hooks.js` and render the shared OpenCode template with the target-specific `__NAMS_HOOKS_COMMAND__` replacement.
+These marker files are not copied literally. Task 4 teaches the build script to detect a single-line `.js` file ending in `opencode/.opencode/plugins/nams-hooks.js` and render the shared OpenCode template with the target-specific `__NAMS_HOOKS_COMMAND__` replacement.
 
 - [ ] **Step 6: Update Claude template tests**
 
@@ -352,6 +384,8 @@ In `test/claude-template.test.ts`, use these paths:
 
 ```ts
 const localSettingsPath = "templates/local/claude/.claude/settings.local.json";
+const claudeCommandPath = "templates/marketplace/claude/plugins/claude-nams-hooks/commands/nams/workspace.md";
+const claudeBaselineCommandPath = "templates/local/claude/.claude/commands/nams/workspace.md";
 const marketplacePath = "templates/marketplace/claude/.claude-plugin/marketplace.json";
 const pluginManifestPath = "templates/marketplace/claude/plugins/claude-nams-hooks/.claude-plugin/plugin.json";
 const pluginHooksPath = "templates/marketplace/claude/plugins/claude-nams-hooks/hooks/hooks.json";
@@ -363,6 +397,26 @@ Update the tests to read from those constants. Change the marketplace source ass
 assert.equal(template.plugins[0].source, "./plugins/claude-nams-hooks");
 ```
 
+Keep the existing workspace command assertions, but make them read `claudeCommandPath` for the marketplace command and `claudeBaselineCommandPath` for the local command. The local hook assertion must stay:
+
+```ts
+assert.equal(commandFor(template, "UserPromptExpansion"), "nams-hooks workspaces run claude --event UserPromptExpansion");
+```
+
+The marketplace hook assertion must stay:
+
+```ts
+assert.deepEqual(pluginCommandFor(template, "UserPromptExpansion"), [
+  "node",
+  "${CLAUDE_PLUGIN_ROOT}/bin/cli.js",
+  "workspaces",
+  "run",
+  "claude",
+  "--event",
+  "UserPromptExpansion",
+]);
+```
+
 - [ ] **Step 7: Update Codex template tests**
 
 In `test/codex-template.test.ts`, use these paths:
@@ -371,61 +425,37 @@ In `test/codex-template.test.ts`, use these paths:
 const marketplacePath = "templates/marketplace/codex/.agents/plugins/marketplace.json";
 const pluginManifestPath = "templates/marketplace/codex/plugins/codex-nams-hooks/.codex-plugin/plugin.json";
 const pluginHooksPath = "templates/marketplace/codex/plugins/codex-nams-hooks/hooks/hooks.json";
+const pluginSkillPath = "templates/marketplace/codex/plugins/codex-nams-hooks/skills/workspace/SKILL.md";
+const pluginSkillPolicyPath = "templates/marketplace/codex/plugins/codex-nams-hooks/skills/workspace/agents/openai.yaml";
 const fallbackHooksPath = "templates/local/codex/.codex/hooks.json";
 ```
 
-Keep the existing assertions for Codex command shapes.
+Keep the existing assertions for Codex hook and workspace skill command shapes.
 
 - [ ] **Step 8: Update Gemini template tests**
 
-Replace `test/gemini-template.test.ts` with:
+In `test/gemini-template.test.ts`, keep the existing TOML parser, command rendering, and shell-sensitive argument tests. Replace the path constants near the top with:
 
 ```ts
-import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
-import { test } from "node:test";
-import { fileURLToPath } from "node:url";
-
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const marketplaceExtensionPath = path.join(repoRoot, "templates", "marketplace", "gemini", "gemini-extension.json");
 const marketplaceHooksPath = path.join(repoRoot, "templates", "marketplace", "gemini", "hooks", "hooks.json");
+const marketplaceCommandPath = path.join(repoRoot, "templates", "marketplace", "gemini", "commands", "nams", "workspace.toml");
 const localHooksPath = path.join(repoRoot, "templates", "local", "gemini", ".gemini", "extensions", "gemini-nams-hooks", "hooks", "hooks.json");
+const localCommandPath = path.join(repoRoot, "templates", "local", "gemini", ".gemini", "extensions", "gemini-nams-hooks", "commands", "nams", "workspace.toml");
+```
 
-test("Gemini marketplace extension template exposes NAMS environment settings in order", async () => {
-  const template = JSON.parse(await readFile(marketplaceExtensionPath, "utf8"));
-  const settings = template.settings;
+Update the existing extension settings test to read `marketplaceExtensionPath`.
 
-  assert.ok(Array.isArray(settings), "Gemini extension settings must be an array.");
-  assert.deepEqual(settings.map((setting: { envVar: string }) => setting.envVar), [
-    "NAMS_API_KEY",
-    "NAMS_WORKSPACE_ID",
-    "NAMS_BASE_URL",
-  ]);
+Update the existing marketplace hook test to read `marketplaceHooksPath` and expect:
 
-  assert.equal(settings[0].sensitive, true);
-  assert.equal(settings[1].sensitive, false);
-  assert.equal(settings[2].sensitive, false);
-  assert.match(settings[1].description, /Optional/);
-});
+```ts
+command: 'node "${extensionPath}/plugins/gemini-nams-hooks/bin/cli.js" run gemini --event BeforeAgent',
+```
 
-test("Gemini marketplace hook template routes through bundled platform folder", async () => {
-  const template = JSON.parse(await readFile(marketplaceHooksPath, "utf8"));
-  const groups = template.hooks.BeforeAgent;
+Add this local hook test:
 
-  assert.equal(groups.length, 1);
-  assert.equal(groups[0].matcher, "*");
-  assert.deepEqual(
-    groups[0].hooks.map((hook: { name: string; command: string }) => ({ name: hook.name, command: hook.command })),
-    [
-      {
-        name: "nams-memory-before-agent",
-        command: 'node "${extensionPath}/plugins/gemini-nams-hooks/bin/cli.js" run gemini --event BeforeAgent',
-      },
-    ],
-  );
-});
-
+```ts
 test("Gemini local hook template routes through installed nams-hooks", async () => {
   const template = JSON.parse(await readFile(localHooksPath, "utf8"));
   const beforeAgent = template.hooks.BeforeAgent[0].hooks[0];
@@ -434,9 +464,30 @@ test("Gemini local hook template routes through installed nams-hooks", async () 
 });
 ```
 
+Add these workspace command tests:
+
+```ts
+test("Gemini marketplace workspace command routes through bundled platform folder", async () => {
+  const source = await readFile(marketplaceCommandPath, "utf8");
+
+  assert.match(source, /workspaces run gemini --event CustomCommand/);
+  assert.match(source, /\$\{extensionPath\}\/plugins\/gemini-nams-hooks\/bin\/cli\.js/);
+  assert.doesNotMatch(source, /workspaces configure/);
+});
+
+test("Gemini local workspace command routes through installed nams-hooks", async () => {
+  const source = await readFile(localCommandPath, "utf8");
+
+  assert.match(source, /nams-hooks workspaces run gemini --event CustomCommand/);
+  assert.doesNotMatch(source, /\$\{extensionPath\}|bin\/cli\.js|workspaces configure/);
+});
+```
+
+In the existing shell-sensitive argument test, call `shellCommandForGeminiPrompt(command.prompt, stubCliPath, sensitiveArgs)` for the marketplace command and add the same assertion for the local command with `stubCliPath` set to `"nams-hooks"` after replacing `nams-hooks` in the rendered shell command with the stub path. Both tests must continue to assert that the sentinel file is not created.
+
 - [ ] **Step 9: Update OpenCode template tests**
 
-In `test/opencode-template.test.ts`, keep `templatePath` pointing at `templates/opencode/plugins/nams-hooks.js`, and update expectations:
+In `test/opencode-template.test.ts`, keep the source path pointing at `templates/opencode/.opencode/plugins/nams-hooks.js`, and update expectations:
 
 ```ts
 assert.match(source, /__NAMS_HOOKS_COMMAND__/);
@@ -580,8 +631,10 @@ Add this function:
 ```js
 async function verifyLocalDist() {
   await verifyLocalCommandJson(path.join(localDistDir, "claude", ".claude", "settings.local.json"), "claude");
+  await verifyLocalClaudeWorkspaceCommand(path.join(localDistDir, "claude", ".claude", "commands", "nams", "workspace.md"));
   await verifyLocalCommandJson(path.join(localDistDir, "codex", ".codex", "hooks.json"), "codex");
   await verifyLocalCommandJson(path.join(localDistDir, "gemini", ".gemini", "extensions", "gemini-nams-hooks", "hooks", "hooks.json"), "gemini");
+  await verifyLocalGeminiWorkspaceCommand(path.join(localDistDir, "gemini", ".gemini", "extensions", "gemini-nams-hooks", "commands", "nams", "workspace.toml"));
   const opencodeSource = await readFile(path.join(localDistDir, "opencode", ".opencode", "plugins", "nams-hooks.js"), "utf8");
   if (!/\"nams-hooks\"/.test(opencodeSource) || /new URL\("\.\/bin\/cli\.js"/.test(opencodeSource)) {
     throw new Error("dist-local OpenCode plugin must default to the installed nams-hooks executable.");
@@ -601,9 +654,11 @@ Add these functions:
 async function verifyGeminiMarketplaceFiles() {
   const extensionPath = path.join(marketplaceDistDir, "gemini-extension.json");
   const hooksPath = path.join(marketplaceDistDir, "hooks", "hooks.json");
+  const commandPath = path.join(marketplaceDistDir, "commands", "nams", "workspace.toml");
   const cliPath = path.join(marketplaceDistDir, "plugins", "gemini-nams-hooks", "bin", "cli.js");
   await access(extensionPath);
   await access(hooksPath);
+  await access(commandPath);
   await assertExecutable(cliPath);
   await verifyGeminiExtensionSettings(extensionPath);
   const hooks = JSON.parse(await readFile(hooksPath, "utf8"));
@@ -611,16 +666,19 @@ async function verifyGeminiMarketplaceFiles() {
   assertGeminiMarketplaceCommand(hooks, "BeforeAgent", "BeforeAgent");
   assertGeminiMarketplaceCommand(hooks, "AfterAgent", "AfterAgent");
   assertGeminiMarketplaceCommand(hooks, "AfterTool", "AfterTool");
+  await verifyGeminiMarketplaceWorkspaceCommand(commandPath);
 }
 
 async function verifyClaudeMarketplaceFiles() {
   const marketplacePath = path.join(marketplaceDistDir, ".claude-plugin", "marketplace.json");
   const manifestPath = path.join(marketplaceDistDir, "plugins", "claude-nams-hooks", ".claude-plugin", "plugin.json");
   const hooksPath = path.join(marketplaceDistDir, "plugins", "claude-nams-hooks", "hooks", "hooks.json");
+  const commandPath = path.join(marketplaceDistDir, "plugins", "claude-nams-hooks", "commands", "nams", "workspace.md");
   const cliPath = path.join(marketplaceDistDir, "plugins", "claude-nams-hooks", "bin", "cli.js");
   await access(marketplacePath);
   await access(manifestPath);
   await access(hooksPath);
+  await access(commandPath);
   await assertExecutable(cliPath);
   const packageJson = JSON.parse(await readFile(rootPackagePath, "utf8"));
   const marketplace = JSON.parse(await readFile(marketplacePath, "utf8"));
@@ -637,16 +695,22 @@ async function verifyClaudeMarketplaceFiles() {
   assertClaudeHookCommand(hooks, "UserPromptSubmit", "BeforeAgent");
   assertClaudeHookCommand(hooks, "PostToolUse", "AfterTool");
   assertClaudeHookCommand(hooks, "Stop", "AfterAgent");
+  assertClaudeWorkspaceCommand(hooks);
+  await verifyClaudeWorkspaceMarkdown(commandPath);
 }
 
 async function verifyCodexMarketplaceFiles() {
   const marketplacePath = path.join(marketplaceDistDir, ".agents", "plugins", "marketplace.json");
   const manifestPath = path.join(marketplaceDistDir, "plugins", "codex-nams-hooks", ".codex-plugin", "plugin.json");
   const hooksPath = path.join(marketplaceDistDir, "plugins", "codex-nams-hooks", "hooks", "hooks.json");
+  const skillPath = path.join(marketplaceDistDir, "plugins", "codex-nams-hooks", "skills", "workspace", "SKILL.md");
+  const skillPolicyPath = path.join(marketplaceDistDir, "plugins", "codex-nams-hooks", "skills", "workspace", "agents", "openai.yaml");
   const cliPath = path.join(marketplaceDistDir, "plugins", "codex-nams-hooks", "bin", "cli.js");
   await access(marketplacePath);
   await access(manifestPath);
   await access(hooksPath);
+  await access(skillPath);
+  await access(skillPolicyPath);
   await assertExecutable(cliPath);
   const packageJson = JSON.parse(await readFile(rootPackagePath, "utf8"));
   const marketplace = JSON.parse(await readFile(marketplacePath, "utf8"));
@@ -667,6 +731,7 @@ async function verifyCodexMarketplaceFiles() {
   assertCodexHookCommand(hooks, "UserPromptSubmit", "BeforeAgent", "NAMS memory recall");
   assertCodexHookCommand(hooks, "Stop", "AfterAgent", "NAMS assistant persistence");
   assertCodexHookCommand(hooks, "PostToolUse", "AfterTool", "NAMS tool metadata");
+  await verifyCodexWorkspaceSkill(skillPath, skillPolicyPath);
 }
 
 async function verifyOpenCodeMarketplaceFiles() {
@@ -681,6 +746,9 @@ async function verifyOpenCodeMarketplaceFiles() {
   if (/NAMS_HOOKS_COMMAND \?\? "nams-hooks"/.test(source)) {
     throw new Error("OpenCode marketplace plugin must not default to a global nams-hooks executable.");
   }
+  if (!/command\.execute\.before/.test(source) || !/workspaces",\s*"run",\s*"opencode"/.test(source)) {
+    throw new Error("OpenCode marketplace plugin must intercept nams:workspace and call workspaces run opencode.");
+  }
 }
 ```
 
@@ -694,6 +762,78 @@ function assertGeminiMarketplaceCommand(hooks, eventName, namsEvent) {
   const expected = `node "\${extensionPath}/plugins/gemini-nams-hooks/bin/cli.js" run gemini --event ${namsEvent}`;
   if (handler?.type !== "command" || handler.command !== expected) {
     throw new Error(`Gemini marketplace ${eventName} hook must invoke ${expected}.`);
+  }
+}
+
+async function verifyGeminiMarketplaceWorkspaceCommand(filePath) {
+  const source = await readFile(filePath, "utf8");
+  if (!/workspaces run gemini --event CustomCommand/.test(source)) {
+    throw new Error("Gemini marketplace workspace command must route through CustomCommand.");
+  }
+  if (!/\$\{extensionPath\}\/plugins\/gemini-nams-hooks\/bin\/cli\.js/.test(source)) {
+    throw new Error("Gemini marketplace workspace command must call the bundled Gemini runtime.");
+  }
+  if (/workspaces configure/.test(source)) {
+    throw new Error("Gemini marketplace workspace command must not call workspaces configure directly.");
+  }
+}
+
+async function verifyLocalGeminiWorkspaceCommand(filePath) {
+  const source = await readFile(filePath, "utf8");
+  if (!/nams-hooks workspaces run gemini --event CustomCommand/.test(source)) {
+    throw new Error("Gemini local workspace command must call the installed nams-hooks executable.");
+  }
+  if (/\$\{extensionPath\}|bin\/cli\.js|workspaces configure/.test(source)) {
+    throw new Error("Gemini local workspace command must not use bundled runtime paths or workspaces configure.");
+  }
+}
+
+function assertClaudeWorkspaceCommand(hooks) {
+  const handler = hooks.hooks?.UserPromptExpansion?.[0]?.hooks?.[0];
+  const args = handler?.args ?? [];
+  const expectedArgs = ["${CLAUDE_PLUGIN_ROOT}/bin/cli.js", "workspaces", "run", "claude", "--event", "UserPromptExpansion"];
+  if (hooks.hooks?.UserPromptExpansion?.[0]?.matcher !== "^nams:workspace$") {
+    throw new Error("Claude marketplace workspace hook must match nams:workspace.");
+  }
+  if (handler?.command !== "node" || JSON.stringify(args) !== JSON.stringify(expectedArgs)) {
+    throw new Error("Claude marketplace workspace hook must call the bundled CLI workspace runner.");
+  }
+}
+
+async function verifyClaudeWorkspaceMarkdown(filePath) {
+  const source = await readFile(filePath, "utf8");
+  if (!/argument-hint: use <workspace-id-or-name>/.test(source) || !/disable-model-invocation: true/.test(source)) {
+    throw new Error("Claude workspace command markdown must disable model invocation and document the use argument.");
+  }
+  if (/workspaces configure|workspace-use\.mjs|\$ARGUMENTS/.test(source)) {
+    throw new Error("Claude workspace command markdown must not call configuration helpers directly.");
+  }
+}
+
+async function verifyLocalClaudeWorkspaceCommand(filePath) {
+  const source = await readFile(filePath, "utf8");
+  if (!/\/nams:workspace use <workspace-id-or-name>/.test(source)) {
+    throw new Error("Claude local workspace command markdown must document /nams:workspace use.");
+  }
+  if (/workspaces configure|workspace-use\.mjs|\$ARGUMENTS/.test(source)) {
+    throw new Error("Claude local workspace command markdown must not call configuration helpers directly.");
+  }
+}
+
+async function verifyCodexWorkspaceSkill(skillPath, policyPath) {
+  const skill = await readFile(skillPath, "utf8");
+  const policy = await readFile(policyPath, "utf8");
+  if (!/name: nams:workspace/.test(skill) || !/workspaces run codex --event CustomCommand/.test(skill)) {
+    throw new Error("Codex workspace skill must expose nams:workspace through the CustomCommand runner.");
+  }
+  if (!/node bin\/cli\.js workspaces run codex --event CustomCommand/.test(skill)) {
+    throw new Error("Codex workspace skill must prefer the bundled plugin CLI.");
+  }
+  if (!/nams-hooks workspaces run codex --event CustomCommand/.test(skill)) {
+    throw new Error("Codex workspace skill must document the installed executable fallback.");
+  }
+  if (!/allow_implicit_invocation: false/.test(policy)) {
+    throw new Error("Codex workspace skill policy must disable implicit invocation.");
   }
 }
 
@@ -898,13 +1038,13 @@ export function renderTemplate(content, replacements) {
 export async function renderOpenCodeProjection(outputRoot, projection) {
   const marker = await readFile(path.join(root, projection.from), "utf8");
   const markerPath = marker.trim();
-  if (markerPath !== "../../../../opencode/plugins/nams-hooks.js") {
+  if (markerPath !== "../../../../opencode/.opencode/plugins/nams-hooks.js") {
     throw new Error(`${projection.from} must point at the shared OpenCode template.`);
   }
   const commandExpression = projection.commandMode === "bundled"
     ? 'new URL("./bin/cli.js", import.meta.url).pathname'
     : JSON.stringify("nams-hooks");
-  const source = await readFile(path.join(root, "templates", "opencode", "plugins", "nams-hooks.js"), "utf8");
+  const source = await readFile(path.join(root, "templates", "opencode", ".opencode", "plugins", "nams-hooks.js"), "utf8");
   const rendered = renderTemplate(source, { __NAMS_HOOKS_COMMAND__: commandExpression });
   await writeFileWithParents(path.join(outputRoot, projection.to), rendered);
 }
@@ -952,6 +1092,7 @@ const outputRoot = path.join(root, "dist-marketplace");
 const projections = [
   { kind: "template", platform: "gemini", from: "templates/marketplace/gemini/gemini-extension.json", to: "gemini-extension.json", renderPackage: false },
   { kind: "template", platform: "gemini", from: "templates/marketplace/gemini/hooks", to: "hooks", renderPackage: false },
+  { kind: "template", platform: "gemini", from: "templates/marketplace/gemini/commands", to: "commands", renderPackage: false },
   { kind: "runtime", platform: "gemini", to: "plugins/gemini-nams-hooks/bin" },
   { kind: "template", platform: "claude", from: "templates/marketplace/claude/.claude-plugin", to: ".claude-plugin", renderPackage: true },
   { kind: "template", platform: "claude", from: "templates/marketplace/claude/plugins/claude-nams-hooks", to: "plugins/claude-nams-hooks", renderPackage: true },
@@ -1003,12 +1144,17 @@ Run:
 npm run dist:npm
 test -x dist/bin/cli.js
 npm run dist:marketplace
+test -f dist-marketplace/commands/nams/workspace.toml
+test -f dist-marketplace/plugins/claude-nams-hooks/commands/nams/workspace.md
+test -f dist-marketplace/plugins/codex-nams-hooks/skills/workspace/SKILL.md
 test -x dist-marketplace/plugins/claude-nams-hooks/bin/cli.js
 test -x dist-marketplace/plugins/codex-nams-hooks/bin/cli.js
 test -x dist-marketplace/plugins/gemini-nams-hooks/bin/cli.js
 test -x dist-marketplace/plugins/opencode-nams-hooks/bin/cli.js
 npm run dist:local
+test -f dist-local/claude/.claude/commands/nams/workspace.md
 test -f dist-local/codex/.codex/hooks.json
+test -f dist-local/gemini/.gemini/extensions/gemini-nams-hooks/commands/nams/workspace.toml
 ```
 
 Expected: all commands exit `0`.
@@ -1203,7 +1349,7 @@ codex plugin marketplace add ./dist-marketplace
 ```bash
 npm run dist:npm
 npm install -g ./dist
-cp dist-local/codex/.codex/hooks.json /path/to/project/.codex/hooks.json
+cp -R dist-local/codex/.codex /path/to/project/.codex
 ```
 
 ```bash
@@ -1215,7 +1361,13 @@ claude plugin marketplace add ./dist-marketplace
 ```bash
 npm run dist:npm
 npm install -g ./dist
-cp dist-local/claude/.claude/settings.local.json /path/to/project/.claude/settings.local.json
+cp -R dist-local/claude/.claude /path/to/project/.claude
+```
+
+```bash
+npm run dist:npm
+npm install -g ./dist
+cp -R dist-local/gemini/.gemini /path/to/project/.gemini
 ```
 
 ```bash
@@ -1250,12 +1402,18 @@ dist-marketplace/
   .claude-plugin/
     marketplace.json
   gemini-extension.json
+  commands/
+    nams/
+      workspace.toml
   hooks/
     hooks.json
   plugins/
     claude-nams-hooks/
       .claude-plugin/
         plugin.json
+      commands/
+        nams/
+          workspace.md
       hooks/
         hooks.json
       bin/
@@ -1265,6 +1423,11 @@ dist-marketplace/
         plugin.json
       hooks/
         hooks.json
+      skills/
+        workspace/
+          SKILL.md
+          agents/
+            openai.yaml
       bin/
         cli.js
     gemini-nams-hooks/
@@ -1278,6 +1441,9 @@ dist-marketplace/
 dist-local/
   claude/
     .claude/
+      commands/
+        nams/
+          workspace.md
       settings.local.json
   codex/
     .codex/
@@ -1287,6 +1453,9 @@ dist-local/
       extensions/
         gemini-nams-hooks/
           gemini-extension.json
+          commands/
+            nams/
+              workspace.toml
           hooks/
             hooks.json
   opencode/
@@ -1300,10 +1469,10 @@ dist-local/
 Run:
 
 ```bash
-rg -n "templates/(claude|codex|gemini)|dist/\\.agents|dist/\\.claude-plugin|dist/plugins/nams-hooks|\\.\\/dist" README.md INSTALL.md DEVELOPMENT.md docs/superpowers/specs/2026-05-10-nams-hooks-design.md
+rg -n "templates/(claude|codex|gemini)|templates/opencode/plugins|dist/\\.agents|dist/\\.claude-plugin|dist/plugins/nams-hooks|\\.\\/dist" README.md INSTALL.md DEVELOPMENT.md docs/superpowers/specs/2026-05-10-nams-hooks-design.md
 ```
 
-Expected: output contains no stale instructions that describe marketplace files under `dist/`, no `templates/claude/.claude`, no `templates/codex/hooks.json`, and no `dist/plugins/nams-hooks` Claude path.
+Expected: output contains no stale instructions that describe marketplace files under `dist/`, no `templates/claude/.claude`, no `templates/codex/hooks.json`, no `templates/opencode/plugins/nams-hooks.js`, and no `dist/plugins/nams-hooks` Claude path.
 
 - [ ] **Step 6: Run full verification**
 
@@ -1346,7 +1515,7 @@ Expected: PASS.
 Run:
 
 ```bash
-find dist dist-marketplace dist-local -maxdepth 3 -type f | sort
+find dist dist-marketplace dist-local -maxdepth 8 -type f | sort
 ```
 
 Expected output includes:
@@ -1356,10 +1525,13 @@ dist/bin/cli.js
 dist/package.json
 dist-marketplace/.agents/plugins/marketplace.json
 dist-marketplace/.claude-plugin/marketplace.json
+dist-marketplace/commands/nams/workspace.toml
 dist-marketplace/gemini-extension.json
 dist-marketplace/hooks/hooks.json
+dist-local/claude/.claude/commands/nams/workspace.md
 dist-local/claude/.claude/settings.local.json
 dist-local/codex/.codex/hooks.json
+dist-local/gemini/.gemini/extensions/gemini-nams-hooks/commands/nams/workspace.toml
 ```
 
 - [ ] **Step 3: Inspect marketplace plugin runtime bundles**
@@ -1374,7 +1546,9 @@ Expected output includes:
 
 ```text
 dist-marketplace/plugins/claude-nams-hooks/bin/cli.js
+dist-marketplace/plugins/claude-nams-hooks/commands/nams/workspace.md
 dist-marketplace/plugins/codex-nams-hooks/bin/cli.js
+dist-marketplace/plugins/codex-nams-hooks/skills/workspace/SKILL.md
 dist-marketplace/plugins/gemini-nams-hooks/bin/cli.js
 dist-marketplace/plugins/opencode-nams-hooks/bin/cli.js
 dist-marketplace/plugins/opencode-nams-hooks/nams-hooks.js
@@ -1385,13 +1559,17 @@ dist-marketplace/plugins/opencode-nams-hooks/nams-hooks.js
 Run:
 
 ```bash
-node -e 'const fs=require("fs"); const files=["dist-marketplace/hooks/hooks.json","dist-marketplace/plugins/codex-nams-hooks/hooks/hooks.json","dist-local/codex/.codex/hooks.json"]; for (const file of files) console.log(file + "\\n" + fs.readFileSync(file, "utf8"));'
+node -e 'const fs=require("fs"); const files=["dist-marketplace/hooks/hooks.json","dist-marketplace/commands/nams/workspace.toml","dist-marketplace/plugins/claude-nams-hooks/hooks/hooks.json","dist-marketplace/plugins/codex-nams-hooks/skills/workspace/SKILL.md","dist-local/claude/.claude/settings.local.json","dist-local/gemini/.gemini/extensions/gemini-nams-hooks/commands/nams/workspace.toml","dist-local/codex/.codex/hooks.json"]; for (const file of files) console.log(file + "\\n" + fs.readFileSync(file, "utf8"));'
 ```
 
 Expected:
 
 - `dist-marketplace/hooks/hooks.json` contains `plugins/gemini-nams-hooks/bin/cli.js`.
-- `dist-marketplace/plugins/codex-nams-hooks/hooks/hooks.json` contains `${PLUGIN_ROOT}/bin/cli.js`.
+- `dist-marketplace/commands/nams/workspace.toml` contains `plugins/gemini-nams-hooks/bin/cli.js`.
+- `dist-marketplace/plugins/claude-nams-hooks/hooks/hooks.json` contains `${CLAUDE_PLUGIN_ROOT}/bin/cli.js`.
+- `dist-marketplace/plugins/codex-nams-hooks/skills/workspace/SKILL.md` contains `node bin/cli.js workspaces run codex --event CustomCommand`.
+- `dist-local/claude/.claude/settings.local.json` contains `nams-hooks workspaces run claude --event UserPromptExpansion`.
+- `dist-local/gemini/.gemini/extensions/gemini-nams-hooks/commands/nams/workspace.toml` contains `nams-hooks workspaces run gemini --event CustomCommand`.
 - `dist-local/codex/.codex/hooks.json` contains `nams-hooks run codex`.
 
 - [ ] **Step 5: Run final package check**
