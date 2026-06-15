@@ -2,11 +2,15 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
-const claudeCommandPath = "templates/claude/plugins/nams-hooks/commands/nams/workspace.md";
-const claudeBaselineCommandPath = "templates/claude/.claude/commands/nams/workspace.md";
+const localSettingsPath = "templates/local/claude/.claude/settings.local.json";
+const claudeCommandPath = "templates/marketplace/claude/plugins/claude-nams-hooks/commands/nams/workspace.md";
+const claudeBaselineCommandPath = "templates/local/claude/.claude/commands/nams/workspace.md";
+const marketplacePath = "templates/marketplace/claude/.claude-plugin/marketplace.json";
+const pluginManifestPath = "templates/marketplace/claude/plugins/claude-nams-hooks/.claude-plugin/plugin.json";
+const pluginHooksPath = "templates/marketplace/claude/plugins/claude-nams-hooks/hooks/hooks.json";
 
 test("Claude template maps native hooks to NAMS events", async () => {
-  const template = JSON.parse(await readFile("templates/claude/.claude/settings.local.json", "utf8"));
+  const template = JSON.parse(await readFile(localSettingsPath, "utf8"));
 
   assert.equal(commandFor(template, "SessionStart"), "nams-hooks run claude --event SessionStart");
   assert.equal(commandFor(template, "UserPromptSubmit"), "nams-hooks run claude --event BeforeAgent");
@@ -16,7 +20,7 @@ test("Claude template maps native hooks to NAMS events", async () => {
 });
 
 test("Claude plugin template invokes the bundled CLI through plugin root", async () => {
-  const template = JSON.parse(await readFile("templates/claude/plugins/nams-hooks/hooks/hooks.json", "utf8"));
+  const template = JSON.parse(await readFile(pluginHooksPath, "utf8"));
 
   assert.deepEqual(pluginCommandFor(template, "SessionStart"), ["node", "${CLAUDE_PLUGIN_ROOT}/bin/cli.js", "run", "claude", "--event", "SessionStart"]);
   assert.deepEqual(pluginCommandFor(template, "UserPromptSubmit"), ["node", "${CLAUDE_PLUGIN_ROOT}/bin/cli.js", "run", "claude", "--event", "BeforeAgent"]);
@@ -26,19 +30,19 @@ test("Claude plugin template invokes the bundled CLI through plugin root", async
 });
 
 test("Claude marketplace template exposes the nams-hooks plugin source", async () => {
-  const template = JSON.parse(await readFile("templates/claude/.claude-plugin/marketplace.json", "utf8"));
+  const template = JSON.parse(await readFile(marketplacePath, "utf8"));
 
   assert.equal(template.name, "nams-plugins");
   assert.equal(template.metadata.version, "__PACKAGE_VERSION__");
   assert.equal(template.plugins[0].name, "nams-hooks");
-  assert.equal(template.plugins[0].source, "./plugins/nams-hooks");
+  assert.equal(template.plugins[0].source, "./plugins/claude-nams-hooks");
   assert.equal(template.plugins[0].repository, "https://github.com/neo4j-labs/nams-plugins");
   assert.equal(template.plugins[0].version, "__PACKAGE_VERSION__");
   assert.equal(template.plugins[0].license, "__PACKAGE_LICENSE__");
 });
 
 test("Claude plugin manifest template declares user config without standard hooks", async () => {
-  const template = JSON.parse(await readFile("templates/claude/plugins/nams-hooks/.claude-plugin/plugin.json", "utf8"));
+  const template = JSON.parse(await readFile(pluginManifestPath, "utf8"));
 
   assert.equal(template.name, "nams-hooks");
   assert.equal(template.version, "__PACKAGE_VERSION__");
@@ -68,7 +72,7 @@ test("Claude plugin manifest template declares user config without standard hook
 
 test("Claude plugin template packages slash workspace command hook", async () => {
   const command = await readFile(claudeCommandPath, "utf8");
-  const template = JSON.parse(await readFile("templates/claude/plugins/nams-hooks/hooks/hooks.json", "utf8"));
+  const template = JSON.parse(await readFile(pluginHooksPath, "utf8"));
 
   assert.match(command, /argument-hint: use <workspace-id-or-name>/);
   assert.match(command, /disable-model-invocation: true/);
@@ -93,7 +97,7 @@ test("Claude plugin template packages slash workspace command hook", async () =>
 
 test("Claude baseline template packages slash workspace command hook", async () => {
   const command = await readFile(claudeBaselineCommandPath, "utf8");
-  const template = JSON.parse(await readFile("templates/claude/.claude/settings.local.json", "utf8"));
+  const template = JSON.parse(await readFile(localSettingsPath, "utf8"));
 
   assert.match(command, /argument-hint: use <workspace-id-or-name>/);
   assert.match(command, /disable-model-invocation: true/);

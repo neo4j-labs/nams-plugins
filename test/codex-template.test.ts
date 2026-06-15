@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
-const marketplacePath = "templates/codex/.agents/plugins/marketplace.json";
-const pluginManifestPath = "templates/codex/plugins/codex-nams-hooks/.codex-plugin/plugin.json";
-const pluginHooksPath = "templates/codex/plugins/codex-nams-hooks/hooks/hooks.json";
-const pluginSkillPath = "templates/codex/plugins/codex-nams-hooks/skills/workspace/SKILL.md";
-const pluginSkillPolicyPath = "templates/codex/plugins/codex-nams-hooks/skills/workspace/agents/openai.yaml";
-const fallbackHooksPath = "templates/codex/hooks.json";
+const marketplacePath = "templates/marketplace/codex/.agents/plugins/marketplace.json";
+const pluginManifestPath = "templates/marketplace/codex/plugins/codex-nams-hooks/.codex-plugin/plugin.json";
+const pluginHooksPath = "templates/marketplace/codex/plugins/codex-nams-hooks/hooks/hooks.json";
+const pluginSkillPath = "templates/marketplace/codex/plugins/codex-nams-hooks/skills/workspace/SKILL.md";
+const pluginSkillPolicyPath = "templates/marketplace/codex/plugins/codex-nams-hooks/skills/workspace/agents/openai.yaml";
+const fallbackHooksPath = "templates/local/codex/.codex/hooks.json";
 const pluginRoot = "${PLUGIN_ROOT}";
 
 test("Codex repo marketplace template exposes nams-hooks as available", async () => {

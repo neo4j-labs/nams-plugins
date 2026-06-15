@@ -45,7 +45,7 @@ test("opencode plugin template exposes NAMS hook handlers", async () => {
   assert.match(source, /"experimental\.text\.complete"/);
   assert.match(source, /"tool\.execute\.after"/);
   assert.match(source, /session\.created/);
-  assert.match(source, /nams-hooks/);
+  assert.match(source, /__NAMS_HOOKS_COMMAND__/);
 });
 
 test("opencode template does not expose workspace command markdown prompt", async () => {
@@ -658,7 +658,8 @@ process.stdin.on("end", () => {
 }
 
 async function importTemplateWithCommand(commandPath: string, options: ImportTemplateOptions = {}): Promise<TemplateModule> {
-  const imported = (await import(`${pathToFileURL(templatePath).href}?test=${Date.now()}-${Math.random()}`)) as TemplateModule;
+  const renderedPath = await renderTemplateForImport(commandPath);
+  const imported = (await import(`${pathToFileURL(renderedPath).href}?test=${Date.now()}-${Math.random()}`)) as TemplateModule;
   return {
     NamsHooks: async (context) => {
       const previousCommand = process.env.NAMS_HOOKS_COMMAND;
@@ -675,6 +676,13 @@ async function importTemplateWithCommand(commandPath: string, options: ImportTem
       }
     },
   };
+}
+
+async function renderTemplateForImport(commandPath: string): Promise<string> {
+  const source = await readFile(templatePath, "utf8");
+  const renderedPath = path.join(path.dirname(commandPath), "nams-hooks-rendered.js");
+  await writeFile(renderedPath, source.replaceAll("__NAMS_HOOKS_COMMAND__", JSON.stringify("nams-hooks")), "utf8");
+  return renderedPath;
 }
 
 async function readCalls(callsPath: string): Promise<TemplateCall[]> {

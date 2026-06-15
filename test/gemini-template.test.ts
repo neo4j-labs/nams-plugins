@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -9,9 +9,14 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const execFileAsync = promisify(execFile);
+const marketplaceExtensionPath = path.join(repoRoot, "templates", "marketplace", "gemini", "gemini-extension.json");
+const marketplaceHooksPath = path.join(repoRoot, "templates", "marketplace", "gemini", "hooks", "hooks.json");
+const marketplaceCommandPath = path.join(repoRoot, "templates", "marketplace", "gemini", "commands", "nams", "workspace.toml");
+const localHooksPath = path.join(repoRoot, "templates", "local", "gemini", ".gemini", "extensions", "gemini-nams-hooks", "hooks", "hooks.json");
+const localCommandPath = path.join(repoRoot, "templates", "local", "gemini", ".gemini", "extensions", "gemini-nams-hooks", "commands", "nams", "workspace.toml");
 
 test("Gemini extension template exposes NAMS environment settings in order", async () => {
-  const template = JSON.parse(await readFile(path.join(repoRoot, "templates", "gemini", "gemini-extension.json"), "utf8"));
+  const template = JSON.parse(await readFile(marketplaceExtensionPath, "utf8"));
   const settings = template.settings;
 
   assert.ok(Array.isArray(settings), "Gemini extension settings must be an array.");
@@ -28,7 +33,7 @@ test("Gemini extension template exposes NAMS environment settings in order", asy
 });
 
 test("Gemini hook template routes BeforeAgent through the memory hook only", async () => {
-  const template = JSON.parse(await readFile(path.join(repoRoot, "templates", "gemini", "hooks", "hooks.json"), "utf8"));
+  const template = JSON.parse(await readFile(marketplaceHooksPath, "utf8"));
   const groups = template.hooks.BeforeAgent;
 
   assert.equal(groups.length, 1);
@@ -38,14 +43,31 @@ test("Gemini hook template routes BeforeAgent through the memory hook only", asy
     [
       {
         name: "nams-memory-before-agent",
-        command: 'node "${extensionPath}/bin/cli.js" run gemini --event BeforeAgent',
+        command: 'node "${extensionPath}/plugins/gemini-nams-hooks/bin/cli.js" run gemini --event BeforeAgent',
+      },
+    ],
+  );
+});
+
+test("Gemini local hook template routes BeforeAgent through installed nams-hooks", async () => {
+  const template = JSON.parse(await readFile(localHooksPath, "utf8"));
+  const groups = template.hooks.BeforeAgent;
+
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].matcher, "*");
+  assert.deepEqual(
+    groups[0].hooks.map((hook: { name: string; command: string }) => ({ name: hook.name, command: hook.command })),
+    [
+      {
+        name: "nams-memory-before-agent",
+        command: "nams-hooks run gemini --event BeforeAgent",
       },
     ],
   );
 });
 
 test("Gemini extension template packages nams workspace custom command", async () => {
-  const source = await readFile(path.join(repoRoot, "templates", "gemini", "commands", "nams", "workspace.toml"), "utf8");
+  const source = await readFile(marketplaceCommandPath, "utf8");
   const command = parseGeminiWorkspaceCommandToml(source);
 
   assert.equal(command.description, "Select the NAMS workspace for this Gemini session.");
@@ -59,6 +81,21 @@ test("Gemini extension template packages nams workspace custom command", async (
   assert.doesNotMatch(command.prompt, /workspaces configure/);
 });
 
+test("Gemini marketplace workspace command routes through bundled platform folder", async () => {
+  const source = await readFile(marketplaceCommandPath, "utf8");
+
+  assert.match(source, /workspaces run gemini --event CustomCommand/);
+  assert.match(source, /\$\{extensionPath\}\/plugins\/gemini-nams-hooks\/bin\/cli\.js/);
+  assert.doesNotMatch(source, /workspaces configure/);
+});
+
+test("Gemini local workspace command routes through installed nams-hooks", async () => {
+  const source = await readFile(localCommandPath, "utf8");
+
+  assert.match(source, /nams-hooks workspaces run gemini --event CustomCommand/);
+  assert.doesNotMatch(source, /\$\{extensionPath\}|bin\/cli\.js|workspaces configure/);
+});
+
 test("Gemini workspace command TOML parser rejects invalid basic string escapes", () => {
   assert.throws(
     () => parseGeminiWorkspaceCommandToml('description = "x"\n\nprompt = """\ninvalid \\s escape\n"""\n'),
@@ -67,7 +104,7 @@ test("Gemini workspace command TOML parser rejects invalid basic string escapes"
 });
 
 test("Gemini workspace custom command preserves selectors and normalizes use prefix", async () => {
-  const source = await readFile(path.join(repoRoot, "templates", "gemini", "commands", "nams", "workspace.toml"), "utf8");
+  const source = await readFile(marketplaceCommandPath, "utf8");
   const command = parseGeminiWorkspaceCommandToml(source);
 
   assert.deepEqual(await renderGeminiWorkspaceCommandArgs(command.prompt, ["Engineering", "Team"]), {
@@ -81,7 +118,7 @@ test("Gemini workspace custom command preserves selectors and normalizes use pre
 });
 
 test("Gemini workspace custom command passes shell-sensitive args through a quoted argv bridge", async () => {
-  const source = await readFile(path.join(repoRoot, "templates", "gemini", "commands", "nams", "workspace.toml"), "utf8");
+  const source = await readFile(marketplaceCommandPath, "utf8");
   const command = parseGeminiWorkspaceCommandToml(source);
   const tempDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-command-"));
 
@@ -96,6 +133,38 @@ test("Gemini workspace custom command passes shell-sensitive args through a quot
     const sensitiveArgs = `O'Reilly; $(touch ${sentinelPath}) "quoted"\nNAMS_WORKSPACE_ARGS\ntouch ${sentinelPath}`;
     const shellCommand = shellCommandForGeminiPrompt(command.prompt, stubCliPath, sensitiveArgs);
     await execFileAsync("/bin/sh", ["-c", shellCommand], { cwd: tempDir });
+
+    const payload = JSON.parse(await readFile(payloadPath, "utf8"));
+    assert.deepEqual(payload.argv, ["workspaces", "run", "gemini", "--event", "CustomCommand"]);
+    assert.equal(payload.body.command_name, "nams:workspace");
+    assert.equal(payload.body.command_args, `use ${sensitiveArgs}`);
+    assert.doesNotMatch(payload.body.command_args, /^use\s+use(?:\s|$)/);
+    await assertFileMissing(sentinelPath);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("Gemini local workspace custom command passes shell-sensitive args through a quoted argv bridge", async () => {
+  const source = await readFile(localCommandPath, "utf8");
+  const command = parseGeminiWorkspaceCommandToml(source);
+  const tempDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-local-command-"));
+
+  try {
+    const sentinelPath = path.join(tempDir, "sentinel");
+    const payloadPath = path.join(tempDir, "payload.json");
+    const binDir = path.join(tempDir, "bin");
+    const stubCliPath = path.join(binDir, "nams-hooks");
+    await mkdir(binDir, { recursive: true });
+    await writeFile(stubCliPath, stubCliSource(payloadPath), "utf8");
+    await chmod(stubCliPath, 0o755);
+
+    const sensitiveArgs = `O'Reilly; $(touch ${sentinelPath}) "quoted"\nNAMS_WORKSPACE_ARGS\ntouch ${sentinelPath}`;
+    const shellCommand = shellCommandForGeminiPrompt(command.prompt, stubCliPath, sensitiveArgs);
+    await execFileAsync("/bin/sh", ["-c", shellCommand], {
+      cwd: tempDir,
+      env: { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}` },
+    });
 
     const payload = JSON.parse(await readFile(payloadPath, "utf8"));
     assert.deepEqual(payload.argv, ["workspaces", "run", "gemini", "--event", "CustomCommand"]);
@@ -123,7 +192,8 @@ function shellCommandForGeminiPrompt(prompt: string, stubCliPath: string, args: 
   return trimmed
     .slice(2, -1)
     .trim()
-    .replaceAll("${extensionPath}/bin/cli.js", stubCliPath)
+    .replaceAll("${extensionPath}/plugins/gemini-nams-hooks/bin/cli.js", stubCliPath)
+    .replaceAll("nams-hooks", stubCliPath)
     .replace("{{args}}", shellQuote(args));
 }
 
@@ -132,7 +202,7 @@ function shellQuote(value: string) {
 }
 
 function stubCliSource(payloadPath: string) {
-  return `
+  return `#!/usr/bin/env node
 const { writeFileSync } = require("node:fs");
 let input = "";
 process.stdin.setEncoding("utf8");
