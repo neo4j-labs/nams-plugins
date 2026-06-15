@@ -107,6 +107,12 @@ Marketplace plugin directories use explicit platform names:
 
 ```text
 dist-marketplace/
+  gemini-extension.json
+  commands/
+    nams/
+      workspace.toml
+  hooks/
+    hooks.json
   .agents/
     plugins/
       marketplace.json
@@ -115,10 +121,18 @@ dist-marketplace/
   plugins/
     claude-nams-hooks/
       bin/
+      commands/
+        nams/
+          workspace.md
       hooks/
     codex-nams-hooks/
       bin/
       hooks/
+      skills/
+        workspace/
+          SKILL.md
+          agents/
+            openai.yaml
     gemini-nams-hooks/
       bin/
       hooks/
@@ -154,6 +168,9 @@ Example projected local output:
 dist-local/
   claude/
     .claude/
+      commands/
+        nams/
+          workspace.md
       settings.local.json
   codex/
     .codex/
@@ -163,6 +180,9 @@ dist-local/
       extensions/
         gemini-nams-hooks/
           gemini-extension.json
+          commands/
+            nams/
+              workspace.toml
           hooks/
             hooks.json
   opencode/
@@ -173,6 +193,37 @@ dist-local/
 
 The exact local paths are determined by the projection manifest so they can
 match each platform's native project configuration shape.
+
+## Workspace Selection Template Surface
+
+The merged workspace-selection behavior is a generated template surface, not
+only runtime code. Projection manifests and checks must preserve it explicitly:
+
+- Claude local output includes `.claude/commands/nams/workspace.md` and a
+  `UserPromptExpansion` hook that calls
+  `nams-hooks workspaces run claude --event UserPromptExpansion`.
+- Claude marketplace output includes
+  `plugins/claude-nams-hooks/commands/nams/workspace.md` and a
+  `UserPromptExpansion` hook that calls the bundled CLI through
+  `${CLAUDE_PLUGIN_ROOT}/bin/cli.js`.
+- Gemini marketplace and local extension outputs include
+  `commands/nams/workspace.toml` beside the extension hooks. The command must
+  route to `workspaces run gemini --event CustomCommand` using the runtime path
+  appropriate for the generated tree. If the Gemini template keeps
+  `${extensionPath}/bin/cli.js`, the marketplace projection must provide a
+  matching root-level `bin/cli.js`; otherwise the projection must render the
+  command and hook paths to the explicit Gemini runtime folder.
+- Codex marketplace output includes the `nams:workspace` skill and its policy
+  file under `plugins/codex-nams-hooks/skills/workspace/`. Codex local output
+  remains hook-only unless a local Codex skill template is added.
+- OpenCode uses the shared `.opencode/plugins/nams-hooks.js` template. Local
+  output keeps the default installed `nams-hooks` command, while marketplace
+  output must set or render an equivalent bundled-runtime command.
+
+Workspace command templates must not shell out to `workspaces configure`
+directly. They should flow through
+`workspaces run <platform> --event <workspace-event>` so platform adapters own
+payload parsing and session state updates.
 
 ## Build Script Design
 
@@ -238,10 +289,14 @@ For `dist-marketplace/`, checks assert:
 - marketplace roots and plugin manifests exist for all supported platforms.
 - every self-contained platform bundle has executable `bin/cli.js`.
 - marketplace hook commands call bundled runtime paths.
+- marketplace workspace-selection commands call bundled runtime paths.
 - marketplace hook commands do not call the global `nams-hooks` executable.
 - plugin directory names are explicit:
   `claude-nams-hooks`, `codex-nams-hooks`, `gemini-nams-hooks`, and
   `opencode-nams-hooks`.
+- workspace command and skill assets are present for the platforms that expose
+  them: Claude command markdown, Gemini command TOML, Codex workspace skill and
+  policy, and OpenCode command interception in its plugin shim.
 - package placeholders are fully rendered.
 - OpenAPI artifacts are absent.
 
@@ -249,6 +304,8 @@ For `dist-local/`, checks assert:
 
 - local project configuration exists for all supported platforms.
 - local hook commands intentionally call `nams-hooks`.
+- local workspace-selection commands intentionally call
+  `nams-hooks workspaces run <platform> --event <workspace-event>`.
 - compiled runtime files are absent.
 - marketplace metadata is absent.
 - generated files are symlinkable or copyable into project roots without
@@ -285,15 +342,27 @@ Existing templates move into the new layout instead of being duplicated:
 
 - `templates/claude/.claude/settings.local.json` becomes
   `templates/local/claude/.claude/settings.local.json`.
+- `templates/claude/.claude/commands/nams/workspace.md` becomes
+  `templates/local/claude/.claude/commands/nams/workspace.md`.
+- `templates/claude/plugins/nams-hooks/commands/nams/workspace.md` moves with
+  the marketplace Claude plugin template and is projected under
+  `plugins/claude-nams-hooks/commands/nams/workspace.md`.
 - `templates/codex/hooks.json` becomes a local Codex template and is projected
   into a project-shaped local output such as `dist-local/codex/.codex/hooks.json`.
-- `templates/opencode/plugins/nams-hooks.js` becomes shared or local depending
-  on whether the marketplace projection can use the same shim.
+- `templates/codex/plugins/codex-nams-hooks/skills/workspace/` moves with the
+  marketplace Codex plugin template and remains part of the marketplace
+  projection.
+- `templates/opencode/.opencode/plugins/nams-hooks.js` becomes a shared
+  OpenCode plugin template. Local projection keeps the `.opencode` project
+  shape, and marketplace projection rewrites or wraps the command mode for the
+  bundled runtime.
 - Existing Claude and Codex marketplace templates move under
   `templates/marketplace/claude/` and `templates/marketplace/codex/`.
 - Gemini extension files move under `templates/marketplace/gemini/` when they
   are marketplace-only; shared hook definitions move under `templates/gemini/`
-  only if local and marketplace projections both use them.
+  only if local and marketplace projections both use them. The merged Gemini
+  workspace command at `templates/gemini/commands/nams/workspace.toml` is shared
+  if both local and marketplace projections include the same command.
 
 The current ambiguous Claude marketplace plugin directory
 `plugins/nams-hooks/` will be renamed in marketplace output to
@@ -312,6 +381,8 @@ Tests should be updated before behavior changes:
 - Marketplace tests assert all supported platform bundles are self-contained.
 - Local tests assert all local configs depend on an installed `nams-hooks`
   command.
+- Workspace command tests assert generated local commands use the installed
+  executable and generated marketplace commands use bundled runtime paths.
 
 Required verification before completion:
 
