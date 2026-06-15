@@ -6,7 +6,8 @@ import { test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const templatePath = path.join(repoRoot, "templates", "opencode", "plugins", "nams-hooks.js");
+const templatePath = path.join(repoRoot, "templates", "opencode", ".opencode", "plugins", "nams-hooks.js");
+const commandPath = path.join(repoRoot, "templates", "opencode", ".opencode", "commands", "nams:workspace.md");
 
 interface TemplateFixture {
   directory: string;
@@ -45,6 +46,19 @@ test("opencode plugin template exposes NAMS hook handlers", async () => {
   assert.match(source, /"tool\.execute\.after"/);
   assert.match(source, /session\.created/);
   assert.match(source, /nams-hooks/);
+});
+
+test("opencode template exposes workspace command markdown for TUI discovery", async () => {
+  const source = await readFile(commandPath, "utf8");
+
+  assert.match(source, /^---\n/);
+  assert.match(source, /description: Select the NAMS workspace for this OpenCode session\./);
+  assert.match(source, /\/nams:workspace use <workspace-id-or-name>/);
+  assert.match(source, /\$ARGUMENTS/);
+  assert.match(source, /OpenCode plugin/);
+  assert.doesNotMatch(source, /!\s*`/);
+  assert.doesNotMatch(source, /workspaces configure/);
+  assert.doesNotMatch(source, /workspaces run/);
 });
 
 test("command.execute.before forwards OpenCode workspace command to workspace runtime", async () => {
@@ -653,18 +667,23 @@ process.stdin.on("end", () => {
 }
 
 async function importTemplateWithCommand(commandPath: string, options: ImportTemplateOptions = {}): Promise<TemplateModule> {
-  const previousCommand = process.env.NAMS_HOOKS_COMMAND;
-  const previousTimeout = process.env.NAMS_HOOKS_WORKSPACE_COMMAND_TIMEOUT_MS;
-  process.env.NAMS_HOOKS_COMMAND = commandPath;
-  if (options.commandTimeoutMs !== undefined) {
-    process.env.NAMS_HOOKS_WORKSPACE_COMMAND_TIMEOUT_MS = options.commandTimeoutMs;
-  }
-  try {
-    return (await import(`${pathToFileURL(templatePath).href}?test=${Date.now()}-${Math.random()}`)) as TemplateModule;
-  } finally {
-    restoreEnv("NAMS_HOOKS_COMMAND", previousCommand);
-    restoreEnv("NAMS_HOOKS_WORKSPACE_COMMAND_TIMEOUT_MS", previousTimeout);
-  }
+  const imported = (await import(`${pathToFileURL(templatePath).href}?test=${Date.now()}-${Math.random()}`)) as TemplateModule;
+  return {
+    NamsHooks: async (context) => {
+      const previousCommand = process.env.NAMS_HOOKS_COMMAND;
+      const previousTimeout = process.env.NAMS_HOOKS_WORKSPACE_COMMAND_TIMEOUT_MS;
+      process.env.NAMS_HOOKS_COMMAND = commandPath;
+      if (options.commandTimeoutMs !== undefined) {
+        process.env.NAMS_HOOKS_WORKSPACE_COMMAND_TIMEOUT_MS = options.commandTimeoutMs;
+      }
+      try {
+        return await imported.NamsHooks(context);
+      } finally {
+        restoreEnv("NAMS_HOOKS_COMMAND", previousCommand);
+        restoreEnv("NAMS_HOOKS_WORKSPACE_COMMAND_TIMEOUT_MS", previousTimeout);
+      }
+    },
+  };
 }
 
 async function readCalls(callsPath: string): Promise<TemplateCall[]> {

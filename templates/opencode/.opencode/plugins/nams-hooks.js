@@ -1,17 +1,13 @@
 import { spawn } from "node:child_process";
 
-const command = process.env.NAMS_HOOKS_COMMAND ?? "nams-hooks";
-const workspaceCommandTimeoutMs = readPositiveInteger(
-  process.env.NAMS_HOOKS_WORKSPACE_COMMAND_TIMEOUT_MS ?? process.env.NAMS_HOOKS_WORKSPACE_CONFIGURE_TIMEOUT_MS,
-  30000,
-);
-
 export const NamsHooks = async ({ client, directory, project, worktree }) => {
+  const command = process.env.NAMS_HOOKS_COMMAND ?? "nams-hooks";
+  const workspaceCommandTimeoutMs = readWorkspaceCommandTimeoutMs();
   const pendingWorkspaceSelectionContexts = new Map();
 
   async function run(event, payload) {
     try {
-      return await invokeNams(event, { directory, project, worktree, ...payload });
+      return await invokeNams(command, event, { directory, project, worktree, ...payload });
     } catch {
       await logDiagnostic(client, `NAMS OpenCode hook ${event} failed`);
       return undefined;
@@ -32,7 +28,7 @@ export const NamsHooks = async ({ client, directory, project, worktree }) => {
         return undefined;
       }
 
-      const result = await invokeWorkspaceRun("CommandExecuteBefore", input, directory);
+      const result = await invokeWorkspaceRun(command, workspaceCommandTimeoutMs, "CommandExecuteBefore", input, directory);
       if (result?.stop === true) {
         await showCommandResult(client, result);
         return { stop: true };
@@ -87,7 +83,7 @@ export const NamsHooks = async ({ client, directory, project, worktree }) => {
 
 export default NamsHooks;
 
-async function invokeWorkspaceRun(event, payload, directory) {
+async function invokeWorkspaceRun(command, workspaceCommandTimeoutMs, event, payload, directory) {
   return await new Promise((resolve) => {
     const cwd = typeof directory === "string" && directory.trim() !== "" ? directory : undefined;
     const child = spawn(
@@ -170,7 +166,7 @@ function readPositiveInteger(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-async function invokeNams(event, payload) {
+async function invokeNams(command, event, payload) {
   return await new Promise((resolve, reject) => {
     const child = spawn(command, ["run", "opencode", "--event", event], {
       stdio: ["pipe", "pipe", "pipe"],
@@ -228,6 +224,13 @@ async function invokeNams(event, payload) {
       finish(error);
     }
   });
+}
+
+function readWorkspaceCommandTimeoutMs() {
+  return readPositiveInteger(
+    process.env.NAMS_HOOKS_WORKSPACE_COMMAND_TIMEOUT_MS ?? process.env.NAMS_HOOKS_WORKSPACE_CONFIGURE_TIMEOUT_MS,
+    30000,
+  );
 }
 
 async function logDiagnostic(client, message) {

@@ -265,7 +265,13 @@ command with `<session-id>`.
 ### OpenCode
 
 Implement OpenCode command handling inside
-`templates/opencode/plugins/nams-hooks.js`.
+`templates/opencode/.opencode/plugins/nams-hooks.js`.
+
+Package a companion command markdown file at
+`templates/opencode/.opencode/commands/nams:workspace.md` so OpenCode exposes
+`/nams:workspace` through its documented per-project command-file surface. The
+markdown command is for TUI discovery and fallback guidance only; it must not
+run shell snippets or duplicate workspace configuration itself.
 
 The plugin should intercept the earliest deterministic OpenCode command event
 that can stop or replace normal command execution. The research note identifies
@@ -518,6 +524,9 @@ Claude tests should assert:
 
 OpenCode tests should simulate the plugin command event and assert:
 
+- the OpenCode template includes `.opencode/commands/nams:workspace.md`;
+- the command markdown names `/nams:workspace use <workspace-id-or-name>` and
+  does not run shell snippets;
 - `/nams:workspace use Engineering` spawns `workspaces run opencode --event
   CommandExecuteBefore`;
 - command payloads, including selectors with spaces, are forwarded to the CLI

@@ -23,7 +23,8 @@ const codexPluginCliPath = path.join(root, "dist", "plugins", "codex-nams-hooks"
 const codexPluginSkillPath = path.join(root, "dist", "plugins", "codex-nams-hooks", "skills", "workspace", "SKILL.md");
 const codexPluginSkillPolicyPath = path.join(root, "dist", "plugins", "codex-nams-hooks", "skills", "workspace", "agents", "openai.yaml");
 const codexHookEvents = ["SessionStart", "UserPromptSubmit", "Stop", "PostToolUse"];
-const opencodeTemplatePath = path.join(root, "templates", "opencode", "plugins", "nams-hooks.js");
+const opencodeTemplatePath = path.join(root, "templates", "opencode", ".opencode", "plugins", "nams-hooks.js");
+const opencodeCommandPath = path.join(root, "templates", "opencode", ".opencode", "commands", "nams:workspace.md");
 const rootPackagePath = path.join(root, "package.json");
 const releasePackageName = "@neo4j-labs/nams-plugins";
 const execFileAsync = promisify(execFile);
@@ -32,6 +33,7 @@ await access(generatedClientPath);
 await access(geminiExtensionPath);
 await access(geminiCommandPath);
 await access(opencodeTemplatePath);
+await access(opencodeCommandPath);
 await verifyRootPackageFiles(rootPackagePath);
 const rootPackageJson = await verifySourcePackageIdentity(rootPackagePath);
 await verifyGeminiExtensionSettings(geminiExtensionPath);
@@ -296,7 +298,12 @@ async function checkPackedPackage(packageDir, binTarget, options = {}) {
   if (!packedFiles.includes(binTarget)) {
     throw new Error(`packed package is missing nams-hooks bin target: ${binTarget}`);
   }
-  for (const expectedFile of [...geminiPackedFiles(packageDir), ...claudePackedFiles(packageDir), ...codexPackedFiles(packageDir)]) {
+  for (const expectedFile of [
+    ...geminiPackedFiles(packageDir),
+    ...claudePackedFiles(packageDir),
+    ...codexPackedFiles(packageDir),
+    ...opencodePackedFiles(packageDir),
+  ]) {
     if (!packedFiles.includes(expectedFile)) {
       throw new Error(`packed package is missing plugin file: ${expectedFile}`);
     }
@@ -330,6 +337,16 @@ function codexPackedFiles(packageDir) {
     `${prefix}plugins/codex-nams-hooks/bin/cli.js`,
     `${prefix}plugins/codex-nams-hooks/skills/workspace/SKILL.md`,
     `${prefix}plugins/codex-nams-hooks/skills/workspace/agents/openai.yaml`,
+  ];
+}
+
+function opencodePackedFiles(packageDir) {
+  if (packageDir !== root) {
+    return [];
+  }
+  return [
+    "templates/opencode/.opencode/plugins/nams-hooks.js",
+    "templates/opencode/.opencode/commands/nams:workspace.md",
   ];
 }
 

@@ -80,7 +80,7 @@ Session scope includes filesystem preflights before listing workspaces:
 | Platform | Shared session command implemented? | User-invoked command can run shell? | Current-session id available? | Fit | Notes |
 | --- | --- | --- | --- | --- | --- |
 | Claude Code | Yes | Yes | Yes | Best | Template and plugin custom commands are slash-invocable as `/nams:workspace`. `UserPromptExpansion` hooks can intercept the command before Claude sees it and receive `session_id` plus raw `command_args`. |
-| OpenCode | Yes | Yes | Yes | Best with plugin shim | The plugin shim intercepts `command.execute.before`, preserves `/nams:workspace use <workspace-id-or-name>`, and runs the shared configure command. |
+| OpenCode | Yes | Yes | Yes | Best with plugin shim | The `.opencode/commands/nams:workspace.md` command file exposes `/nams:workspace use <workspace-id-or-name>` in the TUI, while the plugin shim intercepts `command.execute.before` and runs the shared workspace command before a model turn starts. |
 | Gemini CLI | Yes | Yes | Yes, through bridge | Implemented with bridge | The extension custom command `/nams:workspace use <workspace-id-or-name>` resolves the recent active Gemini session through the active-session bridge recorded by ambiguity hooks; the explicit configure command remains the shell fallback. |
 | Codex | Yes | Skill-mediated | Bridge when available | Explicit skill | The explicit skill `$nams:workspace use <workspace-id-or-name>` resolves through the active-session bridge where available; the explicit configure command remains the shell fallback. |
 
@@ -121,8 +121,9 @@ treating the word `use` as part of the workspace name.
 
 ### OpenCode
 
-OpenCode is also a strong fit. Tier 1 support lives in the existing OpenCode
-plugin shim instead of a plain Markdown command.
+OpenCode is also a strong fit. The project template follows OpenCode's command
+file convention with `.opencode/commands/nams:workspace.md`, but deterministic
+execution still lives in the OpenCode plugin shim.
 
 OpenCode custom commands support arguments and shell output injection with
 inline shell snippets such as `` !`npm test` ``. OpenCode plugins can run
@@ -140,19 +141,21 @@ plugin.trigger(
 )
 ```
 
-The shim intercepts this command:
+The command file exposes this command in the TUI:
 
 ```text
 /nams:workspace use <workspace-id-or-name>
 ```
 
-The plugin calls:
+The plugin intercepts it before model execution and calls:
 
 ```bash
-nams-hooks workspaces configure opencode --scope session --session-id <sessionID> --workspace <workspace-id-or-name>
+nams-hooks workspaces run opencode --event CommandExecuteBefore
 ```
 
-and reports the result without starting a normal model turn.
+with the raw command event payload on stdin. The shared workspace runner then
+delegates to the session-scoped configure runtime and reports the result without
+starting a normal model turn.
 
 ### Gemini CLI
 
@@ -267,7 +270,8 @@ Otherwise it keeps the `<session-id>` placeholder.
 - Runtime workspace resolution from session state: `src/runtime/workspace-resolution.ts`
 - Session state workspace source type: `src/runtime/session-state.ts`
 - Workspace-selection notice formatting: `src/platforms/workspace-selection.ts`
-- Current OpenCode plugin shim: `templates/opencode/plugins/nams-hooks.js`
+- Current OpenCode plugin shim: `templates/opencode/.opencode/plugins/nams-hooks.js`
+- Current OpenCode command file: `templates/opencode/.opencode/commands/nams:workspace.md`
 - Existing workspace resolution design note: `docs/superpowers/specs/2026-06-08-nams-key-scope-workspace-resolution-design.md`
 - Claude Code skills: <https://code.claude.com/docs/en/skills>
 - Claude Code hooks: <https://code.claude.com/docs/en/hooks>
