@@ -303,6 +303,44 @@ test("Codex beforeAgent skips memory when multiple listed workspaces require sel
   }
 });
 
+test("Codex beforeAgent treats explicit workspace skill prompt as control input", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
+  try {
+    const nams = createNamsFetchMock().all({ error: "unexpected NAMS call" }, 500);
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+    const adapter = new CodexAdapter();
+
+    const result = await adapter.beforeAgent({
+      platform: "codex",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "$nams:workspace use Default",
+      },
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    assert.equal(nams.calls().length, 0);
+    const state = (await loadSessionState("codex", "session-1"))!;
+    assert.equal(state.conversationId, undefined);
+    assert.equal(state.workspace, undefined);
+    const markerPath = path.join(namsHome(testEnv(projectDir).HOME), "state", "codex", "active-workspace-sessions.json");
+    const marker = JSON.parse(await readFile(markerPath, "utf8"));
+    assert.equal(marker.sessions.length, 1);
+    assert.equal(marker.sessions[0].sessionId, "session-1");
+    assert.equal(marker.sessions[0].sessionKey, "session-1");
+    assert.equal(marker.sessions[0].projectDirectory, path.resolve(projectDir));
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("duplicate Codex beforeAgent prompt stores one user message", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
   try {

@@ -34,9 +34,12 @@ through its command context. Gemini and Codex use a shared active-session
 bridge, then resolve that bridge from the user-invoked workspace command within
 a short freshness window. Gemini seeds the bridge at `SessionStart` and
 refreshes it from the workspace-ambiguity hook path; Codex records the bridge
-from the workspace-ambiguity hook path. OpenCode remains on the explicit shell
-fallback until it exposes a non-prompt command handler or a documented
-command-consume mechanism.
+from the workspace-ambiguity hook path and from explicit `$nams:workspace`
+prompt turns. Codex memory hooks treat those explicit skill invocation prompts
+as control input: they do not resolve workspace memory, create conversations,
+store the prompt, or inject the workspace-selection notice for that turn.
+OpenCode remains on the explicit shell fallback until it exposes a non-prompt
+command handler or a documented command-consume mechanism.
 
 This design follows the research note in
 `docs/session-workspace-command-support.md` and builds on
