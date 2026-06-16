@@ -3,6 +3,7 @@ import { resolveActiveWorkspaceSession } from "./active-workspace-session.js";
 import { configureWorkspaceSelection } from "./workspace-configuration.js";
 
 const workspaceCommandName = "nams:workspace";
+const claudeMarketplaceWorkspaceCommandName = `nams-hooks:${workspaceCommandName}`;
 export const slashWorkspaceCommandUsage = "Usage: /nams:workspace use <workspace-id-or-name>";
 export const codexWorkspaceCommandUsage = "Usage: $nams:workspace use <workspace-id-or-name>";
 
@@ -121,10 +122,15 @@ function parseWorkspaceUseCommand(
   commandName: string | undefined,
   argumentValue: unknown,
 ): { status: "ignored" } | { status: "ok"; selector: string } | { status: "invalid" } {
-  if (commandName !== workspaceCommandName) {
+  if (!isWorkspaceCommandName(commandName)) {
     return { status: "ignored" };
   }
   return workspaceSelectorFromArguments(argumentValue);
+}
+
+function isWorkspaceCommandName(commandName: string | undefined): boolean {
+  const normalized = commandName?.trim();
+  return normalized === workspaceCommandName || normalized === claudeMarketplaceWorkspaceCommandName;
 }
 
 function workspaceSelectorFromArguments(argumentValue: unknown): { status: "ok"; selector: string } | { status: "invalid" } {

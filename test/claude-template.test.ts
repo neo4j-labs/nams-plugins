@@ -76,6 +76,7 @@ test("Claude plugin template packages slash workspace command hook", async () =>
 
   assert.match(command, /argument-hint: use <workspace-id-or-name>/);
   assert.match(command, /disable-model-invocation: true/);
+  assert.match(command, /\/nams-hooks:nams:workspace use <workspace-id-or-name>/);
   assert.match(command, /\/nams:workspace use <workspace-id-or-name>/);
   assert.doesNotMatch(command, /nams-hooks:nams-hooks/);
   assert.doesNotMatch(command, /\/nams-hooks workspaces use/);
@@ -91,7 +92,7 @@ test("Claude plugin template packages slash workspace command hook", async () =>
     "--event",
     "UserPromptExpansion",
   ]);
-  assert.equal(pluginMatcherFor(template, "UserPromptExpansion"), "^nams:workspace$");
+  assert.equal(pluginMatcherFor(template, "UserPromptExpansion"), "^(?:nams-hooks:)?nams:workspace$");
   assert.doesNotMatch(JSON.stringify(template), /workspace-use\.mjs/);
 });
 

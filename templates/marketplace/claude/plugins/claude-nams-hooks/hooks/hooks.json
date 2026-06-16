@@ -37,7 +37,7 @@
     ],
     "UserPromptExpansion": [
       {
-        "matcher": "^nams:workspace$",
+        "matcher": "^(?:nams-hooks:)?nams:workspace$",
         "hooks": [
           {
             "type": "command",

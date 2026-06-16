@@ -206,7 +206,10 @@ only runtime code. Projection manifests and checks must preserve it explicitly:
 - Claude marketplace output includes
   `plugins/claude-nams-hooks/commands/nams/workspace.md` and a
   `UserPromptExpansion` hook that calls the bundled CLI through
-  `${CLAUDE_PLUGIN_ROOT}/bin/cli.js`.
+  `${CLAUDE_PLUGIN_ROOT}/bin/cli.js`. Because Claude marketplace commands are
+  plugin-namespaced, the marketplace hook must match both `nams:workspace` and
+  `nams-hooks:nams:workspace`, and the command markdown must document the
+  namespaced `/nams-hooks:nams:workspace use <workspace-id-or-name>` form.
 - Gemini marketplace and local extension outputs include
   `commands/nams/workspace.toml` beside the extension hooks. The command must
   route to `workspaces run gemini --event CustomCommand` using the runtime path

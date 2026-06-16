@@ -296,7 +296,7 @@ Claude Code users can add the generated release tree as a plugin marketplace and
 - an optional non-sensitive `NAMS_WORKSPACE_ID`;
 - a non-sensitive `NAMS_BASE_URL` with the standard service URL as its configuration default.
 
-Plugin hooks call the bundled compiled runtime through `${CLAUDE_PLUGIN_ROOT}/bin/cli.js`, so Claude plugin installs do not require a global `nams-hooks` executable. Local project settings in `dist-local/claude/` call an installed `nams-hooks` executable:
+Plugin hooks call the bundled compiled runtime through `${CLAUDE_PLUGIN_ROOT}/bin/cli.js`, so Claude plugin installs do not require a global `nams-hooks` executable. Claude marketplace slash commands are namespaced by the plugin, so the workspace command is exposed as `/nams-hooks:nams:workspace use <workspace-id-or-name>` while local project installs keep `/nams:workspace use <workspace-id-or-name>`. Local project settings in `dist-local/claude/` call an installed `nams-hooks` executable:
 
 ```bash
 claude plugin marketplace add neo4j-labs/nams-plugins@latest

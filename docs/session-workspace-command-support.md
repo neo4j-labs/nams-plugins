@@ -7,11 +7,17 @@ landed.
 
 This note tracks the implemented session-scoped workspace configure command and
 which currently supported `nams-hooks` platforms expose a user-invoked command
-surface that can wrap it. Claude Code and Gemini expose:
+surface that can wrap it. Claude Code project templates and Gemini expose:
 
 ```text
-# Claude Code and Gemini CLI
+# Claude Code project template and Gemini CLI
 /nams:workspace use <workspace-id-or-name>
+```
+
+Claude marketplace plugin installs expose the plugin-namespaced command:
+
+```text
+/nams-hooks:nams:workspace use <workspace-id-or-name>
 ```
 
 Codex exposes the same namespace as an explicit skill:
@@ -83,7 +89,7 @@ Session scope includes filesystem preflights before listing workspaces:
 
 | Platform | Shared session command implemented? | User-invoked command can run shell? | Current-session id available? | Fit | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Claude Code | Yes | Yes | Yes | Best | Template and plugin custom commands are slash-invocable as `/nams:workspace`. `UserPromptExpansion` hooks can intercept the command before Claude sees it and receive `session_id` plus raw `command_args`. |
+| Claude Code | Yes | Yes | Yes | Best | Project-template commands are slash-invocable as `/nams:workspace`; marketplace plugin commands are slash-invocable as `/nams-hooks:nams:workspace`. `UserPromptExpansion` hooks can intercept the command before Claude sees it and receive `session_id` plus raw `command_args`. |
 | OpenCode | Yes | Yes | Yes | Shell fallback | OpenCode markdown command files are prompt templates. The plugin shim can observe `command.execute.before`, but OpenCode ignores hook return values and then unconditionally prompts the model, so nams-hooks must not package `.opencode/commands/nams:workspace.md` until OpenCode exposes a non-prompt command surface. |
 | Gemini CLI | Yes | Yes | Yes, through bridge | Implemented with bridge | The extension custom command `/nams:workspace use <workspace-id-or-name>` resolves the recent active Gemini session through the active-session bridge recorded at session start and refreshed by ambiguity hooks; the explicit configure command remains the shell fallback. |
 | Codex | Yes | Skill-mediated | Bridge when available | Explicit skill | The explicit skill `$nams:workspace use <workspace-id-or-name>` resolves through the active-session bridge where available; the explicit configure command remains the shell fallback. |

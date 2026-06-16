@@ -74,12 +74,18 @@ Workspace selection has three lifetimes:
 For multi-workspace inactive memory notices, the recommended quick fix is a
 session selection.
 
-When the platform command is installed, Claude Code and Gemini expose the direct
-slash command:
+When the platform command is installed, Claude Code project templates and
+Gemini expose the direct slash command:
 
 ```text
-# Claude Code and Gemini CLI
+# Claude Code project template and Gemini CLI
 /nams:workspace use <workspace-id-or-name>
+```
+
+Claude marketplace plugin installs expose the plugin-namespaced command:
+
+```text
+/nams-hooks:nams:workspace use <workspace-id-or-name>
 ```
 
 Codex exposes the same namespace as an explicit skill:
@@ -164,11 +170,16 @@ plugin-provided values.
 Use `--scope project`, `--scope local`, or `--scope user` on Claude plugin
 commands when you need a specific installation scope.
 
-The workspace selection command is direct in both the Claude project template
-and Claude plugin:
+The workspace selection command is direct in the Claude project template:
 
 ```text
 /nams:workspace use <workspace-id-or-name>
+```
+
+Claude marketplace plugin commands are namespaced by Claude Code:
+
+```text
+/nams-hooks:nams:workspace use <workspace-id-or-name>
 ```
 
 It wraps the explicit Claude session command:

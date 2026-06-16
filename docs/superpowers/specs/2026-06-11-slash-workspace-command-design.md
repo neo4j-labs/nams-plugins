@@ -7,11 +7,15 @@ Repository: nams-hooks
 ## Summary
 
 Add platform command UX for selecting the NAMS workspace used by the current
-agent session. Claude Code and Gemini CLI expose the command as:
+agent session. Claude Code project templates and Gemini CLI expose the command
+as:
 
 ```text
 /nams:workspace use <workspace-id-or-name>
 ```
+
+Claude marketplace plugin installs expose the namespaced command
+`/nams-hooks:nams:workspace use <workspace-id-or-name>`.
 
 Codex exposes the same workspace command namespace through an explicit skill
 invocation:
@@ -67,7 +71,9 @@ memory persistence.
 ## Goals
 
 - Provide one memorable workspace command namespace, `nams:workspace`.
-- Use `/nams:workspace use <workspace-id-or-name>` on slash-capable platforms.
+- Use `/nams:workspace use <workspace-id-or-name>` on slash-capable platforms,
+  with `/nams-hooks:nams:workspace use <workspace-id-or-name>` for Claude
+  marketplace plugin installs.
 - Use `$nams:workspace use <workspace-id-or-name>` for Codex skill invocation.
 - Keep workspace validation, ambiguity handling, and state writes in the
   existing shared configure runtime.
@@ -267,6 +273,13 @@ the same command surface for this purpose. The user invokes:
 /nams:workspace use Engineering
 ```
 
+When installed through the Claude marketplace plugin, Claude Code namespaces the
+command with the plugin name. The plugin command is therefore:
+
+```text
+/nams-hooks:nams:workspace use Engineering
+```
+
 The command should be user-invoked only. If the Claude command format supports a
 model-invocation disable flag, set it so the model does not run this command
 autonomously.
@@ -284,8 +297,10 @@ node ${CLAUDE_PLUGIN_ROOT}/bin/cli.js workspaces run claude --event UserPromptEx
 
 The workspace runner reads the `UserPromptExpansion` JSON from stdin, obtains
 the current session ID from the Claude payload, normalizes `use <selector>` from
-the command arguments, and delegates to the existing session-scoped configure
-runtime. The runner should preserve all text after `use` as the selector.
+the command arguments, accepts both `nams:workspace` and
+`nams-hooks:nams:workspace` command names, and delegates to the existing
+session-scoped configure runtime. The runner should preserve all text after
+`use` as the selector.
 
 If no session ID is available, the runner blocks the slash expansion without
 writing state and prints a short message that includes the equivalent manual
@@ -564,7 +579,11 @@ Claude tests should assert:
 - the command expects `use <selector>`;
 - it has no dynamic shell command containing raw `$ARGUMENTS`;
 - `UserPromptExpansion` hooks invoke `nams-hooks workspaces run claude --event
-  UserPromptExpansion` or the bundled `bin/cli.js` equivalent; and
+  UserPromptExpansion` or the bundled `bin/cli.js` equivalent;
+- marketplace `UserPromptExpansion` hooks match both `nams:workspace` and
+  `nams-hooks:nams:workspace`;
+- the workspace runner accepts a `command_name` of
+  `nams-hooks:nams:workspace`; and
 - no separate `workspace-use.mjs` helper is packaged.
 
 OpenCode tests should simulate the plugin command event and assert:

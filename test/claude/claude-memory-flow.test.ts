@@ -228,6 +228,10 @@ test("Claude BeforeAgent skips memory when multiple listed workspaces require se
     );
     assert.match(
       String(result.stdout.systemMessage),
+      /\/nams-hooks:nams:workspace use <workspace-id-or-name>/,
+    );
+    assert.match(
+      String(result.stdout.systemMessage),
       /nams-hooks workspaces configure claude --scope session --session-id session-1 --workspace <workspace-id-or-name>/,
     );
     assert.equal(Object.hasOwn(result.stdout, "additionalContext"), false);
@@ -238,6 +242,10 @@ test("Claude BeforeAgent skips memory when multiple listed workspaces require se
     assert.match(
       hookSpecificOutput(result).additionalContext,
       /\/nams:workspace use <workspace-id-or-name>/,
+    );
+    assert.match(
+      hookSpecificOutput(result).additionalContext,
+      /\/nams-hooks:nams:workspace use <workspace-id-or-name>/,
     );
     assert.match(
       hookSpecificOutput(result).additionalContext,

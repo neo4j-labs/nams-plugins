@@ -360,8 +360,8 @@ function assertClaudeWorkspaceCommand(hooks) {
   const args = handler?.args ?? [];
   const expectedArgs = ["${CLAUDE_PLUGIN_ROOT}/bin/cli.js", "workspaces", "run", "claude", "--event", "UserPromptExpansion"];
 
-  if (group?.matcher !== "^nams:workspace$") {
-    throw new Error("Claude marketplace workspace hook must match nams:workspace.");
+  if (group?.matcher !== "^(?:nams-hooks:)?nams:workspace$") {
+    throw new Error("Claude marketplace workspace hook must match bare and plugin-namespaced nams:workspace.");
   }
   if (handler?.type !== "command" || handler.command !== "node" || JSON.stringify(args) !== JSON.stringify(expectedArgs)) {
     throw new Error("Claude marketplace workspace hook must call the bundled CLI workspace runner.");
@@ -375,6 +375,9 @@ async function verifyClaudeWorkspaceMarkdown(filePath) {
   }
   if (!/\/nams:workspace use <workspace-id-or-name>/.test(source)) {
     throw new Error("Claude workspace command markdown must document /nams:workspace use.");
+  }
+  if (!/\/nams-hooks:nams:workspace use <workspace-id-or-name>/.test(source)) {
+    throw new Error("Claude marketplace workspace command markdown must document /nams-hooks:nams:workspace use.");
   }
   if (/workspaces configure|workspace-use\.mjs|\$ARGUMENTS/.test(source)) {
     throw new Error("Claude workspace command markdown must not call configuration helpers directly.");
