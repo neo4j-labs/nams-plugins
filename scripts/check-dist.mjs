@@ -326,6 +326,9 @@ async function verifyGeminiMarketplaceWorkspaceCommand(filePath) {
   if (!/NAMS workspace command result/.test(source) || !/Do not run additional shell commands/.test(source)) {
     throw new Error("Gemini marketplace workspace command must emit a model-facing command result prompt.");
   }
+  if (!/echo '\{ "command_name": "nams:workspace", "command_args": "\{\{args\}\}" \}'/.test(source) || /node -e/.test(source)) {
+    throw new Error("Gemini marketplace workspace command must keep the readable echo payload.");
+  }
   if (/workspaces configure/.test(source)) {
     throw new Error("Gemini marketplace workspace command must not call workspaces configure directly.");
   }
@@ -338,6 +341,9 @@ async function verifyLocalGeminiWorkspaceCommand(filePath) {
   }
   if (!/NAMS workspace command result/.test(source) || !/Do not run additional shell commands/.test(source)) {
     throw new Error("Gemini local workspace command must emit a model-facing command result prompt.");
+  }
+  if (!/echo '\{ "command_name": "nams:workspace", "command_args": "\{\{args\}\}" \}'/.test(source) || /node -e/.test(source)) {
+    throw new Error("Gemini local workspace command must keep the readable echo payload.");
   }
   if (/\$\{extensionPath\}|bin\/cli\.js|workspaces configure/.test(source)) {
     throw new Error("Gemini local workspace command must not use bundled runtime paths or workspaces configure.");

@@ -263,7 +263,7 @@ In `templates/marketplace/gemini/commands/nams/workspace.toml`, replace the fina
 ```toml
 prompt = """
 NAMS workspace command result:
-!{node -e 'const raw = process.argv[1] ?? ""; const selector = raw.replace(/^use(?:\\s+|$)/i, "").trim(); process.stdout.write(JSON.stringify({ command_name: "nams:workspace", command_args: `use ${selector}`.trim() }) + "\\n");' {{args}} | node "${extensionPath}/plugins/gemini-nams-hooks/bin/cli.js" workspaces run gemini --event CustomCommand}
+!{echo '{ "command_name": "nams:workspace", "command_args": "{{args}}" }' | node "${extensionPath}/plugins/gemini-nams-hooks/bin/cli.js" workspaces run gemini --event CustomCommand}
 
 Report the command output to the user. Do not run additional shell commands. Reply with this result only.
 """
@@ -339,7 +339,7 @@ description = "Select the NAMS workspace for this Gemini session."
 
 prompt = """
 NAMS workspace command result:
-!{node -e 'const raw = process.argv[1] ?? ""; const selector = raw.replace(/^use(?:\\s+|$)/i, "").trim(); process.stdout.write(JSON.stringify({ command_name: "nams:workspace", command_args: `use ${selector}`.trim() }) + "\\n");' {{args}} | nams-hooks workspaces run gemini --event CustomCommand}
+!{echo '{ "command_name": "nams:workspace", "command_args": "{{args}}" }' | nams-hooks workspaces run gemini --event CustomCommand}
 
 Report the command output to the user. Do not run additional shell commands. Reply with this result only.
 """
