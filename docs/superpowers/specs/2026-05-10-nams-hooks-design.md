@@ -261,14 +261,10 @@ dist-local/
       hooks.json
   gemini/
     .gemini/
-      extensions/
-        gemini-nams-hooks/
-          gemini-extension.json
-          commands/
-            nams/
-              workspace.toml
-          hooks/
-            hooks.json
+      commands/
+        nams/
+          workspace.toml
+      settings.json
   opencode/
     .opencode/
       plugins/
@@ -515,7 +511,7 @@ Claude Code:
 Gemini CLI:
 
 - Use Gemini extension distribution for v1. Marketplace release artifacts place `gemini-extension.json`, `hooks/hooks.json`, and `commands/nams/workspace.toml` at the `dist-marketplace/` extension root, with the bundled runtime under `plugins/gemini-nams-hooks/bin/cli.js`.
-- Keep `dist-local/gemini/.gemini/extensions/gemini-nams-hooks/` as the fallback project-local extension configuration that calls an installed `nams-hooks`.
+- Keep `dist-local/gemini/.gemini/` as a symlinkable project-local configuration that calls an installed `nams-hooks`, with hooks in `.gemini/settings.json` and commands in `.gemini/commands/`.
 - Use `SessionStart`, `BeforeAgent`, `AfterTool`, and `AfterAgent` where available.
 - `BeforeAgent` can inject relevant memory context.
 - `AfterAgent` can persist assistant responses when `prompt_response` or equivalent is present.

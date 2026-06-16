@@ -177,14 +177,10 @@ dist-local/
       hooks.json
   gemini/
     .gemini/
-      extensions/
-        gemini-nams-hooks/
-          gemini-extension.json
-          commands/
-            nams/
-              workspace.toml
-          hooks/
-            hooks.json
+      commands/
+        nams/
+          workspace.toml
+      settings.json
   opencode/
     .opencode/
       plugins/

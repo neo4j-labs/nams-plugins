@@ -1,5 +1,0 @@
-{
-  "name": "nams-hooks",
-  "version": "0.1.0",
-  "description": "Neo4j Agent Memory Service hooks for Gemini CLI using an installed nams-hooks executable."
-}

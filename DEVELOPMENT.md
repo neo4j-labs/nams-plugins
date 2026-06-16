@@ -131,13 +131,14 @@ variables.
 
 ## Test Gemini Project Config Locally
 
-Use this fallback path when you want to test the project-local Gemini extension
-configuration that calls an installed `nams-hooks` executable.
+Use this fallback path when you want to test the project-local Gemini
+configuration that calls an installed `nams-hooks` executable. The generated
+`.gemini` folder is symlinkable from a test project for fast exploration.
 
 ```bash
 npm run dist:npm
 npm install -g ./dist
-cp -R dist-local/gemini/.gemini /path/to/project/.gemini
+ln -sF <repository-root-or-worktree>/dist-local/gemini/.gemini /path/to/project/.gemini
 ```
 
 ## Test Codex Locally

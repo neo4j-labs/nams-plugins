@@ -12,8 +12,10 @@ const execFileAsync = promisify(execFile);
 const marketplaceExtensionPath = path.join(repoRoot, "templates", "marketplace", "gemini", "gemini-extension.json");
 const marketplaceHooksPath = path.join(repoRoot, "templates", "marketplace", "gemini", "hooks", "hooks.json");
 const marketplaceCommandPath = path.join(repoRoot, "templates", "marketplace", "gemini", "commands", "nams", "workspace.toml");
-const localHooksPath = path.join(repoRoot, "templates", "local", "gemini", ".gemini", "extensions", "gemini-nams-hooks", "hooks", "hooks.json");
-const localCommandPath = path.join(repoRoot, "templates", "local", "gemini", ".gemini", "extensions", "gemini-nams-hooks", "commands", "nams", "workspace.toml");
+const localGeminiRootPath = path.join(repoRoot, "templates", "local", "gemini", ".gemini");
+const localSettingsPath = path.join(localGeminiRootPath, "settings.json");
+const localCommandPath = path.join(localGeminiRootPath, "commands", "nams", "workspace.toml");
+const localExtensionPath = path.join(localGeminiRootPath, "extensions");
 
 test("Gemini extension template exposes NAMS environment settings in order", async () => {
   const template = JSON.parse(await readFile(marketplaceExtensionPath, "utf8"));
@@ -49,8 +51,14 @@ test("Gemini hook template routes BeforeAgent through the memory hook only", asy
   );
 });
 
-test("Gemini local hook template routes BeforeAgent through installed nams-hooks", async () => {
-  const template = JSON.parse(await readFile(localHooksPath, "utf8"));
+test("Gemini local template is symlinkable as project .gemini config", async () => {
+  await access(localSettingsPath);
+  await access(localCommandPath);
+  await assertFileMissing(localExtensionPath);
+});
+
+test("Gemini local settings template routes BeforeAgent through installed nams-hooks", async () => {
+  const template = JSON.parse(await readFile(localSettingsPath, "utf8"));
   const groups = template.hooks.BeforeAgent;
 
   assert.equal(groups.length, 1);

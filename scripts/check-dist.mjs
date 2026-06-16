@@ -83,8 +83,8 @@ async function verifyLocalDist() {
   await verifyLocalCommandJson(path.join(localDistDir, "claude", ".claude", "settings.local.json"), "claude");
   await verifyLocalClaudeWorkspaceCommand(path.join(localDistDir, "claude", ".claude", "commands", "nams", "workspace.md"));
   await verifyLocalCommandJson(path.join(localDistDir, "codex", ".codex", "hooks.json"), "codex");
-  await verifyLocalCommandJson(path.join(localDistDir, "gemini", ".gemini", "extensions", "gemini-nams-hooks", "hooks", "hooks.json"), "gemini");
-  await verifyLocalGeminiWorkspaceCommand(path.join(localDistDir, "gemini", ".gemini", "extensions", "gemini-nams-hooks", "commands", "nams", "workspace.toml"));
+  await verifyLocalCommandJson(path.join(localDistDir, "gemini", ".gemini", "settings.json"), "gemini");
+  await verifyLocalGeminiWorkspaceCommand(path.join(localDistDir, "gemini", ".gemini", "commands", "nams", "workspace.toml"));
 
   const opencodeSource = await readFile(path.join(localDistDir, "opencode", ".opencode", "plugins", "nams-hooks.js"), "utf8");
   if (!/"nams-hooks"/.test(opencodeSource) || /new URL\("\.\/bin\/cli\.js"/.test(opencodeSource)) {
@@ -95,6 +95,7 @@ async function verifyLocalDist() {
   assertNoMatchingFiles(files, /(^|\/)bin\/cli\.js$/, "dist-local must not include compiled runtime");
   assertNoMatchingFiles(files, /(^|\/)(\.agents\/plugins\/marketplace\.json|\.claude-plugin\/marketplace\.json)$/, "dist-local must not include marketplace roots");
   assertNoMatchingFiles(files, /(^|\/)plugins\/(claude-nams-hooks|codex-nams-hooks|gemini-nams-hooks|opencode-nams-hooks)(\/|$)/, "dist-local must not include marketplace plugin roots");
+  assertNoMatchingFiles(files, /^gemini\/\.gemini\/extensions(\/|$)/, "dist-local Gemini must be symlinkable project config, not an extension package");
 
   const unresolved = await filesWithPattern(localDistDir, /__PACKAGE_VERSION__|__PACKAGE_LICENSE__|__NAMS_HOOKS_COMMAND__/);
   if (unresolved.length > 0) {

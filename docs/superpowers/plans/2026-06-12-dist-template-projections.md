@@ -182,9 +182,8 @@ git commit -m "test: lock split dist package contract" -m "Co-authored-by: Codex
 - Move: `templates/gemini/hooks/hooks.json` to `templates/marketplace/gemini/hooks/hooks.json`
 - Move: `templates/gemini/commands/nams/workspace.toml` to `templates/marketplace/gemini/commands/nams/workspace.toml`
 - Keep: `templates/opencode/.opencode/plugins/nams-hooks.js` as the shared OpenCode plugin template
-- Create: `templates/local/gemini/.gemini/extensions/gemini-nams-hooks/gemini-extension.json`
-- Create: `templates/local/gemini/.gemini/extensions/gemini-nams-hooks/hooks/hooks.json`
-- Create: `templates/local/gemini/.gemini/extensions/gemini-nams-hooks/commands/nams/workspace.toml`
+- Create: `templates/local/gemini/.gemini/settings.json`
+- Create: `templates/local/gemini/.gemini/commands/nams/workspace.toml`
 - Create: `templates/local/opencode/.opencode/plugins/nams-hooks.js`
 - Create: `templates/marketplace/opencode/plugins/opencode-nams-hooks/nams-hooks.js`
 - Modify: `templates/marketplace/claude/.claude-plugin/marketplace.json`
@@ -267,19 +266,9 @@ prompt = """
 """
 ```
 
-- [ ] **Step 4: Create local Gemini project extension templates**
+- [ ] **Step 4: Create local Gemini project config templates**
 
-Create `templates/local/gemini/.gemini/extensions/gemini-nams-hooks/gemini-extension.json` with this content:
-
-```json
-{
-  "name": "nams-hooks",
-  "version": "0.1.0",
-  "description": "Neo4j Agent Memory Service hooks for Gemini CLI using an installed nams-hooks executable."
-}
-```
-
-Create `templates/local/gemini/.gemini/extensions/gemini-nams-hooks/hooks/hooks.json` with this content:
+Create `templates/local/gemini/.gemini/settings.json` with this content:
 
 ```json
 {
@@ -340,7 +329,7 @@ Create `templates/local/gemini/.gemini/extensions/gemini-nams-hooks/hooks/hooks.
 }
 ```
 
-Create `templates/local/gemini/.gemini/extensions/gemini-nams-hooks/commands/nams/workspace.toml` with this content:
+Create `templates/local/gemini/.gemini/commands/nams/workspace.toml` with this content:
 
 ```toml
 description = "Select the NAMS workspace for this Gemini session."
@@ -441,8 +430,10 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const marketplaceExtensionPath = path.join(repoRoot, "templates", "marketplace", "gemini", "gemini-extension.json");
 const marketplaceHooksPath = path.join(repoRoot, "templates", "marketplace", "gemini", "hooks", "hooks.json");
 const marketplaceCommandPath = path.join(repoRoot, "templates", "marketplace", "gemini", "commands", "nams", "workspace.toml");
-const localHooksPath = path.join(repoRoot, "templates", "local", "gemini", ".gemini", "extensions", "gemini-nams-hooks", "hooks", "hooks.json");
-const localCommandPath = path.join(repoRoot, "templates", "local", "gemini", ".gemini", "extensions", "gemini-nams-hooks", "commands", "nams", "workspace.toml");
+const localGeminiRootPath = path.join(repoRoot, "templates", "local", "gemini", ".gemini");
+const localSettingsPath = path.join(localGeminiRootPath, "settings.json");
+const localCommandPath = path.join(localGeminiRootPath, "commands", "nams", "workspace.toml");
+const localExtensionPath = path.join(localGeminiRootPath, "extensions");
 ```
 
 Update the existing extension settings test to read `marketplaceExtensionPath`.
@@ -456,8 +447,14 @@ command: 'node "${extensionPath}/plugins/gemini-nams-hooks/bin/cli.js" run gemin
 Add this local hook test:
 
 ```ts
-test("Gemini local hook template routes through installed nams-hooks", async () => {
-  const template = JSON.parse(await readFile(localHooksPath, "utf8"));
+test("Gemini local template is symlinkable as project .gemini config", async () => {
+  await access(localSettingsPath);
+  await access(localCommandPath);
+  await assertFileMissing(localExtensionPath);
+});
+
+test("Gemini local settings template routes through installed nams-hooks", async () => {
+  const template = JSON.parse(await readFile(localSettingsPath, "utf8"));
   const beforeAgent = template.hooks.BeforeAgent[0].hooks[0];
 
   assert.equal(beforeAgent.command, "nams-hooks run gemini --event BeforeAgent");
@@ -633,8 +630,8 @@ async function verifyLocalDist() {
   await verifyLocalCommandJson(path.join(localDistDir, "claude", ".claude", "settings.local.json"), "claude");
   await verifyLocalClaudeWorkspaceCommand(path.join(localDistDir, "claude", ".claude", "commands", "nams", "workspace.md"));
   await verifyLocalCommandJson(path.join(localDistDir, "codex", ".codex", "hooks.json"), "codex");
-  await verifyLocalCommandJson(path.join(localDistDir, "gemini", ".gemini", "extensions", "gemini-nams-hooks", "hooks", "hooks.json"), "gemini");
-  await verifyLocalGeminiWorkspaceCommand(path.join(localDistDir, "gemini", ".gemini", "extensions", "gemini-nams-hooks", "commands", "nams", "workspace.toml"));
+  await verifyLocalCommandJson(path.join(localDistDir, "gemini", ".gemini", "settings.json"), "gemini");
+  await verifyLocalGeminiWorkspaceCommand(path.join(localDistDir, "gemini", ".gemini", "commands", "nams", "workspace.toml"));
   const opencodeSource = await readFile(path.join(localDistDir, "opencode", ".opencode", "plugins", "nams-hooks.js"), "utf8");
   if (!/\"nams-hooks\"/.test(opencodeSource) || /new URL\("\.\/bin\/cli\.js"/.test(opencodeSource)) {
     throw new Error("dist-local OpenCode plugin must default to the installed nams-hooks executable.");
@@ -1154,7 +1151,8 @@ test -x dist-marketplace/plugins/opencode-nams-hooks/bin/cli.js
 npm run dist:local
 test -f dist-local/claude/.claude/commands/nams/workspace.md
 test -f dist-local/codex/.codex/hooks.json
-test -f dist-local/gemini/.gemini/extensions/gemini-nams-hooks/commands/nams/workspace.toml
+test -f dist-local/gemini/.gemini/settings.json
+test -f dist-local/gemini/.gemini/commands/nams/workspace.toml
 ```
 
 Expected: all commands exit `0`.
@@ -1367,7 +1365,7 @@ cp -R dist-local/claude/.claude /path/to/project/.claude
 ```bash
 npm run dist:npm
 npm install -g ./dist
-cp -R dist-local/gemini/.gemini /path/to/project/.gemini
+ln -sF <repository-root-or-worktree>/dist-local/gemini/.gemini /path/to/project/.gemini
 ```
 
 ```bash
@@ -1531,7 +1529,8 @@ dist-marketplace/hooks/hooks.json
 dist-local/claude/.claude/commands/nams/workspace.md
 dist-local/claude/.claude/settings.local.json
 dist-local/codex/.codex/hooks.json
-dist-local/gemini/.gemini/extensions/gemini-nams-hooks/commands/nams/workspace.toml
+dist-local/gemini/.gemini/commands/nams/workspace.toml
+dist-local/gemini/.gemini/settings.json
 ```
 
 - [ ] **Step 3: Inspect marketplace plugin runtime bundles**
@@ -1559,7 +1558,7 @@ dist-marketplace/plugins/opencode-nams-hooks/nams-hooks.js
 Run:
 
 ```bash
-node -e 'const fs=require("fs"); const files=["dist-marketplace/hooks/hooks.json","dist-marketplace/commands/nams/workspace.toml","dist-marketplace/plugins/claude-nams-hooks/hooks/hooks.json","dist-marketplace/plugins/codex-nams-hooks/skills/workspace/SKILL.md","dist-local/claude/.claude/settings.local.json","dist-local/gemini/.gemini/extensions/gemini-nams-hooks/commands/nams/workspace.toml","dist-local/codex/.codex/hooks.json"]; for (const file of files) console.log(file + "\\n" + fs.readFileSync(file, "utf8"));'
+node -e 'const fs=require("fs"); const files=["dist-marketplace/hooks/hooks.json","dist-marketplace/commands/nams/workspace.toml","dist-marketplace/plugins/claude-nams-hooks/hooks/hooks.json","dist-marketplace/plugins/codex-nams-hooks/skills/workspace/SKILL.md","dist-local/claude/.claude/settings.local.json","dist-local/gemini/.gemini/settings.json","dist-local/gemini/.gemini/commands/nams/workspace.toml","dist-local/codex/.codex/hooks.json"]; for (const file of files) console.log(file + "\\n" + fs.readFileSync(file, "utf8"));'
 ```
 
 Expected:
@@ -1569,7 +1568,8 @@ Expected:
 - `dist-marketplace/plugins/claude-nams-hooks/hooks/hooks.json` contains `${CLAUDE_PLUGIN_ROOT}/bin/cli.js`.
 - `dist-marketplace/plugins/codex-nams-hooks/skills/workspace/SKILL.md` contains `node bin/cli.js workspaces run codex --event CustomCommand`.
 - `dist-local/claude/.claude/settings.local.json` contains `nams-hooks workspaces run claude --event UserPromptExpansion`.
-- `dist-local/gemini/.gemini/extensions/gemini-nams-hooks/commands/nams/workspace.toml` contains `nams-hooks workspaces run gemini --event CustomCommand`.
+- `dist-local/gemini/.gemini/settings.json` contains `nams-hooks run gemini --event`.
+- `dist-local/gemini/.gemini/commands/nams/workspace.toml` contains `nams-hooks workspaces run gemini --event CustomCommand`.
 - `dist-local/codex/.codex/hooks.json` contains `nams-hooks run codex`.
 
 - [ ] **Step 5: Run final package check**
