@@ -83,6 +83,10 @@ async function verifyLocalDist() {
   await verifyLocalCommandJson(path.join(localDistDir, "claude", ".claude", "settings.local.json"), "claude");
   await verifyLocalClaudeWorkspaceCommand(path.join(localDistDir, "claude", ".claude", "commands", "nams", "workspace.md"));
   await verifyLocalCommandJson(path.join(localDistDir, "codex", ".codex", "hooks.json"), "codex");
+  await verifyLocalCodexWorkspaceSkill(
+    path.join(localDistDir, "codex", ".codex", "skills", "workspace", "SKILL.md"),
+    path.join(localDistDir, "codex", ".codex", "skills", "workspace", "agents", "openai.yaml"),
+  );
   await verifyLocalCommandJson(path.join(localDistDir, "gemini", ".gemini", "settings.json"), "gemini");
   await verifyLocalGeminiWorkspaceCommand(path.join(localDistDir, "gemini", ".gemini", "commands", "nams", "workspace.toml"));
 
@@ -402,6 +406,27 @@ async function verifyCodexWorkspaceSkill(skillPath, policyPath) {
   }
   if (!/allow_implicit_invocation: false/.test(policy)) {
     throw new Error("Codex workspace skill policy must disable implicit invocation.");
+  }
+}
+
+async function verifyLocalCodexWorkspaceSkill(skillPath, policyPath) {
+  const skill = await readFile(skillPath, "utf8");
+  const policy = await readFile(policyPath, "utf8");
+
+  if (!/name: nams:workspace/.test(skill) || !/workspaces run codex --event CustomCommand/.test(skill)) {
+    throw new Error("Codex local workspace skill must expose nams:workspace through the CustomCommand runner.");
+  }
+  if (!/nams-hooks workspaces run codex --event CustomCommand/.test(skill)) {
+    throw new Error("Codex local workspace skill must use the installed nams-hooks executable.");
+  }
+  if (/node bin\/cli\.js|\$\{PLUGIN_ROOT\}|plugin root/i.test(skill)) {
+    throw new Error("Codex local workspace skill must not reference bundled plugin runtime paths.");
+  }
+  if (/workspaces configure/.test(skill)) {
+    throw new Error("Codex local workspace skill must not call workspaces configure directly.");
+  }
+  if (!/allow_implicit_invocation: false/.test(policy)) {
+    throw new Error("Codex local workspace skill policy must disable implicit invocation.");
   }
 }
 

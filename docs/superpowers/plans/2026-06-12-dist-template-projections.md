@@ -1157,6 +1157,7 @@ test -x dist-marketplace/plugins/opencode-nams-hooks/bin/cli.js
 npm run dist:local
 test -f dist-local/claude/.claude/commands/nams/workspace.md
 test -f dist-local/codex/.codex/hooks.json
+test -f dist-local/codex/.codex/skills/workspace/SKILL.md
 test -f dist-local/gemini/.gemini/settings.json
 test -f dist-local/gemini/.gemini/commands/nams/workspace.toml
 ```
@@ -1564,7 +1565,7 @@ dist-marketplace/plugins/opencode-nams-hooks/nams-hooks.js
 Run:
 
 ```bash
-node -e 'const fs=require("fs"); const files=["dist-marketplace/hooks/hooks.json","dist-marketplace/commands/nams/workspace.toml","dist-marketplace/plugins/claude-nams-hooks/hooks/hooks.json","dist-marketplace/plugins/codex-nams-hooks/skills/workspace/SKILL.md","dist-local/claude/.claude/settings.local.json","dist-local/gemini/.gemini/settings.json","dist-local/gemini/.gemini/commands/nams/workspace.toml","dist-local/codex/.codex/hooks.json"]; for (const file of files) console.log(file + "\\n" + fs.readFileSync(file, "utf8"));'
+node -e 'const fs=require("fs"); const files=["dist-marketplace/hooks/hooks.json","dist-marketplace/commands/nams/workspace.toml","dist-marketplace/plugins/claude-nams-hooks/hooks/hooks.json","dist-marketplace/plugins/codex-nams-hooks/skills/workspace/SKILL.md","dist-local/claude/.claude/settings.local.json","dist-local/gemini/.gemini/settings.json","dist-local/gemini/.gemini/commands/nams/workspace.toml","dist-local/codex/.codex/hooks.json","dist-local/codex/.codex/skills/workspace/SKILL.md"]; for (const file of files) console.log(file + "\\n" + fs.readFileSync(file, "utf8"));'
 ```
 
 Expected:
@@ -1577,6 +1578,7 @@ Expected:
 - `dist-local/gemini/.gemini/settings.json` contains `nams-hooks run gemini --event`.
 - `dist-local/gemini/.gemini/commands/nams/workspace.toml` contains `nams-hooks workspaces run gemini --event CustomCommand`.
 - `dist-local/codex/.codex/hooks.json` contains `nams-hooks run codex`.
+- `dist-local/codex/.codex/skills/workspace/SKILL.md` contains `nams-hooks workspaces run codex --event CustomCommand`.
 
 - [ ] **Step 5: Run final package check**
 

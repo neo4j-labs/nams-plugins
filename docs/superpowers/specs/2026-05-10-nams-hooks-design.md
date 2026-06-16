@@ -303,7 +303,7 @@ claude plugin marketplace add neo4j-labs/nams-plugins@latest
 claude plugin install nams-hooks@nams-plugins
 ```
 
-Codex users can add the generated release tree as a repo marketplace and install the available `nams-hooks` plugin. The Codex marketplace lives at `dist-marketplace/.agents/plugins/marketplace.json` and points to `./plugins/codex-nams-hooks`. The plugin bundles its own compiled `bin/cli.js`, standard `hooks/hooks.json`, and workspace skill under `skills/workspace/`, with hook commands using `${PLUGIN_ROOT}/bin/cli.js`, so Codex marketplace installs do not require a global `nams-hooks` executable. Codex marketplace policy uses `authentication: "ON_USE"` as marketplace auth timing metadata, but plugin installs do not define NAMS credential values or prompts through plugin metadata; they use the existing `.nams/config.json` and `NAMS_*` environment configuration model. Local project hooks in `dist-local/codex/` call an installed `nams-hooks` executable:
+Codex users can add the generated release tree as a repo marketplace and install the available `nams-hooks` plugin. The Codex marketplace lives at `dist-marketplace/.agents/plugins/marketplace.json` and points to `./plugins/codex-nams-hooks`. The plugin bundles its own compiled `bin/cli.js`, standard `hooks/hooks.json`, and workspace skill under `skills/workspace/`, with hook commands using `${PLUGIN_ROOT}/bin/cli.js`, so Codex marketplace installs do not require a global `nams-hooks` executable. Codex marketplace policy uses `authentication: "ON_USE"` as marketplace auth timing metadata, but plugin installs do not define NAMS credential values or prompts through plugin metadata; they use the existing `.nams/config.json` and `NAMS_*` environment configuration model. Local project hooks and skills in `dist-local/codex/` call an installed `nams-hooks` executable:
 
 ```bash
 codex plugin marketplace add neo4j-labs/nams-plugins@latest
@@ -519,7 +519,7 @@ Gemini CLI:
 Codex:
 
 - Use generated Codex repo marketplace distribution by default for releases. The marketplace root is `dist-marketplace/.agents/plugins/marketplace.json`, the plugin root is `dist-marketplace/plugins/codex-nams-hooks/`, and plugin hooks reference `${PLUGIN_ROOT}` rather than a global executable.
-- Use `dist-local/codex/.codex/hooks.json` for project-level fallback installs that call an installed `nams-hooks`.
+- Use `dist-local/codex/.codex/hooks.json` and `dist-local/codex/.codex/skills/workspace/` for project-level fallback installs that call an installed `nams-hooks`.
 - The repository template must use Codex's command-hook group shape for `SessionStart`:
   `{ "matcher": "startup|resume", "hooks": [{ "type": "command", "command": "nams-hooks run codex --event SessionStart", "statusMessage": "Loading session notes" }] }`.
   Do not use the stale short-form object that places `command` directly under `SessionStart`.

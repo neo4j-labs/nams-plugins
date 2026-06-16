@@ -175,6 +175,11 @@ dist-local/
   codex/
     .codex/
       hooks.json
+      skills/
+        workspace/
+          SKILL.md
+          agents/
+            openai.yaml
   gemini/
     .gemini/
       commands/
@@ -210,8 +215,9 @@ only runtime code. Projection manifests and checks must preserve it explicitly:
   matching root-level `bin/cli.js`; otherwise the projection must render the
   command and hook paths to the explicit Gemini runtime folder.
 - Codex marketplace output includes the `nams:workspace` skill and its policy
-  file under `plugins/codex-nams-hooks/skills/workspace/`. Codex local output
-  remains hook-only unless a local Codex skill template is added.
+  file under `plugins/codex-nams-hooks/skills/workspace/`, using the bundled
+  plugin CLI. Codex local output includes the same skill surface under
+  `.codex/skills/workspace/`, using the installed `nams-hooks` executable.
 - OpenCode uses the shared `.opencode/plugins/nams-hooks.js` template. Local
   output keeps the default installed `nams-hooks` command, while marketplace
   output must set or render an equivalent bundled-runtime command.
@@ -343,11 +349,12 @@ Existing templates move into the new layout instead of being duplicated:
 - `templates/claude/plugins/nams-hooks/commands/nams/workspace.md` moves with
   the marketplace Claude plugin template and is projected under
   `plugins/claude-nams-hooks/commands/nams/workspace.md`.
-- `templates/codex/hooks.json` becomes a local Codex template and is projected
-  into a project-shaped local output such as `dist-local/codex/.codex/hooks.json`.
-- `templates/codex/plugins/codex-nams-hooks/skills/workspace/` moves with the
-  marketplace Codex plugin template and remains part of the marketplace
-  projection.
+- `templates/local/codex/.codex/hooks.json` is projected into a project-shaped
+  local output such as `dist-local/codex/.codex/hooks.json`.
+- `templates/local/codex/.codex/skills/workspace/` is projected into the local
+  Codex skill surface at `dist-local/codex/.codex/skills/workspace/`.
+- `templates/marketplace/codex/plugins/codex-nams-hooks/skills/workspace/`
+  remains part of the marketplace Codex plugin projection.
 - `templates/opencode/.opencode/plugins/nams-hooks.js` becomes a shared
   OpenCode plugin template. Local projection keeps the `.opencode` project
   shape, and marketplace projection rewrites or wraps the command mode for the
