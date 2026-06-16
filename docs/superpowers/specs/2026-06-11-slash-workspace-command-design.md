@@ -370,11 +370,12 @@ the shared configure runtime.
 The Gemini memory hook records the active-session marker at `SessionStart` and
 refreshes it when the workspace-selection ambiguity path is reached. The Gemini
 custom command shell output is injected into the next model prompt, so the
-template converts hook JSON into a concise `NAMS workspace command result:`
-prompt and the memory hook ignores that prompt as command plumbing. If the user
-runs the command after the 60 second freshness window or while multiple fresh
-sessions are ambiguous, the command fails without writing state and prints the
-explicit manual configure command with `<session-id>`.
+template starts with a concise `NAMS workspace command result:` marker, asks
+Gemini to report the command output only, and the memory hook ignores that
+prompt as command plumbing. If the user runs the command after the 60 second
+freshness window or while multiple fresh sessions are ambiguous, the command
+fails without writing state and prints the explicit manual configure command
+with `<session-id>`.
 
 ### Codex
 

@@ -86,6 +86,7 @@ test("Gemini extension template packages nams workspace custom command", async (
   assert.doesNotMatch(command.prompt, /process\.stdin/);
   assert.match(command.prompt, /process\.argv\[1\]/);
   assert.match(command.prompt, /node -e '[^']+' \{\{args\}\} \| node/);
+  assert.match(command.prompt, /^NAMS workspace command result:/);
   assert.doesNotMatch(command.prompt, /workspaces configure/);
 });
 
@@ -198,16 +199,15 @@ test("Gemini local workspace custom command emits model-facing result instructio
     await writeFile(stubCliPath, stubCliSource(payloadPath), "utf8");
     await chmod(stubCliPath, 0o755);
 
-    const shellCommand = shellCommandForGeminiPrompt(command.prompt, stubCliPath, "Default");
-    const { stdout } = await execFileAsync("/bin/sh", ["-c", shellCommand], {
+    const renderedPrompt = await renderGeminiPromptWithShellOutput(command.prompt, stubCliPath, "Default", {
       cwd: tempDir,
       env: { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}` },
     });
 
-    assert.match(stdout, /NAMS workspace command result:/);
-    assert.match(stdout, /NAMS workspace configured for gemini session session-1: workspace-1/);
-    assert.match(stdout, /Do not run additional shell commands/);
-    assert.doesNotMatch(stdout, /"continue"|"suppressOutput"|"exitCode"/);
+    assert.match(renderedPrompt, /^NAMS workspace command result:/);
+    assert.match(renderedPrompt, /NAMS workspace configured for gemini session session-1: workspace-1/);
+    assert.match(renderedPrompt, /Report the command output to the user/);
+    assert.match(renderedPrompt, /Do not run additional shell commands/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -222,15 +222,34 @@ async function renderGeminiWorkspaceCommandArgs(command: string, args: string[])
 }
 
 function shellCommandForGeminiPrompt(prompt: string, stubCliPath: string, args: string) {
-  const trimmed = prompt.trim();
-  assert.ok(trimmed.startsWith("!{") && trimmed.endsWith("}"), "Gemini prompt must wrap a shell command in !{...}.");
+  const shellCommand = extractShellInjection(prompt);
 
-  return trimmed
-    .slice(2, -1)
+  return shellCommand
     .trim()
     .replaceAll("${extensionPath}/plugins/gemini-nams-hooks/bin/cli.js", stubCliPath)
     .replaceAll("nams-hooks", stubCliPath)
     .replace("{{args}}", shellQuote(args));
+}
+
+async function renderGeminiPromptWithShellOutput(
+  prompt: string,
+  stubCliPath: string,
+  args: string,
+  options: Parameters<typeof execFileAsync>[2],
+) {
+  const shellInjection = extractShellInjection(prompt);
+  const shellCommand = shellCommandForGeminiPrompt(prompt, stubCliPath, args);
+  const { stdout } = await execFileAsync("/bin/sh", ["-c", shellCommand], options);
+  return prompt.replace(`!{${shellInjection}}`, String(stdout));
+}
+
+function extractShellInjection(prompt: string) {
+  const startIndex = prompt.indexOf("!{");
+  assert.notEqual(startIndex, -1, "Gemini prompt must include a shell injection.");
+  const lineEndIndex = prompt.indexOf("\n", startIndex);
+  const injectionLine = prompt.slice(startIndex, lineEndIndex === -1 ? undefined : lineEndIndex).trim();
+  assert.ok(injectionLine.startsWith("!{") && injectionLine.endsWith("}"), "Gemini shell injection must fit on one line.");
+  return injectionLine.slice(2, -1);
 }
 
 function shellQuote(value: string) {

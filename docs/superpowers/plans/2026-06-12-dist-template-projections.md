@@ -262,7 +262,10 @@ In `templates/marketplace/gemini/commands/nams/workspace.toml`, replace the fina
 
 ```toml
 prompt = """
-!{node -e 'const raw = process.argv[1] ?? ""; const selector = raw.replace(/^use(?:\\s+|$)/i, "").trim(); process.stdout.write(JSON.stringify({ command_name: "nams:workspace", command_args: `use ${selector}`.trim() }) + "\\n");' {{args}} | node "${extensionPath}/plugins/gemini-nams-hooks/bin/cli.js" workspaces run gemini --event CustomCommand | node -e 'const input = require("node:fs").readFileSync(0, "utf8"); let parsed; try { parsed = JSON.parse(input); } catch { parsed = { message: input.trim() }; } const message = String(parsed.message ?? parsed.stdout ?? input).trim(); process.stdout.write(`NAMS workspace command result:\\n${message}\\nDo not run additional shell commands. Reply with this result only.\\n`);'}
+NAMS workspace command result:
+!{node -e 'const raw = process.argv[1] ?? ""; const selector = raw.replace(/^use(?:\\s+|$)/i, "").trim(); process.stdout.write(JSON.stringify({ command_name: "nams:workspace", command_args: `use ${selector}`.trim() }) + "\\n");' {{args}} | node "${extensionPath}/plugins/gemini-nams-hooks/bin/cli.js" workspaces run gemini --event CustomCommand}
+
+Report the command output to the user. Do not run additional shell commands. Reply with this result only.
 """
 ```
 
@@ -335,7 +338,10 @@ Create `templates/local/gemini/.gemini/commands/nams/workspace.toml` with this c
 description = "Select the NAMS workspace for this Gemini session."
 
 prompt = """
-!{node -e 'const raw = process.argv[1] ?? ""; const selector = raw.replace(/^use(?:\\s+|$)/i, "").trim(); process.stdout.write(JSON.stringify({ command_name: "nams:workspace", command_args: `use ${selector}`.trim() }) + "\\n");' {{args}} | nams-hooks workspaces run gemini --event CustomCommand | node -e 'const input = require("node:fs").readFileSync(0, "utf8"); let parsed; try { parsed = JSON.parse(input); } catch { parsed = { message: input.trim() }; } const message = String(parsed.message ?? parsed.stdout ?? input).trim(); process.stdout.write(`NAMS workspace command result:\\n${message}\\nDo not run additional shell commands. Reply with this result only.\\n`);'}
+NAMS workspace command result:
+!{node -e 'const raw = process.argv[1] ?? ""; const selector = raw.replace(/^use(?:\\s+|$)/i, "").trim(); process.stdout.write(JSON.stringify({ command_name: "nams:workspace", command_args: `use ${selector}`.trim() }) + "\\n");' {{args}} | nams-hooks workspaces run gemini --event CustomCommand}
+
+Report the command output to the user. Do not run additional shell commands. Reply with this result only.
 """
 ```
 
