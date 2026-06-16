@@ -30,11 +30,13 @@ nams-hooks workspaces configure <platform> --scope session --session-id <session
 
 This design covers all currently supported platforms: Claude Code, OpenCode,
 Gemini CLI, and Codex. Claude Code can pass the current session ID directly
-through its command context. Gemini and Codex use a shared
-active-session bridge recorded by the workspace-ambiguity hook path, then
-resolved by the user-invoked workspace command within a short freshness window.
-OpenCode remains on the explicit shell fallback until it exposes a non-prompt
-command handler or a documented command-consume mechanism.
+through its command context. Gemini and Codex use a shared active-session
+bridge, then resolve that bridge from the user-invoked workspace command within
+a short freshness window. Gemini seeds the bridge at `SessionStart` and
+refreshes it from the workspace-ambiguity hook path; Codex records the bridge
+from the workspace-ambiguity hook path. OpenCode remains on the explicit shell
+fallback until it exposes a non-prompt command handler or a documented
+command-consume mechanism.
 
 This design follows the research note in
 `docs/session-workspace-command-support.md` and builds on
@@ -153,14 +155,16 @@ Gemini CLI and Codex are the second implementation tier.
 
 Gemini custom commands and Codex skills provide a useful user command surface,
 but they do not both expose a documented, direct current-session substitution
-that can be treated like the Claude and OpenCode command contexts. Both
-platforms do, however, run NAMS hooks at the moment workspace ambiguity is
-detected, and that hook path has access to the platform session ID.
+that can be treated like the Claude and OpenCode command contexts. Gemini hooks
+do expose the current session ID at `SessionStart`, so the Gemini adapter records
+a short-lived active workspace-session marker when the session starts and
+refreshes it when workspace ambiguity is detected. Codex records the same marker
+when workspace ambiguity is detected, because that hook path has access to the
+platform session ID.
 
-When the ambiguity notice is produced, the adapter records a short-lived active
-workspace-session marker. A later `/nams:workspace use ...` or
-`$nams:workspace use ...` invocation resolves that marker, obtains the session
-ID, and delegates to the shared configure runtime.
+A later `/nams:workspace use ...` or `$nams:workspace use ...` invocation
+resolves that marker, obtains the session ID, and delegates to the shared
+configure runtime.
 
 ### Future Tier: Native Codex Command Handler
 
@@ -188,8 +192,11 @@ writes.
 
 ## Active Workspace Session Bridge
 
-The bridge is generic across platforms and stores only the session candidates
-that recently hit workspace-selection ambiguity.
+The bridge is generic across platforms and stores only recent session
+candidates that are safe to configure from a user-invoked workspace command.
+Gemini records candidates at `SessionStart` and refreshes them when
+workspace-selection ambiguity is hit. Codex records candidates when
+workspace-selection ambiguity is hit.
 
 The marker file path is:
 
@@ -218,8 +225,8 @@ style. If the file is missing, unreadable, malformed, or lacks a valid
 `sessions` array, the bridge treats it as empty and rewrites the clean shape on
 the next successful record.
 
-Adapters record a marker only when workspace resolution reaches the
-multi-workspace selection-required path, the same path that emits:
+Codex records a marker when workspace resolution reaches the multi-workspace
+selection-required path, the same path that emits:
 
 ```text
 No memory messages were stored. Multiple NAMS workspaces are available, and no workspaceId is configured.
@@ -360,11 +367,14 @@ extracts the selector from `use <selector>`, resolves the current session ID
 through `~/.nams/state/gemini/active-workspace-sessions.json`, and delegates to
 the shared configure runtime.
 
-The Gemini memory hook records the active-session marker only when it reaches
-the workspace-selection ambiguity path. If the user runs the command after the
-60 second freshness window or while multiple fresh sessions are ambiguous, the
-command fails without writing state and prints the explicit manual configure
-command with `<session-id>`.
+The Gemini memory hook records the active-session marker at `SessionStart` and
+refreshes it when the workspace-selection ambiguity path is reached. The Gemini
+custom command shell output is injected into the next model prompt, so the
+template converts hook JSON into a concise `NAMS workspace command result:`
+prompt and the memory hook ignores that prompt as command plumbing. If the user
+runs the command after the 60 second freshness window or while multiple fresh
+sessions are ambiguous, the command fails without writing state and prints the
+explicit manual configure command with `<session-id>`.
 
 ### Codex
 
@@ -565,11 +575,13 @@ OpenCode tests should simulate the plugin command event and assert:
 
 Gemini tests should assert:
 
-- the ambiguity hook path records an active-session marker;
+- `SessionStart` records an active-session marker;
+- the ambiguity hook path refreshes the active-session marker;
 - marker write failure does not block the ambiguity notice;
 - `/nams:workspace use Engineering` invokes `workspaces run gemini --event
   CustomCommand`;
 - command payload parsing preserves selectors with spaces;
+- command-result prompts are ignored by Gemini memory hooks;
 - resolved active sessions delegate to `configure gemini --scope session`; and
 - missing or ambiguous active sessions fail without writing workspace state.
 

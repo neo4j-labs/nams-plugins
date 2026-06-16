@@ -185,6 +185,34 @@ test("Gemini local workspace custom command passes shell-sensitive args through 
   }
 });
 
+test("Gemini local workspace custom command emits model-facing result instructions", async () => {
+  const source = await readFile(localCommandPath, "utf8");
+  const command = parseGeminiWorkspaceCommandToml(source);
+  const tempDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-local-command-"));
+
+  try {
+    const payloadPath = path.join(tempDir, "payload.json");
+    const binDir = path.join(tempDir, "bin");
+    const stubCliPath = path.join(binDir, "nams-hooks");
+    await mkdir(binDir, { recursive: true });
+    await writeFile(stubCliPath, stubCliSource(payloadPath), "utf8");
+    await chmod(stubCliPath, 0o755);
+
+    const shellCommand = shellCommandForGeminiPrompt(command.prompt, stubCliPath, "Default");
+    const { stdout } = await execFileAsync("/bin/sh", ["-c", shellCommand], {
+      cwd: tempDir,
+      env: { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}` },
+    });
+
+    assert.match(stdout, /NAMS workspace command result:/);
+    assert.match(stdout, /NAMS workspace configured for gemini session session-1: workspace-1/);
+    assert.match(stdout, /Do not run additional shell commands/);
+    assert.doesNotMatch(stdout, /"continue"|"suppressOutput"|"exitCode"/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 async function renderGeminiWorkspaceCommandArgs(command: string, args: string[]) {
   const script = command.match(/node -e '([^']+)'/)?.[1];
   assert.ok(script, "Gemini workspace command must use a node -e JSON bridge.");
@@ -220,6 +248,12 @@ process.stdin.on("end", () => {
     argv: process.argv.slice(2),
     body: JSON.parse(input),
   }));
+  process.stdout.write(JSON.stringify({
+    continue: true,
+    suppressOutput: false,
+    exitCode: 0,
+    message: "NAMS workspace configured for gemini session session-1: workspace-1",
+  }) + "\\n");
 });
 `;
 }

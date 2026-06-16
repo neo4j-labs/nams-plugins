@@ -246,9 +246,9 @@ Gemini exposes workspace selection through the extension custom command:
 /nams:workspace use <workspace-id-or-name>
 ```
 
-The custom command resolves the recent active Gemini session recorded by the
-workspace ambiguity hook. If the active session is missing or ambiguous, use the
-explicit shell command from the hook notice:
+The custom command resolves the recent active Gemini session recorded at Gemini
+session start and refreshed by workspace ambiguity hooks. If the active session
+is missing or ambiguous, use the explicit shell command from the hook notice:
 
 ```bash
 nams-hooks workspaces configure gemini --scope session --session-id <session-id> --workspace <workspace-id-or-name>
