@@ -321,11 +321,15 @@ function assertGeminiMarketplaceCommand(hooks, eventName, namsEvent) {
 
 async function verifyGeminiMarketplaceWorkspaceCommand(filePath) {
   const source = await readFile(filePath, "utf8");
+  const installedCliPath = "$HOME/.gemini/extensions/nams-hooks/plugins/gemini-nams-hooks/bin/cli.js";
   if (!/workspaces run gemini --event CustomCommand/.test(source)) {
     throw new Error("Gemini marketplace workspace command must route through CustomCommand.");
   }
-  if (!/\$\{extensionPath\}\/plugins\/gemini-nams-hooks\/bin\/cli\.js/.test(source)) {
-    throw new Error("Gemini marketplace workspace command must call the bundled Gemini runtime.");
+  if (!source.includes(installedCliPath)) {
+    throw new Error(`Gemini marketplace workspace command must call ${installedCliPath}.`);
+  }
+  if (/\$\{extensionPath\}/.test(source)) {
+    throw new Error("Gemini marketplace workspace command TOML must not rely on extensionPath substitution.");
   }
   if (!/NAMS workspace command result/.test(source) || !/Do not run additional shell commands/.test(source)) {
     throw new Error("Gemini marketplace workspace command must emit a model-facing command result prompt.");

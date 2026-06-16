@@ -258,12 +258,12 @@ In `templates/marketplace/gemini/hooks/hooks.json`, replace each command so it p
 "command": "node \"${extensionPath}/plugins/gemini-nams-hooks/bin/cli.js\" run gemini --event AfterTool"
 ```
 
-In `templates/marketplace/gemini/commands/nams/workspace.toml`, replace the final pipe target so the prompt invokes the bundled Gemini runtime:
+In `templates/marketplace/gemini/commands/nams/workspace.toml`, replace the final pipe target so the prompt invokes the bundled Gemini runtime from the installed extension path. Gemini custom command TOML does not receive `${extensionPath}` substitution:
 
 ```toml
 prompt = """
 NAMS workspace command result:
-!{echo '{ "command_name": "nams:workspace", "command_args": "{{args}}" }' | node "${extensionPath}/plugins/gemini-nams-hooks/bin/cli.js" workspaces run gemini --event CustomCommand}
+!{echo '{ "command_name": "nams:workspace", "command_args": "{{args}}" }' | node "$HOME/.gemini/extensions/nams-hooks/plugins/gemini-nams-hooks/bin/cli.js" workspaces run gemini --event CustomCommand}
 
 Report the command output to the user. Do not run additional shell commands. Reply with this result only.
 """
@@ -474,7 +474,8 @@ test("Gemini marketplace workspace command routes through bundled platform folde
   const source = await readFile(marketplaceCommandPath, "utf8");
 
   assert.match(source, /workspaces run gemini --event CustomCommand/);
-  assert.match(source, /\$\{extensionPath\}\/plugins\/gemini-nams-hooks\/bin\/cli\.js/);
+  assert.match(source, /\$HOME\/\.gemini\/extensions\/nams-hooks\/plugins\/gemini-nams-hooks\/bin\/cli\.js/);
+  assert.doesNotMatch(source, /\$\{extensionPath\}/);
   assert.doesNotMatch(source, /workspaces configure/);
 });
 
@@ -773,8 +774,11 @@ async function verifyGeminiMarketplaceWorkspaceCommand(filePath) {
   if (!/workspaces run gemini --event CustomCommand/.test(source)) {
     throw new Error("Gemini marketplace workspace command must route through CustomCommand.");
   }
-  if (!/\$\{extensionPath\}\/plugins\/gemini-nams-hooks\/bin\/cli\.js/.test(source)) {
-    throw new Error("Gemini marketplace workspace command must call the bundled Gemini runtime.");
+  if (!/\$HOME\/\.gemini\/extensions\/nams-hooks\/plugins\/gemini-nams-hooks\/bin\/cli\.js/.test(source)) {
+    throw new Error("Gemini marketplace workspace command must call the installed extension runtime.");
+  }
+  if (/\$\{extensionPath\}/.test(source)) {
+    throw new Error("Gemini marketplace workspace command TOML must not rely on extensionPath substitution.");
   }
   if (/workspaces configure/.test(source)) {
     throw new Error("Gemini marketplace workspace command must not call workspaces configure directly.");
@@ -1571,7 +1575,7 @@ node -e 'const fs=require("fs"); const files=["dist-marketplace/hooks/hooks.json
 Expected:
 
 - `dist-marketplace/hooks/hooks.json` contains `plugins/gemini-nams-hooks/bin/cli.js`.
-- `dist-marketplace/commands/nams/workspace.toml` contains `plugins/gemini-nams-hooks/bin/cli.js`.
+- `dist-marketplace/commands/nams/workspace.toml` contains `$HOME/.gemini/extensions/nams-hooks/plugins/gemini-nams-hooks/bin/cli.js`.
 - `dist-marketplace/plugins/claude-nams-hooks/hooks/hooks.json` contains `${CLAUDE_PLUGIN_ROOT}/bin/cli.js`.
 - `dist-marketplace/plugins/codex-nams-hooks/skills/workspace/SKILL.md` contains `node bin/cli.js workspaces run codex --event CustomCommand`.
 - `dist-local/claude/.claude/settings.local.json` contains `nams-hooks workspaces run claude --event UserPromptExpansion`.

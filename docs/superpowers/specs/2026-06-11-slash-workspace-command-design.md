@@ -367,7 +367,7 @@ Package a Gemini custom command with the Gemini extension:
 The command invokes the bundled workspace runner:
 
 ```bash
-node "${extensionPath}/bin/cli.js" workspaces run gemini --event CustomCommand
+node "$HOME/.gemini/extensions/nams-hooks/plugins/gemini-nams-hooks/bin/cli.js" workspaces run gemini --event CustomCommand
 ```
 
 The command passes a small JSON payload on stdin containing the matched command

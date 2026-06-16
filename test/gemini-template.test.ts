@@ -12,6 +12,7 @@ const execFileAsync = promisify(execFile);
 const marketplaceExtensionPath = path.join(repoRoot, "templates", "marketplace", "gemini", "gemini-extension.json");
 const marketplaceHooksPath = path.join(repoRoot, "templates", "marketplace", "gemini", "hooks", "hooks.json");
 const marketplaceCommandPath = path.join(repoRoot, "templates", "marketplace", "gemini", "commands", "nams", "workspace.toml");
+const marketplaceGeminiCliPath = "$HOME/.gemini/extensions/nams-hooks/plugins/gemini-nams-hooks/bin/cli.js";
 const localGeminiRootPath = path.join(repoRoot, "templates", "local", "gemini", ".gemini");
 const localSettingsPath = path.join(localGeminiRootPath, "settings.json");
 const localCommandPath = path.join(localGeminiRootPath, "commands", "nams", "workspace.toml");
@@ -96,7 +97,8 @@ test("Gemini marketplace workspace command routes through bundled platform folde
   const source = await readFile(marketplaceCommandPath, "utf8");
 
   assert.match(source, /workspaces run gemini --event CustomCommand/);
-  assert.match(source, /\$\{extensionPath\}\/plugins\/gemini-nams-hooks\/bin\/cli\.js/);
+  assert.ok(source.includes(marketplaceGeminiCliPath), `Gemini marketplace command must call ${marketplaceGeminiCliPath}.`);
+  assert.doesNotMatch(source, /\$\{extensionPath\}/);
   assert.doesNotMatch(source, /workspaces configure/);
 });
 
@@ -121,13 +123,25 @@ test("Gemini marketplace workspace custom command forwards slash args with reada
 
   try {
     const payloadPath = path.join(tempDir, "payload.json");
-    const binDir = path.join(tempDir, "bin");
-    const stubCliPath = path.join(binDir, "cli.js");
-    await mkdir(binDir, { recursive: true });
+    const homeDir = path.join(tempDir, "home");
+    const stubCliPath = path.join(
+      homeDir,
+      ".gemini",
+      "extensions",
+      "nams-hooks",
+      "plugins",
+      "gemini-nams-hooks",
+      "bin",
+      "cli.js",
+    );
+    await mkdir(path.dirname(stubCliPath), { recursive: true });
     await writeFile(stubCliPath, stubCliSource(payloadPath), "utf8");
 
-    const shellCommand = shellCommandForGeminiPrompt(command.prompt, stubCliPath, "use Engineering Team");
-    await execFileAsync("/bin/sh", ["-c", shellCommand], { cwd: tempDir });
+    const shellCommand = shellCommandForGeminiMarketplacePrompt(command.prompt, "use Engineering Team");
+    await execFileAsync("/bin/sh", ["-c", shellCommand], {
+      cwd: tempDir,
+      env: { ...process.env, HOME: homeDir },
+    });
 
     const payload = JSON.parse(await readFile(payloadPath, "utf8"));
     assert.deepEqual(payload.argv, ["workspaces", "run", "gemini", "--event", "CustomCommand"]);
@@ -165,12 +179,17 @@ test("Gemini local workspace custom command emits model-facing result instructio
   }
 });
 
-function shellCommandForGeminiPrompt(prompt: string, stubCliPath: string, args: string) {
+function shellCommandForGeminiMarketplacePrompt(prompt: string, args: string) {
+  const shellCommand = extractShellInjection(prompt);
+
+  return shellCommand.trim().replace("{{args}}", shellQuote(args));
+}
+
+function shellCommandForGeminiLocalPrompt(prompt: string, stubCliPath: string, args: string) {
   const shellCommand = extractShellInjection(prompt);
 
   return shellCommand
     .trim()
-    .replaceAll("${extensionPath}/plugins/gemini-nams-hooks/bin/cli.js", stubCliPath)
     .replaceAll("nams-hooks", stubCliPath)
     .replace("{{args}}", shellQuote(args));
 }
@@ -182,7 +201,7 @@ async function renderGeminiPromptWithShellOutput(
   options: Parameters<typeof execFileAsync>[2],
 ) {
   const shellInjection = extractShellInjection(prompt);
-  const shellCommand = shellCommandForGeminiPrompt(prompt, stubCliPath, args);
+  const shellCommand = shellCommandForGeminiLocalPrompt(prompt, stubCliPath, args);
   const { stdout } = await execFileAsync("/bin/sh", ["-c", shellCommand], options);
   return prompt.replace(`!{${shellInjection}}`, String(stdout));
 }

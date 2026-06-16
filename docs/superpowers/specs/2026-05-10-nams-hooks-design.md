@@ -290,6 +290,14 @@ Gemini marketplace artifacts place `gemini-extension.json`, `hooks/hooks.json`, 
 node "${extensionPath}/plugins/gemini-nams-hooks/bin/cli.js" run gemini --event SessionStart
 ```
 
+Gemini custom command TOML prompts do not receive `${extensionPath}`
+substitution, so the marketplace `/nams:workspace` command calls the installed
+extension copy directly:
+
+```bash
+node "$HOME/.gemini/extensions/nams-hooks/plugins/gemini-nams-hooks/bin/cli.js" workspaces run gemini --event CustomCommand
+```
+
 Claude Code users can add the generated release tree as a plugin marketplace and install the `nams-hooks` plugin. The marketplace root is `dist-marketplace/.claude-plugin/marketplace.json`, and its plugin source is `dist-marketplace/plugins/claude-nams-hooks/`. Claude loads the plugin's standard `hooks/hooks.json` automatically, so `.claude-plugin/plugin.json` must not point its `hooks` field at that file. The plugin manifest declares user configuration for:
 
 - a required sensitive `NAMS_API_KEY`;

@@ -213,10 +213,12 @@ only runtime code. Projection manifests and checks must preserve it explicitly:
 - Gemini marketplace and local extension outputs include
   `commands/nams/workspace.toml` beside the extension hooks. The command must
   route to `workspaces run gemini --event CustomCommand` using the runtime path
-  appropriate for the generated tree. If the Gemini template keeps
-  `${extensionPath}/bin/cli.js`, the marketplace projection must provide a
-  matching root-level `bin/cli.js`; otherwise the projection must render the
-  command and hook paths to the explicit Gemini runtime folder.
+  appropriate for the generated tree. Gemini hooks in `hooks/hooks.json` use
+  `${extensionPath}/plugins/gemini-nams-hooks/bin/cli.js`, but Gemini custom
+  command TOML prompts do not receive that extension variable substitution. The
+  marketplace workspace command therefore uses the installed extension path
+  `$HOME/.gemini/extensions/nams-hooks/plugins/gemini-nams-hooks/bin/cli.js`,
+  while the local workspace command uses the installed `nams-hooks` executable.
 - Codex marketplace output includes the `nams:workspace` skill and its policy
   file under `plugins/codex-nams-hooks/skills/workspace/`, using the bundled
   plugin CLI. Codex local output includes the same skill surface under
