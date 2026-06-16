@@ -25,6 +25,7 @@ test("package files include npm dist and docs without source templates", async (
 test("package scripts expose split dist targets and umbrella dist", async () => {
   const packageJson = JSON.parse(await readFile("package.json", "utf8"));
 
+  assert.equal(packageJson.scripts.test, "npm run build && node --import=tsx --test test/*.test.ts test/**/*.test.ts");
   assert.equal(packageJson.scripts["dist:npm"], "npm run build && node scripts/build-dist-npm.mjs");
   assert.equal(packageJson.scripts["dist:marketplace"], "npm run build && node scripts/build-dist-marketplace.mjs");
   assert.equal(packageJson.scripts["dist:local"], "npm run build && node scripts/build-dist-local.mjs");

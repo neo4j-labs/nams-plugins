@@ -16,7 +16,7 @@
     "openapi:generate": "node scripts/generate-nams-client.mjs",
     "build": "rm -rf .build/tsc && tsc -p tsconfig.json --outDir .build/tsc",
     "test:typecheck": "tsc -p tsconfig.test.json",
-    "test": "npm run build && node scripts/run-tests.mjs",
+    "test": "npm run build && node --import=tsx --test test/*.test.ts test/**/*.test.ts",
     "check": "npm run openapi:generate && npm run build && npm run test:typecheck && npm test",
     "dist:npm": "npm run build && node scripts/build-dist-npm.mjs",
     "dist:marketplace": "npm run build && node scripts/build-dist-marketplace.mjs",
