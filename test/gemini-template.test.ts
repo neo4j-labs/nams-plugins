@@ -12,7 +12,7 @@ const execFileAsync = promisify(execFile);
 const marketplaceExtensionPath = path.join(repoRoot, "templates", "marketplace", "gemini", "gemini-extension.json");
 const marketplaceHooksPath = path.join(repoRoot, "templates", "marketplace", "gemini", "hooks", "hooks.json");
 const marketplaceCommandPath = path.join(repoRoot, "templates", "marketplace", "gemini", "commands", "nams", "workspace.toml");
-const marketplaceGeminiCliPath = "$HOME/.gemini/extensions/nams-hooks/plugins/gemini-nams-hooks/bin/cli.js";
+const marketplaceGeminiCliPath = "~/.gemini/extensions/nams-hooks/plugins/gemini-nams-hooks/bin/cli.js";
 const localGeminiRootPath = path.join(repoRoot, "templates", "local", "gemini", ".gemini");
 const localSettingsPath = path.join(localGeminiRootPath, "settings.json");
 const localCommandPath = path.join(localGeminiRootPath, "commands", "nams", "workspace.toml");
@@ -98,6 +98,7 @@ test("Gemini marketplace workspace command routes through bundled platform folde
 
   assert.match(source, /workspaces run gemini --event CustomCommand/);
   assert.ok(source.includes(marketplaceGeminiCliPath), `Gemini marketplace command must call ${marketplaceGeminiCliPath}.`);
+  assert.doesNotMatch(source, /\$HOME/);
   assert.doesNotMatch(source, /\$\{extensionPath\}/);
   assert.doesNotMatch(source, /workspaces configure/);
 });
@@ -123,7 +124,7 @@ test("Gemini marketplace workspace custom command forwards slash args with reada
 
   try {
     const payloadPath = path.join(tempDir, "payload.json");
-    const homeDir = path.join(tempDir, "home");
+    const homeDir = path.join(tempDir, "home with spaces");
     const stubCliPath = path.join(
       homeDir,
       ".gemini",
