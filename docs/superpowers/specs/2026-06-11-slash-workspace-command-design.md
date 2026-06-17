@@ -339,10 +339,12 @@ Package a Gemini custom command with the Gemini extension:
 /nams:workspace use Engineering
 ```
 
-The command invokes the bundled workspace runner:
+The command invokes the installed workspace runner. This intentionally matches
+local and marketplace behavior and requires `nams-hooks` to be installed on
+`PATH`:
 
 ```bash
-node "${extensionPath}/bin/cli.js" workspaces run gemini --event CustomCommand
+nams-hooks workspaces run gemini --event CustomCommand
 ```
 
 The command passes a small JSON payload on stdin containing the matched command
@@ -405,23 +407,12 @@ workspace runner with a payload equivalent to:
 }
 ```
 
-The preferred command uses the plugin-bundled CLI when the loaded skill path
-makes the plugin root obvious:
-
-```bash
-node <plugin-root>/bin/cli.js workspaces run codex --event CustomCommand
-```
-
-If the plugin root cannot be resolved from the skill context, the skill may
-fall back to:
+The skill uses the installed workspace runner. This intentionally matches local
+and marketplace behavior and requires `nams-hooks` to be installed on `PATH`:
 
 ```bash
 nams-hooks workspaces run codex --event CustomCommand
 ```
-
-This fallback is explicit because Codex documents plugin-bundled hooks with
-`${PLUGIN_ROOT}`, but does not document `${PLUGIN_ROOT}` as a shell variable
-available to skill-instructed commands.
 
 The Codex adapter implements the same `CustomCommand` behavior as Gemini:
 validate `nams:workspace`, parse `use <selector>`, resolve the session ID from
