@@ -220,6 +220,48 @@ test("workspaces run claude UserPromptExpansion configures the session workspace
   }
 });
 
+test("workspaces run claude UserPromptExpansion accepts marketplace namespaced command", async () => {
+  const projectDir = await realpath(await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-")));
+  const homeDir = path.join(projectDir, "home");
+  try {
+    await withWorkspaceServer(
+      async (baseUrl) => {
+        const result = await runCli(
+          ["workspaces", "run", "claude", "--event", "UserPromptExpansion"],
+          {
+            hook_event_name: "UserPromptExpansion",
+            command_name: "nams-hooks:nams:workspace",
+            command_args: "use Default",
+            session_id: "claude-session-1",
+          },
+          runtimeEnv(homeDir, baseUrl),
+          projectDir,
+        );
+
+        assert.equal(result.code, 0, result.stderr);
+        assert.equal(result.stderr, "");
+        const stdout = JSON.parse(result.stdout);
+        assert.equal(stdout.decision, "block");
+        assert.match(stdout.reason, /NAMS workspace configured for claude session claude-session-1: workspace-1/);
+
+        const state = await readOnlySessionState(homeDir, "claude");
+        assert.equal(state.harness, "claude");
+        assert.equal(state.harnessSessionId, "claude-session-1");
+        assert.equal(state.workspace.id, "workspace-1");
+        assert.equal(state.workspace.source, "session-selection");
+      },
+      {
+        workspaces: [
+          { id: "workspace-1", name: "Default", role: "owner", status: "active" },
+          { id: "workspace-2", name: "Engineering", role: "member", status: "active" },
+        ],
+      },
+    );
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("workspaces run claude UserPromptExpansion blocks missing selector and session id", async () => {
   const projectDir = await realpath(await mkdtemp(path.join(tmpdir(), "nams-cli-workspaces-")));
   try {
@@ -239,6 +281,7 @@ test("workspaces run claude UserPromptExpansion blocks missing selector and sess
       assert.equal(missingSelector.code, 0, missingSelector.stderr);
       assert.equal(JSON.parse(missingSelector.stdout).decision, "block");
       assert.match(JSON.parse(missingSelector.stdout).reason, /Usage: \/nams:workspace use <workspace-id-or-name>/);
+      assert.match(JSON.parse(missingSelector.stdout).reason, /\/nams-hooks:nams:workspace use <workspace-id-or-name>/);
 
       const missingSession = await runCli(
         ["workspaces", "run", "claude", "--event", "UserPromptExpansion"],

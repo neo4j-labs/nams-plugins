@@ -7,8 +7,8 @@
           {
             "type": "command",
             "name": "nams-session-start",
-            "description": "Log Gemini CLI session-start payload for the NAMS hook runtime walking skeleton.",
-            "command": "node \"${extensionPath}/bin/cli.js\" run gemini --event SessionStart"
+            "description": "Route Gemini CLI session-start payload to the installed NAMS hook runtime.",
+            "command": "nams-hooks run gemini --event SessionStart"
           }
         ]
       }
@@ -20,8 +20,8 @@
           {
             "type": "command",
             "name": "nams-memory-before-agent",
-            "description": "Route Gemini CLI before-agent payload to the NAMS hook runtime.",
-            "command": "node \"${extensionPath}/bin/cli.js\" run gemini --event BeforeAgent"
+            "description": "Route Gemini CLI before-agent payload to the installed NAMS hook runtime.",
+            "command": "nams-hooks run gemini --event BeforeAgent"
           }
         ]
       }
@@ -33,8 +33,8 @@
           {
             "type": "command",
             "name": "nams-after-agent",
-            "description": "Route Gemini CLI after-agent payload to the NAMS hook runtime.",
-            "command": "node \"${extensionPath}/bin/cli.js\" run gemini --event AfterAgent"
+            "description": "Route Gemini CLI after-agent payload to the installed NAMS hook runtime.",
+            "command": "nams-hooks run gemini --event AfterAgent"
           }
         ]
       }
@@ -46,8 +46,8 @@
           {
             "type": "command",
             "name": "nams-after-tool",
-            "description": "Route Gemini CLI after-tool payload to the NAMS hook runtime.",
-            "command": "node \"${extensionPath}/bin/cli.js\" run gemini --event AfterTool"
+            "description": "Route Gemini CLI after-tool payload to the installed NAMS hook runtime.",
+            "command": "nams-hooks run gemini --event AfterTool"
           }
         ]
       }

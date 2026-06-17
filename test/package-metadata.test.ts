@@ -11,6 +11,29 @@ test("package metadata uses nams-plugins package and nams-hooks executable", asy
   });
 });
 
+test("package files include npm dist and docs without source templates", async () => {
+  const packageJson = JSON.parse(await readFile("package.json", "utf8"));
+
+  assert.deepEqual(packageJson.files, [
+    "dist/",
+    "README.md",
+    "INSTALL.md",
+    "DEVELOPMENT.md",
+  ]);
+});
+
+test("package scripts expose split dist targets and umbrella dist", async () => {
+  const packageJson = JSON.parse(await readFile("package.json", "utf8"));
+
+  assert.equal(packageJson.scripts.test, "npm run build && node --import=tsx --test test/*.test.ts test/**/*.test.ts");
+  assert.equal(packageJson.scripts["dist:npm"], "npm run build && node scripts/build-dist-npm.mjs");
+  assert.equal(packageJson.scripts["dist:marketplace"], "npm run build && node scripts/build-dist-marketplace.mjs");
+  assert.equal(packageJson.scripts["dist:local"], "npm run build && node scripts/build-dist-local.mjs");
+  assert.equal(packageJson.scripts.dist, "npm run dist:npm && npm run dist:local && npm run dist:marketplace");
+  assert.equal(packageJson.scripts["dist:check"], "node scripts/check-dist.mjs");
+  assert.equal(packageJson.scripts["package:check"], "npm run check && npm run dist && npm run dist:check");
+});
+
 test("package lock root package matches package metadata", async () => {
   const packageLock = JSON.parse(await readFile("package-lock.json", "utf8"));
 

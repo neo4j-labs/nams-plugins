@@ -4,7 +4,7 @@
 
 **Goal:** Ship the active-session workspace command bridge for Gemini and Codex while keeping Claude and OpenCode on their existing direct session command path.
 
-**Architecture:** Add a shared runtime helper that records short-lived workspace-ambiguity session markers under `~/.nams/state/<platform>/active-workspace-sessions.json`. Gemini and Codex memory adapters record markers only when workspace selection is required; their workspace adapters resolve the marker from a `CustomCommand` event and delegate to the existing session-scoped `configureWorkspaceSelection` runtime through the shared workspace-use command runner. Packaging adds a Gemini custom command and a Codex explicit skill while docs keep the explicit shell configure command as the stable fallback.
+**Architecture:** Add a shared runtime helper that records short-lived active workspace-session markers under `~/.nams/state/<platform>/active-workspace-sessions.json`. Gemini records markers at `SessionStart` and refreshes them when workspace selection is required; Codex records markers when workspace selection is required. Their workspace adapters resolve the marker from a `CustomCommand` event and delegate to the existing session-scoped `configureWorkspaceSelection` runtime through the shared workspace-use command runner. Packaging adds a Gemini custom command and a Codex explicit skill while docs keep the explicit shell configure command as the stable fallback.
 
 **Tech Stack:** TypeScript, Node.js built-ins only for runtime, Node `node:test`, Gemini extension command templates, Codex plugin skills, generated `dist/` checks.
 
@@ -40,7 +40,8 @@ The design spans four platforms, but Claude and OpenCode command execution alrea
 - Create `test/workspace-use-command.test.ts`
   - Unit-tests bridged command behavior without going through platform templates.
 - Modify `src/platforms/gemini/index.ts`
-  - Records active-session markers in the workspace-selection ambiguity path.
+  - Records active-session markers at `SessionStart` and refreshes them in the
+    workspace-selection ambiguity path.
   - Adds `/nams:workspace use ...` guidance to the Gemini ambiguity notice by passing command lines into `formatWorkspaceSelectionNotice`.
 - Modify `src/platforms/codex/index.ts`
   - Records active-session markers in the workspace-selection ambiguity path.
@@ -1581,7 +1582,10 @@ Create `templates/gemini/commands/nams/workspace.toml` with:
 description = "Select the NAMS workspace for this Gemini session."
 
 prompt = """
-!{node -e 'const args = process.argv[1] ?? ""; process.stdout.write(JSON.stringify({ command_name: "nams:workspace", command_args: `use ${args}`.trim() }) + "\\n");' {{args}} | node "${extensionPath}/bin/cli.js" workspaces run gemini --event CustomCommand}
+NAMS workspace command result:
+!{echo '{ "command_name": "nams:workspace", "command_args": "{{args}}" }' | node "${extensionPath}/plugins/gemini-nams-hooks/bin/cli.js" workspaces run gemini --event CustomCommand}
+
+Report the command output to the user. Do not run additional shell commands. Reply with this result only.
 """
 ```
 
@@ -1942,9 +1946,9 @@ Gemini exposes workspace selection through the extension custom command:
 /nams:workspace use <workspace-id-or-name>
 ```
 
-The command resolves the recent active Gemini session recorded by the workspace
-ambiguity hook. If the active session is missing or ambiguous, use the explicit
-shell command from the hook notice:
+The command resolves the recent active Gemini session recorded at Gemini session
+start and refreshed by workspace ambiguity hooks. If the active session is
+missing or ambiguous, use the explicit shell command from the hook notice:
 
 ```bash
 nams-hooks workspaces configure gemini --scope session --session-id <session-id> --workspace <workspace-id-or-name>
@@ -1972,7 +1976,8 @@ OpenCode exposes the direct plugin shim command:
 
 Gemini CLI uses the same slash command through the extension custom-command
 surface. The command resolves the current session through the active-session
-bridge recorded when the workspace ambiguity hook fires:
+bridge recorded at Gemini session start and refreshed when the workspace
+ambiguity hook fires:
 
 ```text
 /nams:workspace use <workspace-id-or-name>

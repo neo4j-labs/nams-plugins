@@ -1,8 +1,10 @@
 # Installation
 
-Use this guide to install `nams-hooks` from the generated `latest` branch.
-For local development, generated artifact testing, and `./dist` workflows, see
-[DEVELOPMENT.md](DEVELOPMENT.md).
+Use this guide to install `nams-hooks` from generated release artifacts.
+Marketplace installs are built from `dist-marketplace/`. Local project
+configurations are built from `dist-local/`. The npm-installable package is
+built from `dist/`.
+For local development and generated artifact testing, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Prerequisites
 
@@ -72,12 +74,18 @@ Workspace selection has three lifetimes:
 For multi-workspace inactive memory notices, the recommended quick fix is a
 session selection.
 
-When the platform command is installed, Claude Code and Gemini expose the direct
-slash command:
+When the platform command is installed, Claude Code project templates and
+Gemini expose the direct slash command:
 
 ```text
-# Claude Code and Gemini CLI
+# Claude Code project template and Gemini CLI
 /nams:workspace use <workspace-id-or-name>
+```
+
+Claude marketplace plugin installs expose the plugin-namespaced command:
+
+```text
+/nams-hooks:nams:workspace use <workspace-id-or-name>
 ```
 
 Codex exposes the same namespace as an explicit skill:
@@ -127,6 +135,10 @@ exits without changing config until you pass an explicit selection.
 Claude Code installs `nams-hooks` as a plugin marketplace entry. The plugin
 bundles the compiled runtime, hook configuration, and credential prompts.
 
+The generated Claude marketplace lives at
+`dist-marketplace/.claude-plugin/marketplace.json`. Its plugin source is
+`dist-marketplace/plugins/claude-nams-hooks/`.
+
 Add the release marketplace and install the plugin:
 
 ```bash
@@ -158,11 +170,16 @@ plugin-provided values.
 Use `--scope project`, `--scope local`, or `--scope user` on Claude plugin
 commands when you need a specific installation scope.
 
-The workspace selection command is direct in both the Claude project template
-and Claude plugin:
+The workspace selection command is direct in the Claude project template:
 
 ```text
 /nams:workspace use <workspace-id-or-name>
+```
+
+Claude marketplace plugin commands are namespaced by Claude Code:
+
+```text
+/nams-hooks:nams:workspace use <workspace-id-or-name>
 ```
 
 It wraps the explicit Claude session command:
@@ -175,6 +192,11 @@ nams-hooks workspaces configure claude --scope session --session-id <session-id>
 
 Codex installs `nams-hooks` from the generated repo marketplace. The plugin
 bundles the compiled runtime and hook configuration.
+
+The generated Codex marketplace lives at
+`dist-marketplace/.agents/plugins/marketplace.json`. Its plugin source is
+`dist-marketplace/plugins/codex-nams-hooks/`, with standard hook configuration
+at `hooks/hooks.json` and the compiled CLI at `bin/cli.js`.
 
 Add the release marketplace:
 
@@ -235,9 +257,9 @@ Gemini exposes workspace selection through the extension custom command:
 /nams:workspace use <workspace-id-or-name>
 ```
 
-The custom command resolves the recent active Gemini session recorded by the
-workspace ambiguity hook. If the active session is missing or ambiguous, use the
-explicit shell command from the hook notice:
+The custom command resolves the recent active Gemini session recorded at Gemini
+session start and refreshed by workspace ambiguity hooks. If the active session
+is missing or ambiguous, use the explicit shell command from the hook notice:
 
 ```bash
 nams-hooks workspaces configure gemini --scope session --session-id <session-id> --workspace <workspace-id-or-name>

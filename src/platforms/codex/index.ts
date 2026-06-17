@@ -60,6 +60,16 @@ export class CodexAdapter implements MemoryPlatformAdapter {
       await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
+    if (isWorkspaceSkillPrompt(payloadInfo.prompt)) {
+      await saveSessionState(invocation.platform, state.sessionKey, state);
+      await recordSelectionRequiredWorkspaceSession(
+        invocation,
+        state,
+        payloadInfo.projectDirectory,
+        payloadInfo.sessionId,
+      );
+      return allowOutput();
+    }
 
     const workspaceResult = await resolveWorkspaceForMemory({
       invocation,
@@ -320,6 +330,11 @@ async function recordSelectionRequiredWorkspaceSession(
 
 function allowPostToolUseOutput(): HookResult {
   return { stdout: { continue: true } };
+}
+
+function isWorkspaceSkillPrompt(prompt: string): boolean {
+  const trimmed = prompt.trim();
+  return trimmed === "$nams:workspace" || trimmed.startsWith("$nams:workspace ");
 }
 
 type AssistantMessageState = {

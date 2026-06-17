@@ -39,6 +39,12 @@ export class GeminiAdapter implements MemoryPlatformAdapter {
       initialState;
     await appendRawPlatformLog(invocation, state);
     await saveSessionState(invocation.platform, state.sessionKey, state);
+    await recordActiveGeminiWorkspaceSession(
+      invocation,
+      state,
+      payloadInfo.projectDirectory,
+      payloadInfo.sessionId,
+    );
 
     return { stdout: { continue: true, suppressOutput: true } };
   }
@@ -59,6 +65,10 @@ export class GeminiAdapter implements MemoryPlatformAdapter {
       await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
+    if (isWorkspaceCommandResultPrompt(payloadInfo.prompt)) {
+      await saveSessionState(invocation.platform, state.sessionKey, state);
+      return allowOutput();
+    }
 
     const workspaceResult = await resolveWorkspaceForMemory({
       invocation,
@@ -68,7 +78,7 @@ export class GeminiAdapter implements MemoryPlatformAdapter {
     if (workspaceResult.status !== "ready") {
       await saveSessionState(invocation.platform, state.sessionKey, state);
       if (workspaceResult.reason === "selection-required") {
-        await recordSelectionRequiredWorkspaceSession(
+        await recordActiveGeminiWorkspaceSession(
           invocation,
           state,
           payloadInfo.projectDirectory,
@@ -299,7 +309,7 @@ function workspaceResultOutput(
   return allowOutput();
 }
 
-async function recordSelectionRequiredWorkspaceSession(
+async function recordActiveGeminiWorkspaceSession(
   invocation: HookInvocation,
   state: SessionState,
   projectDirectory: string,
@@ -316,6 +326,10 @@ async function recordSelectionRequiredWorkspaceSession(
   } catch {
     return;
   }
+}
+
+function isWorkspaceCommandResultPrompt(prompt: string): boolean {
+  return prompt.trimStart().startsWith("NAMS workspace command result:");
 }
 
 interface GeminiAfterToolPayload {

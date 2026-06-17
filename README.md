@@ -178,7 +178,7 @@ All platform-specific logic should be contained within its respective adapter in
 
 For more details on the design, see `docs/superpowers/specs/2026-05-10-nams-hooks-design.md`.
 
-For local development and generated marketplace testing, see [DEVELOPMENT.md](DEVELOPMENT.md).
+For local development and generated artifact testing, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ### Prerequisites
 
@@ -197,7 +197,7 @@ npm test
 # Run OpenAPI freshness check, build, and tests
 npm run check
 
-# Build and verify the generated release package, including Claude and Codex plugin files
+# Build and verify all generated artifacts: npm dist, marketplace dist, and local config dist
 npm run package:check
 
 # Regenerate and build the OpenAPI client, then run OpenAPI client tests directly

@@ -290,6 +290,7 @@ function workspaceResultOutput(
 function claudeSlashCommandLines(): string[] {
   return [
     "In Claude Code sessions with nams-hooks installed, you can select a workspace with: /nams:workspace use <workspace-id-or-name>",
+    "For marketplace plugin installs, use: /nams-hooks:nams:workspace use <workspace-id-or-name>",
   ];
 }
 

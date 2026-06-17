@@ -2,6 +2,11 @@ import type { WorkspaceHookInvocation, WorkspaceHookResult, WorkspacePlatformAda
 import { configureWorkspaceSelection } from "../../runtime/workspace-configuration.js";
 import { runSessionWorkspaceUseCommand, slashWorkspaceCommandUsage } from "../../runtime/workspace-use-command.js";
 
+const claudeWorkspaceCommandUsage = [
+  slashWorkspaceCommandUsage,
+  "Marketplace plugin: /nams-hooks:nams:workspace use <workspace-id-or-name>",
+].join("\n");
+
 export class ClaudeWorkspaceAdapter implements WorkspacePlatformAdapter {
   async installConfigure(invocation: WorkspaceHookInvocation<"InstallConfigure">): Promise<WorkspaceHookResult> {
     return configureWorkspaceSelection(invocation);
@@ -14,7 +19,7 @@ export class ClaudeWorkspaceAdapter implements WorkspacePlatformAdapter {
       sessionId: stringValue(invocation.rawPayload.session_id),
       invalidSubcommandMode: "usage",
       sessionLabel: "Claude",
-      usage: slashWorkspaceCommandUsage,
+      usage: claudeWorkspaceCommandUsage,
     });
 
     if (result.status === "ignored") {
