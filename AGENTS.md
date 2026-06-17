@@ -74,6 +74,7 @@ The runtime must not fetch OpenAPI specs, inspect schemas, or discover endpoints
 - Tests that touch the filesystem must create fixtures under the OS temp directory and clean them up.
 - Tests must not leave `.nams/`, logs, state, or generated hook output in the repository directory.
 - Avoid network calls in tests. Use `docs/nams-openapi.json` or mocks unless the task explicitly targets OpenAPI fetching.
+- Avoid testing documentation and asserting content of the docs (README, INSTALL or docs/) 
 
 ## Development Workflow
 

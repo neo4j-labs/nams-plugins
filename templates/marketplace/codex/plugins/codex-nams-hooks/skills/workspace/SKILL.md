@@ -9,7 +9,13 @@ Use this skill only when the user explicitly invokes `$nams:workspace use <works
 
 Extract the selector as the full text after `use`. Preserve spaces inside the selector.
 
-This workspace command requires the `nams-hooks` executable to be installed and available on `PATH`. Run:
+Run the NAMS workspace command through the bundled plugin CLI:
+
+```bash
+node bin/cli.js workspaces run codex --event CustomCommand
+```
+
+If the bundled CLI is unavailable, use the installed executable fallback:
 
 ```bash
 nams-hooks workspaces run codex --event CustomCommand
