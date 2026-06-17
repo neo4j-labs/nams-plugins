@@ -2,6 +2,7 @@ import { NamsWorkspaceClient } from "../generated/nams-client.js";
 import { configDiagnosticPayload, loadNamsConnectionConfig, } from "./config.js";
 import { appendNamsRequestLog, appendPlatformDiagnosticLog, appendWorkspaceDiagnostic, workspaceDiagnosticMessages, } from "./logging.js";
 import { namsProvenanceHeaders } from "./provenance.js";
+import { validWorkspaces } from "./workspace-configuration.js";
 export async function loadEffectiveNamsConfigForMemory(invocation, state, projectDirectory, discoverConfig) {
     const result = await resolveWorkspaceForMemory({
         invocation,
@@ -115,11 +116,6 @@ function runtimeConfig(apiKey, workspaceId, baseUrl) {
         workspaceId,
         baseUrl,
     };
-}
-function validWorkspaces(workspaces) {
-    return (workspaces ?? []).filter((workspace) => {
-        return typeof workspace.id === "string" && workspace.id.trim() !== "";
-    });
 }
 function publicWorkspace(workspace) {
     return {

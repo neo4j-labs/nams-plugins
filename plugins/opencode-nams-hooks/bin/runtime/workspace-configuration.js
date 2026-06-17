@@ -191,7 +191,7 @@ function selectWorkspace(workspaces, selector) {
     }
     return { status: "not-found", selector };
 }
-function validWorkspaces(workspaces) {
+export function validWorkspaces(workspaces) {
     return (workspaces ?? []).filter((workspace) => {
         return typeof workspace.id === "string" && workspace.id.trim() !== "";
     });
