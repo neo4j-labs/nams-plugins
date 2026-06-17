@@ -66,8 +66,9 @@ test("Codex plugin template packages explicit nams workspace skill", async () =>
   assert.match(skill, /workspaces run codex --event CustomCommand/);
   assert.match(skill, /command_name/);
   assert.match(skill, /command_args/);
-  assert.match(skill, /node bin\/cli\.js workspaces run codex --event CustomCommand/);
   assert.match(skill, /nams-hooks workspaces run codex --event CustomCommand/);
+  assert.match(skill, /requires the `nams-hooks` executable/);
+  assert.doesNotMatch(skill, /node bin\/cli\.js|plugin root|bundled plugin CLI/i);
   assert.doesNotMatch(skill, /workspaces configure/);
   assert.match(policy, /allow_implicit_invocation: false/);
 });

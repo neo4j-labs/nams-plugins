@@ -137,6 +137,7 @@ test("Gemini marketplace workspace custom command forwards slash args with reada
     );
     await mkdir(path.dirname(stubCliPath), { recursive: true });
     await writeFile(stubCliPath, stubCliSource(payloadPath), "utf8");
+    await chmod(stubCliPath, 0o755);
 
     const shellCommand = shellCommandForGeminiMarketplacePrompt(command.prompt, "use Engineering Team");
     await execFileAsync("/bin/sh", ["-c", shellCommand], {

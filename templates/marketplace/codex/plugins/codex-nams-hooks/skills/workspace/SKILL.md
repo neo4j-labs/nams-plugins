@@ -9,10 +9,10 @@ Use this skill only when the user explicitly invokes `$nams:workspace use <works
 
 Extract the selector as the full text after `use`. Preserve spaces inside the selector.
 
-Run the NAMS workspace command through the bundled plugin CLI when the loaded skill path reveals the plugin root. The plugin root is the ancestor directory containing `.codex-plugin/plugin.json`. From that plugin root, run:
+This workspace command requires the `nams-hooks` executable to be installed and available on `PATH`. Run:
 
 ```bash
-node bin/cli.js workspaces run codex --event CustomCommand
+nams-hooks workspaces run codex --event CustomCommand
 ```
 
 Pass this JSON object on stdin:
@@ -23,13 +23,5 @@ Pass this JSON object on stdin:
   "command_args": "use <workspace-id-or-name>"
 }
 ```
-
-If the plugin root is not discoverable from the skill context, run the installed executable instead:
-
-```bash
-nams-hooks workspaces run codex --event CustomCommand
-```
-
-Pass the same JSON object on stdin.
 
 Report the command output to the user. If the command asks for the explicit shell fallback with `<session-id>`, show that fallback exactly.

@@ -290,28 +290,23 @@ Gemini marketplace artifacts place `gemini-extension.json`, `hooks/hooks.json`, 
 node "${extensionPath}/plugins/gemini-nams-hooks/bin/cli.js" run gemini --event SessionStart
 ```
 
-Gemini custom command TOML prompts do not receive `${extensionPath}`
-substitution, so the marketplace `/nams:workspace` command calls the installed
-extension copy directly through an unquoted `~/.gemini/...` path:
+The Gemini `/nams:workspace` custom command intentionally does not call the
+bundled extension runtime. It keeps a readable echo payload and requires an
+installed `nams-hooks` executable so local and marketplace workspace command
+behavior remain identical:
 
 ```bash
-node ~/.gemini/extensions/nams-hooks/plugins/gemini-nams-hooks/bin/cli.js workspaces run gemini --event CustomCommand
+echo '{ "command_name": "nams:workspace", "command_args": "<args>" }' | nams-hooks workspaces run gemini --event CustomCommand
 ```
 
-Claude Code users can add the generated release tree as a plugin marketplace and install the `nams-hooks` plugin. The marketplace root is `dist-marketplace/.claude-plugin/marketplace.json`, and its plugin source is `dist-marketplace/plugins/claude-nams-hooks/`. Claude loads the plugin's standard `hooks/hooks.json` automatically, so `.claude-plugin/plugin.json` must not point its `hooks` field at that file. The plugin manifest declares user configuration for:
-
-- a required sensitive `NAMS_API_KEY`;
-- an optional non-sensitive `NAMS_WORKSPACE_ID`;
-- a non-sensitive `NAMS_BASE_URL` with the standard service URL as its configuration default.
-
-Plugin hooks call the bundled compiled runtime through `${CLAUDE_PLUGIN_ROOT}/bin/cli.js`, so Claude plugin installs do not require a global `nams-hooks` executable. Claude marketplace slash commands are namespaced by the plugin, so the workspace command is exposed as `/nams-hooks:nams:workspace use <workspace-id-or-name>` while local project installs keep `/nams:workspace use <workspace-id-or-name>`. Local project settings in `dist-local/claude/` call an installed `nams-hooks` executable:
+Claude Code users can add the generated release tree as a plugin marketplace and install the `nams-hooks` plugin. Claude loads the plugin's standard `hooks/hooks.json` automatically, so `.claude-plugin/plugin.json` must not point its `hooks` field at that file. The plugin manifest declares user configuration for a required sensitive `NAMS_API_KEY`, a required non-sensitive `NAMS_WORKSPACE_ID`, and a non-sensitive `NAMS_BASE_URL` with the standard service URL as its configuration default. Plugin hooks call the bundled compiled runtime through `${CLAUDE_PLUGIN_ROOT}/bin/cli.js`, so Claude plugin installs do not require a global `nams-hooks` executable:
 
 ```bash
 claude plugin marketplace add neo4j-labs/nams-plugins@latest
 claude plugin install nams-hooks@nams-plugins
 ```
 
-Codex users can add the generated release tree as a repo marketplace and install the available `nams-hooks` plugin. The Codex marketplace lives at `dist-marketplace/.agents/plugins/marketplace.json` and points to `./plugins/codex-nams-hooks`. The plugin bundles its own compiled `bin/cli.js`, standard `hooks/hooks.json`, and workspace skill under `skills/workspace/`, with hook commands using `${PLUGIN_ROOT}/bin/cli.js`, so Codex marketplace installs do not require a global `nams-hooks` executable. Codex marketplace policy uses `authentication: "ON_USE"` as marketplace auth timing metadata, but plugin installs do not define NAMS credential values or prompts through plugin metadata; they use the existing `.nams/config.json` and `NAMS_*` environment configuration model. Local project hooks and skills in `dist-local/codex/` call an installed `nams-hooks` executable:
+Codex users can add the generated release tree as a repo marketplace and install the available `nams-hooks` plugin. The Codex marketplace lives at `.agents/plugins/marketplace.json` and points to `./plugins/codex-nams-hooks`. The plugin bundles its own compiled `bin/cli.js` and standard `hooks/hooks.json`, with hook commands using `${PLUGIN_ROOT}/bin/cli.js`, so Codex marketplace memory hooks do not require a global `nams-hooks` executable. The Codex `$nams:workspace` skill is intentionally different: it requires an installed `nams-hooks` executable so local and marketplace workspace command behavior remain identical. Codex marketplace policy uses `authentication: "ON_USE"` as marketplace auth timing metadata, but plugin installs do not define NAMS credential values or prompts through plugin metadata; they use the existing `.nams/config.json` and `NAMS_*` environment configuration model:
 
 ```bash
 codex plugin marketplace add neo4j-labs/nams-plugins@latest

@@ -522,6 +522,35 @@ function assertCodexHookCommand(hooks, eventName, namsEvent, statusMessage, matc
   }
 }
 
+async function verifyGeminiWorkspaceCommand(filePath) {
+  const source = await readFile(filePath, "utf8");
+  if (!/nams-hooks workspaces run gemini --event CustomCommand/.test(source)) {
+    throw new Error("Gemini workspace command must call the installed nams-hooks executable.");
+  }
+  if (!/echo '\{ "command_name": "nams:workspace", "command_args": "\{\{args\}\}" \}'/.test(source)) {
+    throw new Error("Gemini workspace command must keep the readable echo payload.");
+  }
+  if (/\$\{extensionPath\}|bin\/cli\.js|node -e|process\.argv|process\.stdin|workspaces configure/.test(source)) {
+    throw new Error("Gemini workspace command must not use bundled runtime paths, node bridges, or workspaces configure.");
+  }
+}
+
+async function assertCodexWorkspaceSkill() {
+  const skill = await readFile(codexPluginSkillPath, "utf8");
+  if (!/nams-hooks workspaces run codex --event CustomCommand/.test(skill)) {
+    throw new Error("Codex workspace skill must call the installed nams-hooks executable.");
+  }
+  if (!/requires the `nams-hooks` executable/.test(skill)) {
+    throw new Error("Codex workspace skill must state the installed nams-hooks requirement.");
+  }
+  if (/node bin\/cli\.js|plugin root|bundled plugin CLI/i.test(skill)) {
+    throw new Error("Codex workspace skill must not branch to bundled plugin CLI behavior.");
+  }
+  if (/workspaces configure/.test(skill)) {
+    throw new Error("Codex workspace skill must not call workspaces configure directly.");
+  }
+}
+
 async function listFiles(directory, prefix = "") {
   const entries = await readdir(directory, { withFileTypes: true });
   const files = [];

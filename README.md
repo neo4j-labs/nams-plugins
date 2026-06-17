@@ -4,6 +4,156 @@
 
 It ensures deterministic memory persistence and context recall across different agent platforms without requiring the agents themselves to manage the memory logic.
 
+## Getting Started
+
+### Gemini CLI
+
+Install the Gemini extension from the generated release branch:
+
+```bash
+gemini extensions install https://github.com/neo4j-labs/nams-plugins --ref latest
+```
+
+Configure NAMS through Gemini extension settings, JSON config, or `NAMS_*`
+environment variables. Gemini exposes workspace selection as:
+
+```text
+/nams:workspace use <workspace-id-or-name>
+```
+
+### Claude Code
+
+Install the Claude Code marketplace release:
+
+```bash
+claude plugin marketplace add neo4j-labs/nams-plugins@latest
+claude plugin install nams-hooks@nams-plugins
+```
+
+Configure and reload the plugin inside Claude Code:
+
+```text
+/plugin configure nams-hooks@nams-plugins
+/reload-plugins
+```
+
+The Claude plugin prompts for the required NAMS API key, optional workspace ID,
+and the NAMS base URL with the standard service URL as its default. Claude Code
+exposes workspace selection as:
+
+```text
+/nams:workspace use <workspace-id-or-name>
+```
+
+### Codex
+
+Add the generated repo marketplace:
+
+```bash
+codex plugin marketplace add neo4j-labs/nams-plugins@latest
+codex plugin marketplace list
+```
+
+Restart Codex, open `/plugins`, select the `nams-plugins` marketplace, and
+install `NAMS Hooks`. Then use `/hooks` to review and trust the plugin-bundled
+hooks when Codex asks for hook review.
+
+Codex plugin installs use JSON config or `NAMS_*` environment variables for
+NAMS credentials. Codex exposes workspace selection as the explicit skill:
+
+```text
+$nams:workspace use <workspace-id-or-name>
+```
+
+### OpenCode
+
+OpenCode uses the project plugin shim and the `nams-hooks` CLI package:
+
+```bash
+npm install -g @neo4j-labs/nams-plugins
+mkdir -p .opencode/plugins
+cp "$(npm root -g)/@neo4j-labs/nams-plugins/templates/opencode/.opencode/plugins/nams-hooks.js" .opencode/plugins/nams-hooks.js
+```
+
+Start OpenCode from the project after copying the shim. OpenCode keeps workspace
+selection on the explicit shell command because OpenCode markdown commands are
+prompt templates:
+
+```bash
+nams-hooks workspaces configure opencode --scope session --session-id <session-id> --workspace <workspace-id-or-name>
+```
+
+OpenCode does not currently provide a Claude-style NAMS credential prompt for
+this plugin. Configure NAMS with `~/.nams/config.json`, project
+`.nams/config.json`, or by starting OpenCode with `NAMS_API_KEY`,
+`NAMS_BASE_URL`, and optional `NAMS_WORKSPACE_ID` environment variables.
+
+For full setup details, local development installs, and fallback project-hook
+paths, see [INSTALL.md](INSTALL.md).
+
+## Runtime Configuration And Storage
+
+Use `~/.nams/config.json` for user defaults, or `<project>/.nams/config.json`
+for project-specific overrides:
+
+```json
+{
+  "apiKey": "nams-api-key",
+  "workspaceId": "5e5c0535-8d85-491c-b92c-33be13659998",
+  "baseUrl": "https://memory.neo4jlabs.com"
+}
+```
+
+- Configuration is JSON-first. The runtime reads user config, overlays project
+  config, overlays platform-discovered values such as Claude plugin user
+  configuration, then applies final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and
+  `NAMS_BASE_URL` environment overrides.
+- `apiKey` and a resolved `baseUrl` are required for NAMS requests. The standard
+  service URL can be supplied by JSON config or platform configuration
+  templates.
+- `workspaceId` can be omitted when NAMS returns exactly one valid workspace for
+  the configured key. That workspace is stored in session state and reused by
+  later memory hooks.
+- If NAMS returns multiple valid workspaces, memory stays inactive for that turn
+  until you select one explicitly. The quickest deterministic fix is a
+  session-scoped selection.
+- NAMS supports workspace keys and admin keys. `nams-hooks` does not configure a
+  key type; it uses the number of workspaces returned by NAMS to decide whether
+  a workspace can be auto-selected.
+- Claude Code and Gemini installs expose `/nams:workspace use <workspace-id-or-name>`.
+  Codex exposes `$nams:workspace use <workspace-id-or-name>`. OpenCode uses the
+  explicit shell command because OpenCode markdown commands are prompt templates.
+- For all platforms, scripts, and troubleshooting, use the explicit shell
+  command from the hook notice:
+
+```bash
+nams-hooks workspaces configure <platform> --scope session --session-id <session-id> --workspace <workspace-id-or-name>
+```
+
+- Configure workspace selection at the lifetime that matches the need:
+
+```bash
+# User default: writes ~/.nams/config.json
+nams-hooks workspaces configure <platform> --scope user --workspace <workspace-id-or-name>
+
+# Project default: writes <project>/.nams/config.json
+nams-hooks workspaces configure <platform> --scope project --workspace <workspace-id-or-name>
+
+# Current session only: writes ~/.nams/state/<platform>/...
+nams-hooks workspaces configure <platform> --scope session --session-id <session-id> --workspace <workspace-id-or-name>
+```
+
+- Runtime state and logs are user-local under per-platform directories:
+
+```text
+~/.nams/state/<platform>/
+~/.nams/logs/<platform>/
+```
+
+- Session-scoped JSONL diagnostics use `kind: "hook.event"` for raw platform
+  hook payloads and `kind: "nams.request"` for NAMS HTTP request/response
+  metadata. Request headers omit `Authorization`.
+
 ## Key Features
 
 - **Deterministic Memory**: Automatically persists user and assistant messages to NAMS.
@@ -13,50 +163,12 @@ It ensures deterministic memory persistence and context recall across different 
 - **Zero Runtime Dependencies**: The hook runtime and generated distribution use only Node.js built-in modules, so target projects do not need extra package installs for transitive runtime libraries.
 - **JSON-First Runtime Storage**: Uses JSON configuration with user-local state and logs.
 
-## Platform Support (v1)
-
-- **OS**: macOS
-- **Harnesses**:
-  - [Gemini CLI](https://github.com/google-gemini/gemini-cli)
-  - [Codex](https://chatgpt.com/codex/)
-  - [OpenCode](https://opencode.ai/docs/) 
-  - [Claude Code](https://claude.ai)
-
 ## Architecture
 
 - `src/cli.ts`: Entry point that dispatches events to platform adapters.
 - `src/platforms/`: Contains adapter logic for Claude, Gemini, Codex, and OpenCode.
 - `src/interfaces.ts`: Shared contracts and hook event definitions.
 - `templates/`: Configuration templates for various harnesses.
-
-Generated artifacts are split by install mode. `dist/` is the npm-installable package, `dist-marketplace/` is the self-contained marketplace release tree, and `dist-local/` contains project-local configurations that call an installed `nams-hooks` executable.
-
-## Getting Started
-
-Install the Claude Code marketplace release:
-
-```bash
-claude plugin marketplace add neo4j-labs/nams-plugins@latest
-claude plugin install nams-hooks@nams-plugins
-```
-
-The Claude plugin prompts for the required NAMS API key and optional workspace
-ID, and ships a configurable default base URL for the standard NAMS service. For
-Gemini, Codex, OpenCode, and full setup details, see [INSTALL.md](INSTALL.md).
-
-### Runtime Configuration And Storage
-
-Runtime configuration is JSON-first: `~/.nams/config.json`, optional project `.nams/config.json`, optional platform discovery such as Claude plugin user configuration, then final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. `apiKey` and a resolved `baseUrl` are required for NAMS requests; the standard service URL can be supplied by JSON config or platform configuration templates. NAMS supports workspace keys and admin keys. `nams-hooks` does not configure a key type; it uses the number of workspaces returned by NAMS to decide whether a workspace can be auto-selected. When `workspaceId` is omitted, nams-hooks calls `GET /v1/users/me/workspaces` before memory creation. If exactly one valid workspace is returned, that workspace is stored in session state and reused by later memory hooks. If multiple valid workspaces are returned, memory stays inactive for that turn until you select one explicitly. The quickest deterministic fix is a session-scoped selection. Claude Code local/project installs and Gemini installs expose `/nams:workspace use <workspace-id-or-name>`. Claude marketplace plugin installs expose `/nams-hooks:nams:workspace use <workspace-id-or-name>`. Codex exposes the same namespace as the explicit skill `$nams:workspace use <workspace-id-or-name>`. OpenCode currently uses the explicit shell command because its markdown commands are prompt templates and do not expose a Claude-style model-invocation disable flag. For all platforms, scripts, and troubleshooting, use the explicit shell command from the hook notice: `nams-hooks workspaces configure <platform> --scope session --session-id <session-id> --workspace <workspace-id-or-name>`. Hook notices include the current session ID when the harness exposes it, so usually only `--workspace <workspace-id-or-name>` needs editing. Durable project and user defaults use the same selector, for example `nams-hooks workspaces configure <platform> --scope project --workspace <workspace-id-or-name>`. Runtime state and logs are user-local under per-platform directories in `~/.nams/state/` and `~/.nams/logs/`.
-
-Codex plugin installs use the same JSON and `NAMS_*` environment configuration path; Codex does not currently define NAMS credentials through plugin install prompts.
-
-Gemini and OpenCode write session-scoped JSONL diagnostics. Events for one session are kept in a single file named like:
-
-```text
-~/.nams/logs/gemini/session-2026-05-11T15-40-1b11dfee.jsonl
-```
-
-Hook payload entries use `kind: "hook.event"` and keep the raw hook payload for local debugging. NAMS HTTP entries use `kind: "nams.request"` and include operation metadata plus logged request and response details. Request headers omit `Authorization`; request and response bodies are kept for debugging.
 
 ## Development
 
