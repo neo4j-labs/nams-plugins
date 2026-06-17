@@ -19,7 +19,7 @@ interface ConfigureInput {
   sessionId?: string;
 }
 
-type ValidWorkspace = WorkspaceSummary & { id: string };
+export type ValidWorkspace = WorkspaceSummary & { id: string };
 
 type WorkspaceSelectionResult =
   | { status: "selected"; workspace: ValidWorkspace }
@@ -264,7 +264,7 @@ function selectWorkspace(
   return { status: "not-found", selector };
 }
 
-function validWorkspaces(workspaces: WorkspaceSummary[] | undefined): ValidWorkspace[] {
+export function validWorkspaces(workspaces: WorkspaceSummary[] | undefined): ValidWorkspace[] {
   return (workspaces ?? []).filter((workspace): workspace is WorkspaceSummary & { id: string } => {
     return typeof workspace.id === "string" && workspace.id.trim() !== "";
   });

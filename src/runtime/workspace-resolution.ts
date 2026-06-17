@@ -1,4 +1,4 @@
-import { NamsWorkspaceClient, type WorkspaceSummary } from "../generated/nams-client.js";
+import { NamsWorkspaceClient } from "../generated/nams-client.js";
 import type { HookInvocation } from "../interfaces.js";
 import {
   configDiagnosticPayload,
@@ -14,6 +14,7 @@ import {
 } from "./logging.js";
 import { namsProvenanceHeaders } from "./provenance.js";
 import type { SessionState } from "./session-state.js";
+import { validWorkspaces, type ValidWorkspace } from "./workspace-configuration.js";
 
 export interface PublicWorkspaceSummary {
   id: string;
@@ -110,7 +111,7 @@ export async function resolveWorkspaceForMemory(input: ResolveWorkspaceInput): P
     onRequest: (event) => appendNamsRequestLog(input.invocation, input.state, event),
   });
 
-  let workspaces: Array<WorkspaceSummary & { id: string }>;
+  let workspaces: ValidWorkspace[];
   try {
     const response = await client.listMyWorkspaces();
     workspaces = validWorkspaces(response.workspaces);
@@ -165,13 +166,7 @@ function runtimeConfig(apiKey: string, workspaceId: string, baseUrl: string): Na
   };
 }
 
-function validWorkspaces(workspaces: WorkspaceSummary[] | undefined): Array<WorkspaceSummary & { id: string }> {
-  return (workspaces ?? []).filter((workspace): workspace is WorkspaceSummary & { id: string } => {
-    return typeof workspace.id === "string" && workspace.id.trim() !== "";
-  });
-}
-
-function publicWorkspace(workspace: WorkspaceSummary & { id: string }): PublicWorkspaceSummary {
+function publicWorkspace(workspace: ValidWorkspace): PublicWorkspaceSummary {
   return {
     id: workspace.id,
     name: workspace.name,

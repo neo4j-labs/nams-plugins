@@ -65,18 +65,6 @@ export class RuntimeEnvironment {
   }
 }
 
-export function resolveNamsHome(environment: RuntimeEnvironmentInput = process.env): string {
-  return RuntimeEnvironment.from(environment).requireNamsHome();
-}
-
-export function globalConfigPath(environment: RuntimeEnvironmentInput = process.env): string {
-  return path.join(resolveNamsHome(environment), "config.json");
-}
-
-export function projectConfigPath(projectDirectory: string): string {
-  return path.join(projectDirectory, ".nams", "config.json");
-}
-
 export function sessionStatePath(
   platform: Platform,
   sessionKey: string,
@@ -91,13 +79,6 @@ export function sessionStateDirectory(
   environment: RuntimeEnvironmentInput = process.env,
 ): string {
   return RuntimeEnvironment.from(environment).sessionStateDirectory(platform);
-}
-
-export function platformLogDirectory(
-  platform: Platform,
-  environment: RuntimeEnvironmentInput = process.env,
-): string {
-  return RuntimeEnvironment.from(environment).platformLogDirectory(platform);
 }
 
 function firstNonBlank(...values: Array<string | undefined>): string | undefined {
