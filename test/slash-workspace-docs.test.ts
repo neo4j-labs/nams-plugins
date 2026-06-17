@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
 const workspaceSlash = "/nams:workspace use <workspace-id-or-name>";
+const claudeMarketplaceSlash = "/nams-hooks:nams:workspace use <workspace-id-or-name>";
 const codexSkillCommand = "$nams:workspace use <workspace-id-or-name>";
 const genericSessionConfigure =
   "nams-hooks workspaces configure <platform> --scope session --session-id <session-id> --workspace <workspace-id-or-name>";
@@ -73,6 +74,7 @@ test("README documents Tier 1 workspace selection and the portable shell command
 
   assert.match(content, /session-scoped selection/i);
   assertMentionsPlatformCommand(content, "Claude Code", workspaceSlash);
+  assertMentionsPlatformCommand(content, "Claude marketplace", claudeMarketplaceSlash);
   assertMentionsPlatformCommand(content, "Gemini", workspaceSlash);
   assertMentionsPlatformCommand(content, "Codex", codexSkillCommand);
   assert.match(content, /OpenCode[\s\S]{0,240}explicit shell command/i);
@@ -89,6 +91,7 @@ test("INSTALL workspace selection documents slash commands and shell fallback", 
 
   assert.match(workspaceSelection, /multi-workspace inactive memory notices/i);
   assertMentionsPlatformCommand(workspaceSelection, "Claude Code", workspaceSlash);
+  assertMentionsPlatformCommand(workspaceSelection, "Claude marketplace", claudeMarketplaceSlash);
   assertMentionsPlatformCommand(workspaceSelection, "Gemini", workspaceSlash);
   assertMentionsPlatformCommand(workspaceSelection, "Codex", codexSkillCommand);
   assert.match(workspaceSelection, /OpenCode[\s\S]{0,240}explicit shell command/i);
@@ -111,6 +114,7 @@ test("INSTALL platform notes keep platform-specific workspace command guidance",
   assert.match(claude, /project template/i);
   assert.match(claude, /Claude plugin/i);
   assertIncludesCommand(claude, workspaceSlash);
+  assertIncludesCommand(claude, claudeMarketplaceSlash);
   assertIncludesCommand(
     claude,
     "nams-hooks workspaces configure claude --scope session --session-id <session-id> --workspace <workspace-id-or-name>",
@@ -154,6 +158,7 @@ test("session workspace research note reflects Tier 1 support and safe Claude ha
   const remainingUxWork = sectionByHeading(content, "## Remaining UX Work");
 
   assertMentionsPlatformCommand(intro, "Claude Code", workspaceSlash);
+  assertMentionsPlatformCommand(intro, "Claude marketplace", claudeMarketplaceSlash);
   assertMentionsPlatformCommand(intro, "Gemini", workspaceSlash);
   assertMentionsPlatformCommand(intro, "Codex", codexSkillCommand);
   assert.match(intro, /OpenCode[\s\S]{0,240}explicit shell/i);

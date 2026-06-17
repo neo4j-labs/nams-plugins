@@ -1,0 +1,442 @@
+# Dist Template Projections Design
+
+Date: 2026-06-12
+Status: Approved design
+Repository: nams-plugins
+
+## Summary
+
+`nams-hooks` will split generated output into three explicit, gitignored
+distribution trees:
+
+- `dist/`: npm-installable package output for `npm install -g $PWD/dist`.
+- `dist-marketplace/`: self-contained marketplace release output for every
+  currently supported platform.
+- `dist-local/`: local project configuration output that depends on an installed
+  `nams-hooks` executable.
+
+The source templates remain the canonical hook/config files. Output locations
+are owned by the build script through a manifest of template projections, so the
+truth of distribution behavior lives in code and tests rather than in informal
+directory conventions.
+
+## Goals
+
+- Make `dist/` an npm package artifact only.
+- Make `dist-marketplace/` self-contained for all supported platforms:
+  Claude Code, Codex, Gemini CLI, and OpenCode.
+- Make `dist-local/` contain only local configurations and shims that rely on an
+  installed `nams-hooks` command.
+- Keep all three generated directories ignored by git.
+- Move templates into a layout that separates shared platform files from local
+  install wrappers and marketplace install wrappers.
+- Keep marketplace output unambiguous by using explicit platform plugin folder
+  names.
+- Encode template projection behavior in build and check scripts, with tests
+  verifying the resulting contracts.
+
+## Non-Goals
+
+- Changing hook runtime behavior or platform adapter logic.
+- Adding runtime npm dependencies.
+- Changing the NAMS OpenAPI generation workflow.
+- Adding new platform support.
+- Publishing or release automation changes beyond producing
+  `dist-marketplace/` for the release pipeline to consume.
+
+## Template Layout
+
+Templates will use three layers:
+
+```text
+templates/
+  <platform>/
+    shared hook definitions and reusable platform fragments
+  local/
+    <platform>/
+      project-shaped local install wrappers and configs
+  marketplace/
+    <platform>/
+      marketplace manifests, plugin metadata, and bundled-runtime wrappers
+```
+
+Shared files live in `templates/<platform>/` only when they are semantically
+shared by more than one output. Local-only files live under
+`templates/local/<platform>/`. Marketplace-only files live under
+`templates/marketplace/<platform>/`.
+
+The build script, not the template path alone, decides where a template lands in
+generated output. This keeps the source layout understandable while making the
+projection rules explicit and testable.
+
+## Output Trees
+
+### npm Package Output
+
+`npm run dist:npm` creates `dist/`:
+
+```text
+dist/
+  bin/
+    cli.js
+    generated/
+    platforms/
+    runtime/
+  package.json
+```
+
+The npm artifact must not include marketplace metadata, local project
+configuration, source templates, OpenAPI documents, or runtime OpenAPI readers.
+It exists so users and tests can run:
+
+```bash
+npm install -g $PWD/dist
+```
+
+### Marketplace Output
+
+`npm run dist:marketplace` creates `dist-marketplace/`.
+
+Marketplace output is self-contained. Every marketplace hook command must call a
+bundled runtime path such as `${PLUGIN_ROOT}/bin/cli.js`,
+`${CLAUDE_PLUGIN_ROOT}/bin/cli.js`, `${extensionPath}/bin/cli.js`, or the
+platform's equivalent. Marketplace hooks must not require a globally installed
+`nams-hooks` command.
+
+Marketplace plugin directories use explicit platform names:
+
+```text
+dist-marketplace/
+  gemini-extension.json
+  commands/
+    nams/
+      workspace.toml
+  hooks/
+    hooks.json
+  .agents/
+    plugins/
+      marketplace.json
+  .claude-plugin/
+    marketplace.json
+  plugins/
+    claude-nams-hooks/
+      bin/
+      commands/
+        nams/
+          workspace.md
+      hooks/
+    codex-nams-hooks/
+      bin/
+      hooks/
+      skills/
+        workspace/
+          SKILL.md
+          agents/
+            openai.yaml
+    gemini-nams-hooks/
+      bin/
+      hooks/
+    opencode-nams-hooks/
+      bin/
+      hooks/
+```
+
+Some platforms may still require root-level marketplace or extension files. The
+projection manifest will state those mappings explicitly. If a native platform
+format requires a root file such as `gemini-extension.json`, that file may be
+projected to the required root location while the platform-specific runtime
+bundle remains clearly named.
+
+### Local Output
+
+`npm run dist:local` creates `dist-local/`.
+
+Local output contains symlinkable or copyable project configuration for all
+supported platforms. It does not copy compiled runtime files. Local hooks call
+the installed executable:
+
+```bash
+nams-hooks run <platform> --event <event>
+```
+
+or use a platform shim that defaults to `nams-hooks`, such as OpenCode's
+`NAMS_HOOKS_COMMAND` override.
+
+Example projected local output:
+
+```text
+dist-local/
+  claude/
+    .claude/
+      commands/
+        nams/
+          workspace.md
+      settings.local.json
+  codex/
+    .codex/
+      hooks.json
+      skills/
+        workspace/
+          SKILL.md
+          agents/
+            openai.yaml
+  gemini/
+    .gemini/
+      commands/
+        nams/
+          workspace.toml
+      settings.json
+  opencode/
+    .opencode/
+      plugins/
+        nams-hooks.js
+```
+
+The exact local paths are determined by the projection manifest so they can
+match each platform's native project configuration shape.
+
+## Workspace Selection Template Surface
+
+The merged workspace-selection behavior is a generated template surface, not
+only runtime code. Projection manifests and checks must preserve it explicitly:
+
+- Claude local output includes `.claude/commands/nams/workspace.md` and a
+  `UserPromptExpansion` hook that calls
+  `nams-hooks workspaces run claude --event UserPromptExpansion`.
+- Claude marketplace output includes
+  `plugins/claude-nams-hooks/commands/nams/workspace.md` and a
+  `UserPromptExpansion` hook that calls the bundled CLI through
+  `${CLAUDE_PLUGIN_ROOT}/bin/cli.js`. Because Claude marketplace commands are
+  plugin-namespaced, the marketplace hook must match both `nams:workspace` and
+  `nams-hooks:nams:workspace`, and the command markdown must document the
+  namespaced `/nams-hooks:nams:workspace use <workspace-id-or-name>` form.
+- Gemini marketplace and local extension outputs include
+  `commands/nams/workspace.toml` beside the extension hooks. The command must
+  route to `workspaces run gemini --event CustomCommand` using the runtime path
+  appropriate for the generated tree. Gemini hooks in `hooks/hooks.json` use
+  `${extensionPath}/plugins/gemini-nams-hooks/bin/cli.js`, but Gemini custom
+  command TOML prompts do not receive that extension variable substitution. The
+  marketplace workspace command therefore uses the installed extension path with
+  unquoted `~` expansion,
+  `~/.gemini/extensions/nams-hooks/plugins/gemini-nams-hooks/bin/cli.js`, while
+  the local workspace command uses the installed `nams-hooks` executable.
+- Codex marketplace output includes the `nams:workspace` skill and its policy
+  file under `plugins/codex-nams-hooks/skills/workspace/`, using the bundled
+  plugin CLI. Codex local output includes the same skill surface under
+  `.codex/skills/workspace/`, using the installed `nams-hooks` executable.
+- OpenCode uses the shared `.opencode/plugins/nams-hooks.js` template. Local
+  output keeps the default installed `nams-hooks` command, while marketplace
+  output must set or render an equivalent bundled-runtime command.
+
+Workspace command templates must not shell out to `workspaces configure`
+directly. They should flow through
+`workspaces run <platform> --event <workspace-event>` so platform adapters own
+payload parsing and session state updates.
+
+## Build Script Design
+
+Separate build scripts will expose target-specific build paths:
+
+- `dist:npm`: build `dist/`.
+- `dist:marketplace`: build `dist-marketplace/`.
+- `dist:local`: build `dist-local/`.
+- `dist`: umbrella target that builds all three.
+
+Each `package.json` target-specific script will compile TypeScript into
+`.build/tsc`, then run the matching projection script. The projection scripts
+will render targets through explicit manifests. The manifests should describe:
+
+- target output tree.
+- platform.
+- source template root.
+- destination path.
+- whether package placeholders are rendered.
+- whether compiled runtime is copied to a `bin/` directory.
+- the expected runtime command mode, such as bundled runtime or installed
+  executable.
+
+This is the preferred shape:
+
+```js
+const projections = {
+  npm: [
+    { kind: "runtime", to: "dist/bin" },
+    { kind: "packageJson", to: "dist/package.json" },
+  ],
+  marketplace: [
+    { platform: "codex", from: "templates/marketplace/codex", to: "dist-marketplace", runtime: "bundled" },
+  ],
+  local: [
+    { platform: "codex", from: "templates/local/codex", to: "dist-local/codex", runtime: "installed" },
+  ],
+};
+```
+
+The exact JavaScript type can evolve during implementation, but the manifest
+must remain small enough for agents and reviewers to understand without tracing
+filesystem side effects across many functions.
+
+Placeholder rendering uses the existing package metadata replacements for
+`__PACKAGE_VERSION__` and `__PACKAGE_LICENSE__`. Generated output checks must
+fail if those placeholders survive in files that should have been rendered.
+
+## Check Script Design
+
+`scripts/check-dist.mjs` will verify all three generated outputs.
+
+For `dist/`, checks assert:
+
+- `bin/cli.js` exists and is executable.
+- `package.json` exposes `nams-hooks` at `./bin/cli.js`.
+- `npm pack --dry-run dist` includes the runtime package files.
+- marketplace metadata, local project configs, source templates, and OpenAPI
+  artifacts are absent.
+
+For `dist-marketplace/`, checks assert:
+
+- marketplace roots and plugin manifests exist for all supported platforms.
+- every self-contained platform bundle has executable `bin/cli.js`.
+- marketplace hook commands call bundled runtime paths.
+- marketplace workspace-selection commands call bundled runtime paths.
+- marketplace hook commands do not call the global `nams-hooks` executable.
+- plugin directory names are explicit:
+  `claude-nams-hooks`, `codex-nams-hooks`, `gemini-nams-hooks`, and
+  `opencode-nams-hooks`.
+- workspace command and skill assets are present for the platforms that expose
+  them: Claude command markdown, Gemini command TOML, Codex workspace skill and
+  policy, and OpenCode command interception in its plugin shim.
+- package placeholders are fully rendered.
+- OpenAPI artifacts are absent.
+
+For `dist-local/`, checks assert:
+
+- local project configuration exists for all supported platforms.
+- local hook commands intentionally call `nams-hooks`.
+- local workspace-selection commands intentionally call
+  `nams-hooks workspaces run <platform> --event <workspace-event>`.
+- compiled runtime files are absent.
+- marketplace metadata is absent.
+- generated files are symlinkable or copyable into project roots without
+  depending on repository source paths.
+
+The check script should reuse manifest metadata where useful, but it should
+still make independent assertions about the generated files. Build logic says
+what to create; check logic proves what was created.
+
+## Script Contracts
+
+`package.json` scripts will use separate commands:
+
+```json
+{
+  "dist:npm": "npm run build && node scripts/build-dist-npm.mjs",
+  "dist:marketplace": "npm run build && node scripts/build-dist-marketplace.mjs",
+  "dist:local": "npm run build && node scripts/build-dist-local.mjs",
+  "dist": "npm run dist:npm && npm run dist:local && npm run dist:marketplace"
+}
+```
+
+`npm run dist` is the umbrella command. Each target-specific script owns one
+output tree and must remove and recreate that tree from source. The umbrella
+command runs the npm package tree first, then local configuration output, then
+marketplace output.
+
+`npm run package:check` will continue to run full project verification and then
+verify all generated outputs.
+
+## Migration Plan
+
+Existing templates move into the new layout instead of being duplicated:
+
+- `templates/claude/.claude/settings.local.json` becomes
+  `templates/local/claude/.claude/settings.local.json`.
+- `templates/claude/.claude/commands/nams/workspace.md` becomes
+  `templates/local/claude/.claude/commands/nams/workspace.md`.
+- `templates/claude/plugins/nams-hooks/commands/nams/workspace.md` moves with
+  the marketplace Claude plugin template and is projected under
+  `plugins/claude-nams-hooks/commands/nams/workspace.md`.
+- `templates/local/codex/.codex/hooks.json` is projected into a project-shaped
+  local output such as `dist-local/codex/.codex/hooks.json`.
+- `templates/local/codex/.codex/skills/workspace/` is projected into the local
+  Codex skill surface at `dist-local/codex/.codex/skills/workspace/`.
+- `templates/marketplace/codex/plugins/codex-nams-hooks/skills/workspace/`
+  remains part of the marketplace Codex plugin projection.
+- `templates/opencode/.opencode/plugins/nams-hooks.js` becomes a shared
+  OpenCode plugin template. Local projection keeps the `.opencode` project
+  shape, and marketplace projection rewrites or wraps the command mode for the
+  bundled runtime.
+- Existing Claude and Codex marketplace templates move under
+  `templates/marketplace/claude/` and `templates/marketplace/codex/`.
+- Gemini extension files move under `templates/marketplace/gemini/` when they
+  are marketplace-only; shared hook definitions move under `templates/gemini/`
+  only if local and marketplace projections both use them. The merged Gemini
+  workspace command at `templates/gemini/commands/nams/workspace.toml` is shared
+  if both local and marketplace projections include the same command.
+
+The current ambiguous Claude marketplace plugin directory
+`plugins/nams-hooks/` will be renamed in marketplace output to
+`plugins/claude-nams-hooks/`. The installable plugin name may remain
+`nams-hooks`; the filesystem folder names are platform-specific to avoid
+ambiguous ownership.
+
+## Testing Plan
+
+Tests should be updated before behavior changes:
+
+- Template tests assert the canonical source templates at their new paths.
+- Dist checks assert output presence and absence rules for all three trees.
+- Package metadata tests assert the npm package artifact still exposes the
+  global `nams-hooks` executable.
+- Marketplace tests assert all supported platform bundles are self-contained.
+- Local tests assert all local configs depend on an installed `nams-hooks`
+  command.
+- Workspace command tests assert generated local commands use the installed
+  executable and generated marketplace commands use bundled runtime paths.
+
+Required verification before completion:
+
+```bash
+npm run check
+npm run dist
+npm run dist:check
+```
+
+When distribution scripts or package metadata change, `npm run package:check`
+must pass before the implementation is considered complete.
+
+## Documentation Updates
+
+Update `README.md`, `INSTALL.md`, `DEVELOPMENT.md`, and the primary hooks design
+doc to distinguish:
+
+- npm package output: `dist/`.
+- marketplace release output: `dist-marketplace/`.
+- local project configuration output: `dist-local/`.
+
+Documentation should stop describing `dist/` as the combined local development,
+marketplace, and npm package tree. Marketplace release pipeline documentation
+should identify `dist-marketplace/` as the artifact to publish.
+
+## Open Risks
+
+- Gemini may require root-level extension files. The projection manifest must
+  make those exceptional root mappings explicit rather than hiding them inside
+  platform-specific copy code.
+- OpenCode does not currently have the same marketplace shape as Claude or
+  Codex. This design still requires an OpenCode marketplace projection, but the
+  implementation may need a platform-specific wrapper while keeping the runtime
+  self-contained.
+- Moving templates can break docs, tests, or installer references that still use
+  old paths. Search-based migration and targeted tests should catch stale paths.
+
+## Approval Record
+
+Approved decisions from brainstorming:
+
+- Use separate scripts: `dist:npm`, `dist:marketplace`, and `dist:local`.
+- Keep `npm run dist` as the umbrella command.
+- Include OpenCode in both marketplace and local outputs.
+- Keep hook/config source files in `templates/`.
+- Let the build script fully control where templates land in generated output.
+- Use a manifest of template projections so distribution behavior lives in code
+  and tests.

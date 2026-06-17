@@ -59,6 +59,35 @@ test("initializes Gemini session state on SessionStart without creating a conver
   }
 });
 
+test("records Gemini active workspace session marker on SessionStart", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
+  try {
+    const env = testEnv(projectDir);
+    const adapter = new GeminiAdapter();
+
+    await adapter.startSession({
+      platform: "gemini",
+      event: "SessionStart",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+      },
+    });
+
+    const markerPath = path.join(namsHome(env.HOME), "state", "gemini", "active-workspace-sessions.json");
+    const marker = JSON.parse(await readFile(markerPath, "utf8"));
+    assert.equal(marker.sessions.length, 1);
+    assert.equal(marker.sessions[0].sessionId, "session-1");
+    assert.equal(marker.sessions[0].sessionKey, "session-1");
+    assert.equal(marker.sessions[0].projectDirectory, path.resolve(projectDir));
+    assert.equal(typeof marker.sessions[0].statePath, "string");
+    assert.equal(typeof marker.sessions[0].touchedAt, "string");
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("creates Gemini conversation, recalls memory, and stores first BeforeAgent user prompt", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
@@ -446,6 +475,46 @@ test("Gemini BeforeAgent notifies and continues when multiple workspaces are ava
     assert.equal(marker.sessions[0].projectDirectory, path.resolve(projectDir));
     assert.equal(typeof marker.sessions[0].touchedAt, "string");
     assert.equal(Object.hasOwn(marker, "version"), false);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Gemini BeforeAgent ignores workspace command result prompt", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
+  try {
+    const nams = createNamsFetchMock().workspaces({
+      workspaces: [
+        { id: "workspace-1", name: "Default", role: "owner", status: "active" },
+        { id: "workspace-2", name: "test2", role: "owner", status: "active" },
+      ],
+    });
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+    const adapter = new GeminiAdapter();
+
+    const result = await adapter.beforeAgent({
+      platform: "gemini",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: [
+          "NAMS workspace command result:",
+          "NAMS workspace configured for gemini session session-1: workspace-1",
+          "Do not run additional shell commands. Reply with this result only.",
+        ].join("\n"),
+      },
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    assert.equal(nams.calls("listMyWorkspaces").length, 0);
+    assert.equal(nams.calls("createConversation").length, 0);
+    const state = (await loadSessionState("gemini", "session-1"))!;
+    assert.equal(state.conversationId, undefined);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }

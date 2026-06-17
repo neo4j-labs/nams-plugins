@@ -29,6 +29,8 @@ It ensures deterministic memory persistence and context recall across different 
 - `src/interfaces.ts`: Shared contracts and hook event definitions.
 - `templates/`: Configuration templates for various harnesses.
 
+Generated artifacts are split by install mode. `dist/` is the npm-installable package, `dist-marketplace/` is the self-contained marketplace release tree, and `dist-local/` contains project-local configurations that call an installed `nams-hooks` executable.
+
 ## Getting Started
 
 Install the Claude Code marketplace release:
@@ -44,7 +46,7 @@ Gemini, Codex, OpenCode, and full setup details, see [INSTALL.md](INSTALL.md).
 
 ### Runtime Configuration And Storage
 
-Runtime configuration is JSON-first: `~/.nams/config.json`, optional project `.nams/config.json`, optional platform discovery such as Claude plugin user configuration, then final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. `apiKey` and a resolved `baseUrl` are required for NAMS requests; the standard service URL can be supplied by JSON config or platform configuration templates. NAMS supports workspace keys and admin keys. `nams-hooks` does not configure a key type; it uses the number of workspaces returned by NAMS to decide whether a workspace can be auto-selected. When `workspaceId` is omitted, nams-hooks calls `GET /v1/users/me/workspaces` before memory creation. If exactly one valid workspace is returned, that workspace is stored in session state and reused by later memory hooks. If multiple valid workspaces are returned, memory stays inactive for that turn until you select one explicitly. The quickest deterministic fix is a session-scoped selection. Claude Code and Gemini installs expose `/nams:workspace use <workspace-id-or-name>`. Codex exposes the same namespace as the explicit skill `$nams:workspace use <workspace-id-or-name>`. OpenCode currently uses the explicit shell command because its markdown commands are prompt templates and do not expose a Claude-style model-invocation disable flag. For all platforms, scripts, and troubleshooting, use the explicit shell command from the hook notice: `nams-hooks workspaces configure <platform> --scope session --session-id <session-id> --workspace <workspace-id-or-name>`. Hook notices include the current session ID when the harness exposes it, so usually only `--workspace <workspace-id-or-name>` needs editing. Durable project and user defaults use the same selector, for example `nams-hooks workspaces configure <platform> --scope project --workspace <workspace-id-or-name>`. Runtime state and logs are user-local under per-platform directories in `~/.nams/state/` and `~/.nams/logs/`.
+Runtime configuration is JSON-first: `~/.nams/config.json`, optional project `.nams/config.json`, optional platform discovery such as Claude plugin user configuration, then final `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. `apiKey` and a resolved `baseUrl` are required for NAMS requests; the standard service URL can be supplied by JSON config or platform configuration templates. NAMS supports workspace keys and admin keys. `nams-hooks` does not configure a key type; it uses the number of workspaces returned by NAMS to decide whether a workspace can be auto-selected. When `workspaceId` is omitted, nams-hooks calls `GET /v1/users/me/workspaces` before memory creation. If exactly one valid workspace is returned, that workspace is stored in session state and reused by later memory hooks. If multiple valid workspaces are returned, memory stays inactive for that turn until you select one explicitly. The quickest deterministic fix is a session-scoped selection. Claude Code local/project installs and Gemini installs expose `/nams:workspace use <workspace-id-or-name>`. Claude marketplace plugin installs expose `/nams-hooks:nams:workspace use <workspace-id-or-name>`. Codex exposes the same namespace as the explicit skill `$nams:workspace use <workspace-id-or-name>`. OpenCode currently uses the explicit shell command because its markdown commands are prompt templates and do not expose a Claude-style model-invocation disable flag. For all platforms, scripts, and troubleshooting, use the explicit shell command from the hook notice: `nams-hooks workspaces configure <platform> --scope session --session-id <session-id> --workspace <workspace-id-or-name>`. Hook notices include the current session ID when the harness exposes it, so usually only `--workspace <workspace-id-or-name>` needs editing. Durable project and user defaults use the same selector, for example `nams-hooks workspaces configure <platform> --scope project --workspace <workspace-id-or-name>`. Runtime state and logs are user-local under per-platform directories in `~/.nams/state/` and `~/.nams/logs/`.
 
 Codex plugin installs use the same JSON and `NAMS_*` environment configuration path; Codex does not currently define NAMS credentials through plugin install prompts.
 
@@ -64,7 +66,7 @@ All platform-specific logic should be contained within its respective adapter in
 
 For more details on the design, see `docs/superpowers/specs/2026-05-10-nams-hooks-design.md`.
 
-For local development and generated marketplace testing, see [DEVELOPMENT.md](DEVELOPMENT.md).
+For local development and generated artifact testing, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ### Prerequisites
 
@@ -83,7 +85,7 @@ npm test
 # Run OpenAPI freshness check, build, and tests
 npm run check
 
-# Build and verify the generated release package, including Claude and Codex plugin files
+# Build and verify all generated artifacts: npm dist, marketplace dist, and local config dist
 npm run package:check
 
 # Regenerate and build the OpenAPI client, then run OpenAPI client tests directly

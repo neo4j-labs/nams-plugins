@@ -8,7 +8,6 @@
   },
   "files": [
     "dist/",
-    "templates/",
     "README.md",
     "INSTALL.md",
     "DEVELOPMENT.md"
@@ -19,7 +18,10 @@
     "test:typecheck": "tsc -p tsconfig.test.json",
     "test": "npm run build && node --import=tsx --test test/*.test.ts test/**/*.test.ts",
     "check": "npm run openapi:generate && npm run build && npm run test:typecheck && npm test",
-    "dist": "rm -rf .build && rm -rf dist/ && tsc -p tsconfig.json --outDir .build/tsc && node scripts/build-dist.mjs",
+    "dist:npm": "npm run build && node scripts/build-dist-npm.mjs",
+    "dist:marketplace": "npm run build && node scripts/build-dist-marketplace.mjs",
+    "dist:local": "npm run build && node scripts/build-dist-local.mjs",
+    "dist": "npm run dist:npm && npm run dist:local && npm run dist:marketplace",
     "dist:check": "node scripts/check-dist.mjs",
     "package:check": "npm run check && npm run dist && npm run dist:check"
   },

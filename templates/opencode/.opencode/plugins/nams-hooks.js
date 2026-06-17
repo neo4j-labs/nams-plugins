@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 export const NamsHooks = async ({ client, directory, project, worktree }) => {
-  const command = process.env.NAMS_HOOKS_COMMAND ?? "nams-hooks";
+  const command = process.env.NAMS_HOOKS_COMMAND ?? __NAMS_HOOKS_COMMAND__;
   const workspaceCommandTimeoutMs = readWorkspaceCommandTimeoutMs();
   const pendingWorkspaceSelectionContexts = new Map();
 

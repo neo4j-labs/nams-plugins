@@ -155,6 +155,8 @@ The `additionalContext` property is the correct JSON field for this injection pa
 
 If recall is empty, the hook returns only the allow output. If NAMS is unavailable or required runtime config is missing after JSON config and environment overlays, the hook logs a sanitized diagnostic and allows Codex to continue. Required NAMS request config is `apiKey` plus the `workspaceId` amendment described in `docs/superpowers/specs/2026-06-03-nams-workspace-id-design.md`.
 
+Explicit Codex workspace skill prompts, such as `$nams:workspace use Default`, are control input rather than user memory input. `UserPromptSubmit` should record the active workspace-session bridge for the skill runner, then return silent allow output without resolving workspace memory, creating a conversation, storing the prompt, or injecting the workspace-selection notice.
+
 `SessionStart` and `UserPromptSubmit` may run close together on the first prompt in some Codex versions. `UserPromptSubmit` must be able to create initial state when `SessionStart` has not written it yet.
 
 ### Phase 2: Assistant Response Persistence

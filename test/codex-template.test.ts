@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
-const marketplacePath = "templates/codex/.agents/plugins/marketplace.json";
-const pluginManifestPath = "templates/codex/plugins/codex-nams-hooks/.codex-plugin/plugin.json";
-const pluginHooksPath = "templates/codex/plugins/codex-nams-hooks/hooks/hooks.json";
-const pluginSkillPath = "templates/codex/plugins/codex-nams-hooks/skills/workspace/SKILL.md";
-const pluginSkillPolicyPath = "templates/codex/plugins/codex-nams-hooks/skills/workspace/agents/openai.yaml";
-const fallbackHooksPath = "templates/codex/hooks.json";
+const marketplacePath = "templates/marketplace/codex/.agents/plugins/marketplace.json";
+const pluginManifestPath = "templates/marketplace/codex/plugins/codex-nams-hooks/.codex-plugin/plugin.json";
+const pluginHooksPath = "templates/marketplace/codex/plugins/codex-nams-hooks/hooks/hooks.json";
+const pluginSkillPath = "templates/marketplace/codex/plugins/codex-nams-hooks/skills/workspace/SKILL.md";
+const pluginSkillPolicyPath = "templates/marketplace/codex/plugins/codex-nams-hooks/skills/workspace/agents/openai.yaml";
+const fallbackHooksPath = "templates/local/codex/.codex/hooks.json";
+const localSkillPath = "templates/local/codex/.codex/skills/workspace/SKILL.md";
+const localSkillPolicyPath = "templates/local/codex/.codex/skills/workspace/agents/openai.yaml";
 const pluginRoot = "${PLUGIN_ROOT}";
 
 test("Codex repo marketplace template exposes nams-hooks as available", async () => {
@@ -106,6 +108,20 @@ test("Codex fallback hook template keeps first prompt memory-only", async () => 
     statusMessage: "NAMS memory recall",
   });
   assert.doesNotMatch(JSON.stringify(template.hooks.UserPromptSubmit), /workspaces|InstallConfigure/);
+});
+
+test("Codex local template packages explicit nams workspace skill for installed runtime", async () => {
+  const skill = await readFile(localSkillPath, "utf8");
+  const policy = await readFile(localSkillPolicyPath, "utf8");
+
+  assert.match(skill, /name: nams:workspace/);
+  assert.match(skill, /description: Explicitly use \$nams:workspace use/);
+  assert.match(skill, /nams-hooks workspaces run codex --event CustomCommand/);
+  assert.match(skill, /command_name/);
+  assert.match(skill, /command_args/);
+  assert.doesNotMatch(skill, /node bin\/cli\.js|\$\{PLUGIN_ROOT\}|plugin root/i);
+  assert.doesNotMatch(skill, /workspaces configure/);
+  assert.match(policy, /allow_implicit_invocation: false/);
 });
 
 function codexHookFor(template: any, eventName: string): Record<string, string> {
