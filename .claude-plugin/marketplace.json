@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "nams-hooks",
-      "source": "./plugins/nams-hooks",
+      "source": "./plugins/claude-nams-hooks",
       "description": "Persistent Neo4j Agent Memory Service hooks for Claude Code.",
       "version": "0.1.0",
       "author": {
