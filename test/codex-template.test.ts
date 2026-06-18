@@ -2,15 +2,20 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
-const marketplacePath = "templates/codex/.agents/plugins/marketplace.json";
-const pluginManifestPath = "templates/codex/plugins/codex-nams-hooks/.codex-plugin/plugin.json";
-const pluginHooksPath = "templates/codex/plugins/codex-nams-hooks/hooks/hooks.json";
+const marketplacePath = "templates/marketplace/codex/.agents/plugins/marketplace.json";
+const pluginManifestPath = "templates/marketplace/codex/plugins/codex-nams-hooks/.codex-plugin/plugin.json";
+const pluginHooksPath = "templates/marketplace/codex/plugins/codex-nams-hooks/hooks/hooks.json";
+const pluginSkillPath = "templates/marketplace/codex/plugins/codex-nams-hooks/skills/workspace/SKILL.md";
+const pluginSkillPolicyPath = "templates/marketplace/codex/plugins/codex-nams-hooks/skills/workspace/agents/openai.yaml";
+const fallbackHooksPath = "templates/local/codex/.codex/hooks.json";
+const localSkillPath = "templates/local/codex/.codex/skills/workspace/SKILL.md";
+const localSkillPolicyPath = "templates/local/codex/.codex/skills/workspace/agents/openai.yaml";
 const pluginRoot = "${PLUGIN_ROOT}";
 
 test("Codex repo marketplace template exposes nams-hooks as available", async () => {
   const template = JSON.parse(await readFile(marketplacePath, "utf8"));
 
-  assert.equal(template.name, "neo4j-nams-hooks");
+  assert.equal(template.name, "nams-plugins");
   assert.equal(template.metadata.description, "Neo4j Agent Memory Service hooks for Codex.");
   assert.equal(template.metadata.version, "__PACKAGE_VERSION__");
 
@@ -30,7 +35,7 @@ test("Codex repo marketplace template exposes nams-hooks as available", async ()
   assert.equal(plugin.description, "Persistent Neo4j Agent Memory Service hooks for Codex.");
   assert.equal(plugin.version, "__PACKAGE_VERSION__");
   assert.equal(plugin.author.name, "Neo4j Labs");
-  assert.equal(plugin.repository, "https://github.com/neo4j-labs/nams-hooks");
+  assert.equal(plugin.repository, "https://github.com/neo4j-labs/nams-plugins");
   assert.equal(plugin.license, "__PACKAGE_LICENSE__");
   assert.deepEqual(plugin.keywords, ["memory", "context", "persistence", "neo4j", "nams"]);
   assert.equal(plugin.category, "Productivity");
@@ -42,13 +47,30 @@ test("Codex plugin manifest template declares metadata without credential prompt
   assert.equal(template.name, "nams-hooks");
   assert.equal(template.version, "__PACKAGE_VERSION__");
   assert.equal(template.description, "Persistent Neo4j Agent Memory Service hooks for Codex.");
+  assert.equal(template.skills, "./skills/");
   assert.equal(template.author.name, "Neo4j Labs");
-  assert.equal(template.repository, "https://github.com/neo4j-labs/nams-hooks");
+  assert.equal(template.repository, "https://github.com/neo4j-labs/nams-plugins");
   assert.equal(template.license, "__PACKAGE_LICENSE__");
   assert.deepEqual(template.keywords, ["memory", "context", "persistence", "neo4j", "nams"]);
   assert.equal(Object.hasOwn(template, "userConfig"), false);
   assert.equal(Object.hasOwn(template, "authentication"), false);
   assert.equal(Object.hasOwn(template, "hooks"), false);
+});
+
+test("Codex plugin template packages explicit nams workspace skill", async () => {
+  const skill = await readFile(pluginSkillPath, "utf8");
+  const policy = await readFile(pluginSkillPolicyPath, "utf8");
+
+  assert.match(skill, /name: nams:workspace/);
+  assert.match(skill, /description: Explicitly use \$nams:workspace use/);
+  assert.match(skill, /workspaces run codex --event CustomCommand/);
+  assert.match(skill, /command_name/);
+  assert.match(skill, /command_args/);
+  assert.match(skill, /node bin\/cli\.js workspaces run codex --event CustomCommand/);
+  assert.match(skill, /nams-hooks workspaces run codex --event CustomCommand/);
+  assert.match(skill, /installed executable fallback/);
+  assert.doesNotMatch(skill, /workspaces configure/);
+  assert.match(policy, /allow_implicit_invocation: false/);
 });
 
 test("Codex plugin hook template invokes the bundled CLI through plugin root", async () => {
@@ -75,6 +97,32 @@ test("Codex plugin hook template invokes the bundled CLI through plugin root", a
     command: `node ${pluginRoot}/bin/cli.js run codex --event AfterTool`,
     statusMessage: "NAMS tool metadata",
   });
+  assert.doesNotMatch(JSON.stringify(template.hooks.UserPromptSubmit), /workspaces|InstallConfigure/);
+});
+
+test("Codex fallback hook template keeps first prompt memory-only", async () => {
+  const template = JSON.parse(await readFile(fallbackHooksPath, "utf8"));
+
+  assert.deepEqual(codexHookFor(template, "UserPromptSubmit"), {
+    type: "command",
+    command: "nams-hooks run codex --event BeforeAgent",
+    statusMessage: "NAMS memory recall",
+  });
+  assert.doesNotMatch(JSON.stringify(template.hooks.UserPromptSubmit), /workspaces|InstallConfigure/);
+});
+
+test("Codex local template packages explicit nams workspace skill for installed runtime", async () => {
+  const skill = await readFile(localSkillPath, "utf8");
+  const policy = await readFile(localSkillPolicyPath, "utf8");
+
+  assert.match(skill, /name: nams:workspace/);
+  assert.match(skill, /description: Explicitly use \$nams:workspace use/);
+  assert.match(skill, /nams-hooks workspaces run codex --event CustomCommand/);
+  assert.match(skill, /command_name/);
+  assert.match(skill, /command_args/);
+  assert.doesNotMatch(skill, /node bin\/cli\.js|\$\{PLUGIN_ROOT\}|plugin root/i);
+  assert.doesNotMatch(skill, /workspaces configure/);
+  assert.match(policy, /allow_implicit_invocation: false/);
 });
 
 function codexHookFor(template: any, eventName: string): Record<string, string> {

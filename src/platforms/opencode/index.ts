@@ -1,17 +1,21 @@
-import type { HookInvocation, HookResult, PlatformAdapter } from "../../interfaces.js";
-import { loadNamsConfig } from "../../runtime/config.js";
+import type { HookInvocation, HookResult, MemoryPlatformAdapter } from "../../interfaces.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
 import {
-  appendNamsConfigDiagnostic,
   appendNamsFailureDiagnostic,
   appendRawPlatformLog,
 } from "../../runtime/logging.js";
 import { combineMemoryContexts, createNamsMemoryService, serializeToolInput } from "../../runtime/memory-service.js";
 import { createInitialSessionState, loadSessionState, saveSessionState } from "../../runtime/session-state.js";
 import type { SessionState } from "../../runtime/session-state.js";
+import {
+  loadEffectiveNamsConfigForMemory,
+  resolveWorkspaceForMemory,
+  type WorkspaceResolutionResult,
+} from "../../runtime/workspace-resolution.js";
+import { formatWorkspaceSelectionNotice } from "../workspace-selection.js";
 import { parseOpenCodePayload, type OpenCodePayloadInfo } from "./payload.js";
 
-export class OpenCodeAdapter implements PlatformAdapter {
+export class OpenCodeAdapter implements MemoryPlatformAdapter {
   async startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
     const payloadInfo = parseOpenCodePayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({
@@ -55,13 +59,16 @@ export class OpenCodeAdapter implements PlatformAdapter {
       return allowOutput();
     }
 
-    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
-    await appendNamsConfigDiagnostic(invocation, state, configResult);
-    if (!configResult.ok) {
+    const workspaceResult = await resolveWorkspaceForMemory({
+      invocation,
+      state,
+      projectDirectory: payloadInfo.projectDirectory,
+    });
+    if (workspaceResult.status !== "ready") {
       await saveSessionState(invocation.platform, state.sessionKey, state);
-      return allowOutput();
+      return workspaceResultOutput(workspaceResult, payloadInfo.sessionId);
     }
-    const config = configResult.config;
+    const config = workspaceResult.config;
 
     try {
       const memory = createNamsMemoryService(config, invocation, state);
@@ -146,13 +153,11 @@ export class OpenCodeAdapter implements PlatformAdapter {
       return allowOutput();
     }
 
-    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
-    await appendNamsConfigDiagnostic(invocation, state, configResult);
-    if (!configResult.ok) {
+    const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
+    if (config === undefined) {
       await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
-    const config = configResult.config;
 
     try {
       const memory = createNamsMemoryService(config, invocation, state);
@@ -212,13 +217,11 @@ export class OpenCodeAdapter implements PlatformAdapter {
       return allowOutput();
     }
 
-    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
-    await appendNamsConfigDiagnostic(invocation, state, configResult);
-    if (!configResult.ok) {
+    const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
+    if (config === undefined) {
       await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
-    const config = configResult.config;
 
     try {
       const dedupeKey = opencodeToolCallDedupeKey(
@@ -271,6 +274,23 @@ export class OpenCodeAdapter implements PlatformAdapter {
 
 function allowOutput(): HookResult {
   return { stdout: { continue: true, suppressOutput: true } };
+}
+
+function workspaceResultOutput(
+  result: Exclude<WorkspaceResolutionResult, { status: "ready" }>,
+  sessionId?: string,
+): HookResult {
+  if (result.reason === "selection-required") {
+    return {
+      stdout: {
+        continue: true,
+        suppressOutput: true,
+        namsWorkspaceSelectionRequired: true,
+        reason: formatWorkspaceSelectionNotice("opencode", result.workspaces, sessionId),
+      },
+    };
+  }
+  return allowOutput();
 }
 
 async function consumePendingContext(

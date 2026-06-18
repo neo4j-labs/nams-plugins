@@ -12,10 +12,20 @@ export interface RuntimeLogReadResult {
 
 export function runtimeEnv(homeDir: string, extra: TestEnvironment = {}): TestEnvironment {
   return {
-    ...extra,
+    ...childProcessEnv(extra),
     HOME: homeDir,
     USERPROFILE: homeDir,
   };
+}
+
+function childProcessEnv(extra: TestEnvironment): TestEnvironment {
+  const env = { ...extra };
+  for (const key of Object.keys(env)) {
+    if (key.startsWith("npm_") || key.startsWith("NODE_TEST")) {
+      delete env[key];
+    }
+  }
+  return env;
 }
 
 export function namsHome(homeDir: string): string {

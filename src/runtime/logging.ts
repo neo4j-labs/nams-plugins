@@ -60,6 +60,23 @@ export async function appendNamsRequestLog(
   });
 }
 
+export const workspaceDiagnosticMessages = {
+  loadedFromConfig: "NAMS workspace loaded from config",
+  loadedFromSessionState: "NAMS workspace loaded from session state",
+  autoSelected: "NAMS workspace auto-selected",
+  selectionRequired: "NAMS workspace selection required",
+  listEmpty: "NAMS workspace list empty",
+  requestFailed: "NAMS workspace request failed",
+} as const;
+
+export async function appendWorkspaceDiagnostic(
+  invocation: HookInvocation,
+  state: SessionState,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  await appendPlatformDiagnosticLog(invocation, state, payload);
+}
+
 export async function appendRawPlatformLog(
   invocation: HookInvocation,
   state?: SessionState,

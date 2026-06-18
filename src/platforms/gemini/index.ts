@@ -1,8 +1,7 @@
-import type { HookInvocation, HookResult, PlatformAdapter } from "../../interfaces.js";
-import { loadNamsConfig } from "../../runtime/config.js";
+import type { HookInvocation, HookResult, MemoryPlatformAdapter } from "../../interfaces.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
+import { recordActiveWorkspaceSession } from "../../runtime/active-workspace-session.js";
 import {
-  appendNamsConfigDiagnostic,
   appendNamsFailureDiagnostic,
   appendRawPlatformLog,
 } from "../../runtime/logging.js";
@@ -11,16 +10,23 @@ import {
   createNamsMemoryService,
   type NamsMemoryService,
 } from "../../runtime/memory-service.js";
+import { sessionStatePath } from "../../runtime/paths.js";
 import {
   createInitialSessionState,
   loadSessionState,
   saveSessionState,
   type SessionState,
 } from "../../runtime/session-state.js";
+import {
+  loadEffectiveNamsConfigForMemory,
+  resolveWorkspaceForMemory,
+  type WorkspaceResolutionResult,
+} from "../../runtime/workspace-resolution.js";
+import { formatWorkspaceSelectionNotice } from "../workspace-selection.js";
 import { parseGeminiPayload } from "./payload.js";
 import { readGeminiTranscript, type GeminiTranscriptEntry } from "./transcript.js";
 
-export class GeminiAdapter implements PlatformAdapter {
+export class GeminiAdapter implements MemoryPlatformAdapter {
   async startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
     const payloadInfo = parseGeminiPayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({
@@ -33,6 +39,12 @@ export class GeminiAdapter implements PlatformAdapter {
       initialState;
     await appendRawPlatformLog(invocation, state);
     await saveSessionState(invocation.platform, state.sessionKey, state);
+    await recordActiveGeminiWorkspaceSession(
+      invocation,
+      state,
+      payloadInfo.projectDirectory,
+      payloadInfo.sessionId,
+    );
 
     return { stdout: { continue: true, suppressOutput: true } };
   }
@@ -53,14 +65,29 @@ export class GeminiAdapter implements PlatformAdapter {
       await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
-
-    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
-    await appendNamsConfigDiagnostic(invocation, state, configResult);
-    if (!configResult.ok) {
+    if (isWorkspaceCommandResultPrompt(payloadInfo.prompt)) {
       await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
-    const config = configResult.config;
+
+    const workspaceResult = await resolveWorkspaceForMemory({
+      invocation,
+      state,
+      projectDirectory: payloadInfo.projectDirectory,
+    });
+    if (workspaceResult.status !== "ready") {
+      await saveSessionState(invocation.platform, state.sessionKey, state);
+      if (workspaceResult.reason === "selection-required") {
+        await recordActiveGeminiWorkspaceSession(
+          invocation,
+          state,
+          payloadInfo.projectDirectory,
+          payloadInfo.sessionId,
+        );
+      }
+      return workspaceResultOutput(workspaceResult, payloadInfo.sessionId);
+    }
+    const config = workspaceResult.config;
 
     let additionalContext: string | undefined;
     try {
@@ -132,13 +159,11 @@ export class GeminiAdapter implements PlatformAdapter {
     }
     const conversationId = state.conversationId;
 
-    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
-    await appendNamsConfigDiagnostic(invocation, state, configResult);
-    if (!configResult.ok) {
+    const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
+    if (config === undefined) {
       await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
-    const config = configResult.config;
 
     try {
       const memory = createNamsMemoryService(config, invocation, state);
@@ -194,13 +219,11 @@ export class GeminiAdapter implements PlatformAdapter {
       return allowOutput();
     }
 
-    const configResult = await loadNamsConfig(payloadInfo.projectDirectory);
-    await appendNamsConfigDiagnostic(invocation, state, configResult);
-    if (!configResult.ok) {
+    const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
+    if (config === undefined) {
       await saveSessionState(invocation.platform, state.sessionKey, state);
       return allowOutput();
     }
-    const config = configResult.config;
 
     try {
       const toolCallKeys = geminiToolCallDedupeKeys(
@@ -262,6 +285,51 @@ function allowOutput(additionalContext?: string): HookResult {
         : {}),
     },
   };
+}
+
+function workspaceResultOutput(
+  result: Exclude<WorkspaceResolutionResult, { status: "ready" }>,
+  sessionId?: string,
+): HookResult {
+  if (result.reason === "selection-required") {
+    const message = formatWorkspaceSelectionNotice("gemini", result.workspaces, sessionId, [
+      "Select a session workspace with: /nams:workspace use <workspace-id-or-name>",
+    ]);
+    return {
+      stdout: {
+        continue: true,
+        suppressOutput: false,
+        systemMessage: message,
+        hookSpecificOutput: {
+          additionalContext: message,
+        },
+      },
+    };
+  }
+  return allowOutput();
+}
+
+async function recordActiveGeminiWorkspaceSession(
+  invocation: HookInvocation,
+  state: SessionState,
+  projectDirectory: string,
+  sessionId?: string,
+): Promise<void> {
+  try {
+    await recordActiveWorkspaceSession({
+      platform: invocation.platform,
+      sessionId,
+      sessionKey: state.sessionKey,
+      projectDirectory,
+      statePath: sessionStatePath(invocation.platform, state.sessionKey, state.createdAt),
+    });
+  } catch {
+    return;
+  }
+}
+
+function isWorkspaceCommandResultPrompt(prompt: string): boolean {
+  return prompt.trimStart().startsWith("NAMS workspace command result:");
 }
 
 interface GeminiAfterToolPayload {

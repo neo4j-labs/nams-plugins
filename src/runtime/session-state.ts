@@ -5,12 +5,25 @@ import { sha256 } from "./hashing.js";
 import { writePrivateFile } from "./permissions.js";
 import { RuntimeEnvironment } from "./paths.js";
 
+export type SessionWorkspaceSource =
+  | "config"
+  | "runtime-single-workspace"
+  | "install-selection"
+  | "session-selection";
+
+export interface SessionWorkspaceState {
+  id: string;
+  source: SessionWorkspaceSource;
+  selectedAt: string;
+}
+
 export interface SessionState {
   harness: Platform;
   harnessSessionId?: string;
   sessionKey: string;
   projectDirectory: string;
   conversationId?: string;
+  workspace?: SessionWorkspaceState;
   createdAt: string;
   lastRecallAt?: string;
   pendingMemoryContext?: {

@@ -1,0 +1,56 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "name": "nams-session-start",
+            "description": "Route Gemini CLI session-start payload to the installed NAMS hook runtime.",
+            "command": "nams-hooks run gemini --event SessionStart"
+          }
+        ]
+      }
+    ],
+    "BeforeAgent": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "name": "nams-memory-before-agent",
+            "description": "Route Gemini CLI before-agent payload to the installed NAMS hook runtime.",
+            "command": "nams-hooks run gemini --event BeforeAgent"
+          }
+        ]
+      }
+    ],
+    "AfterAgent": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "name": "nams-after-agent",
+            "description": "Route Gemini CLI after-agent payload to the installed NAMS hook runtime.",
+            "command": "nams-hooks run gemini --event AfterAgent"
+          }
+        ]
+      }
+    ],
+    "AfterTool": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "name": "nams-after-tool",
+            "description": "Route Gemini CLI after-tool payload to the installed NAMS hook runtime.",
+            "command": "nams-hooks run gemini --event AfterTool"
+          }
+        ]
+      }
+    ]
+  }
+}

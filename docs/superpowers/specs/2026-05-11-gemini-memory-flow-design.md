@@ -110,9 +110,9 @@ Phase 1 config supports only the shared runtime keys, as amended by `docs/superp
 
 - `apiKey`, required for NAMS requests, from JSON config or `NAMS_API_KEY`
 - `workspaceId`, required for NAMS requests, from JSON config or `NAMS_WORKSPACE_ID`
-- `baseUrl`, optional, from JSON config or `NAMS_BASE_URL`, defaulting to the generated client's default
+- `baseUrl`, required for NAMS requests, from JSON config or `NAMS_BASE_URL`. The runtime and generated client must not hardcode a production service URL.
 
-Configuration loads `~/.nams/config.json` first, overlays `<project>/.nams/config.json` when present, then overlays `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` when those environment variables are set. Missing `apiKey` or `workspaceId` is non-blocking for Gemini; the runtime logs a sanitized diagnostic and returns allow output. The diagnostic records which source supplied each config key, including `workspaceId`, but it never records secret values or raw config contents.
+Configuration loads `~/.nams/config.json` first, overlays `<project>/.nams/config.json` when present, then overlays `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` when those environment variables are set. Missing `apiKey`, `baseUrl`, or `workspaceId` is non-blocking for Gemini; the runtime logs a sanitized diagnostic and returns allow output. The diagnostic records which source supplied each config key, including `workspaceId`, but it never records secret values or raw config contents.
 
 When Gemini reads existing global or project NAMS config files, the shared runtime tightens readable files to `0600`. Gemini-created runtime state and log files under `~/.nams/` are also written as `0600`, with runtime directories created as `0700`.
 

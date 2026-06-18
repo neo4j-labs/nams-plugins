@@ -163,11 +163,11 @@ test("creates Codex conversation, recalls memory, returns context, and stores Us
 
     const { lines } = await readSingleSessionLog(projectDir);
     assert.equal(lines[0].kind, "hook.event");
-    const configDiagnostics = lines.filter(
-      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS config loaded",
+    const workspaceDiagnostics = lines.filter(
+      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS workspace loaded from config",
     );
-    assert.equal(configDiagnostics.length, 1);
-    assert.deepEqual(configDiagnostics[0].payload.configSources, {
+    assert.equal(workspaceDiagnostics.length, 1);
+    assert.deepEqual(workspaceDiagnostics[0].payload.configSources, {
       apiKey: "env:NAMS_API_KEY",
       workspaceId: "env:NAMS_WORKSPACE_ID",
       baseUrl: "env:NAMS_BASE_URL",
@@ -196,6 +196,146 @@ test("creates Codex conversation, recalls memory, returns context, and stores Us
     }
     assert.match(JSON.stringify(requestEntries), /fixture-driven tests/);
     assert.doesNotMatch(JSON.stringify(requestEntries), /Authorization|Bearer|key/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Codex beforeAgent auto-selects a single listed workspace when config workspaceId is missing", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
+  try {
+    const prompt = "Resolve my workspace before memory.";
+    const nams = createNamsFetchMock()
+      .workspaces({
+        workspaces: [{ id: "workspace-1", name: "Engineering", role: "owner", status: "active" }],
+      })
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message();
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+    const adapter = new CodexAdapter();
+
+    const result = await adapter.beforeAgent({
+      platform: "codex",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt,
+      },
+    });
+
+    assert.equal(result.stdout.continue, true);
+    assert.equal(nams.calls("listMyWorkspaces").length, 1);
+    assert.equal(nams.calls("createConversation").length, 1);
+    const createHeaders = nams.calls("createConversation")[0].options.headers as Record<string, string>;
+    assert.equal(createHeaders["x-workspace-id"], "workspace-1");
+    const state = (await loadSessionState("codex", "session-1"))!;
+    assert.equal(state.workspace?.id, "workspace-1");
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Codex beforeAgent skips memory when multiple listed workspaces require selection", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
+  try {
+    const nams = createNamsFetchMock()
+      .workspaces({
+        workspaces: [
+          { id: "workspace-1", name: "Engineering", role: "owner", status: "active" },
+          { id: "workspace-2", name: "Research", role: "member", status: "active" },
+        ],
+      })
+      .all({ error: "unexpected memory call" }, 500);
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+    const adapter = new CodexAdapter();
+
+    const result = await adapter.beforeAgent({
+      platform: "codex",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "This should not create memory yet.",
+      },
+    });
+
+    assert.equal(result.stdout.continue, true);
+    assert.equal(result.stdout.suppressOutput, true);
+    assert.equal(Object.hasOwn(result.stdout, "additionalContext"), false);
+    assert.equal(hookSpecificOutput(result).hookEventName, "UserPromptSubmit");
+    assert.match(hookSpecificOutput(result).additionalContext, /NAMS memory is inactive for this turn/);
+    assert.match(hookSpecificOutput(result).additionalContext, /No memory messages were stored/);
+    assert.match(hookSpecificOutput(result).additionalContext, /Multiple NAMS workspaces are available/);
+    assert.match(hookSpecificOutput(result).additionalContext, /\$nams:workspace use <workspace-id-or-name>/);
+    assert.match(
+      hookSpecificOutput(result).additionalContext,
+      /nams-hooks workspaces configure codex --scope session --session-id session-1 --workspace <workspace-id-or-name>/,
+    );
+    assert.match(hookSpecificOutput(result).additionalContext, /workspace-2/);
+    assert.equal(nams.calls("listMyWorkspaces").length, 1);
+    assert.equal(nams.calls("createConversation").length, 0);
+    const state = (await loadSessionState("codex", "session-1"))!;
+    assert.equal(state.workspace, undefined);
+    assert.equal(state.conversationId, undefined);
+    const markerPath = path.join(namsHome(testEnv(projectDir).HOME), "state", "codex", "active-workspace-sessions.json");
+    const marker = JSON.parse(await readFile(markerPath, "utf8"));
+    assert.equal(marker.sessions.length, 1);
+    assert.equal(marker.sessions[0].sessionId, "session-1");
+    assert.equal(marker.sessions[0].sessionKey, "session-1");
+    assert.equal(marker.sessions[0].projectDirectory, path.resolve(projectDir));
+    assert.equal(typeof marker.sessions[0].touchedAt, "string");
+    assert.equal(Object.hasOwn(marker, "version"), false);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Codex beforeAgent treats explicit workspace skill prompt as control input", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
+  try {
+    const nams = createNamsFetchMock().all({ error: "unexpected NAMS call" }, 500);
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+    const adapter = new CodexAdapter();
+
+    const result = await adapter.beforeAgent({
+      platform: "codex",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "session-1",
+        cwd: projectDir,
+        prompt: "$nams:workspace use Default",
+      },
+    });
+
+    assert.deepEqual(result.stdout, { continue: true, suppressOutput: true });
+    assert.equal(nams.calls().length, 0);
+    const state = (await loadSessionState("codex", "session-1"))!;
+    assert.equal(state.conversationId, undefined);
+    assert.equal(state.workspace, undefined);
+    const markerPath = path.join(namsHome(testEnv(projectDir).HOME), "state", "codex", "active-workspace-sessions.json");
+    const marker = JSON.parse(await readFile(markerPath, "utf8"));
+    assert.equal(marker.sessions.length, 1);
+    assert.equal(marker.sessions[0].sessionId, "session-1");
+    assert.equal(marker.sessions[0].sessionKey, "session-1");
+    assert.equal(marker.sessions[0].projectDirectory, path.resolve(projectDir));
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -261,7 +401,7 @@ test("missing Codex NAMS_API_KEY returns allow output and minimal diagnostic log
     assert.deepEqual(diagnostics[0].payload.configSources, {
       apiKey: "missing",
       workspaceId: "missing",
-      baseUrl: "default",
+      baseUrl: "missing",
     });
     assert.doesNotMatch(log, /Bearer|key/);
   } finally {
@@ -298,7 +438,7 @@ test("Codex beforeAgent logs invalid config diagnostics without raw JSON content
         configSources: {
           apiKey: "missing",
           workspaceId: "missing",
-          baseUrl: "default",
+          baseUrl: "missing",
         },
         errorSource: "project:.nams/config.json",
       },
@@ -1056,7 +1196,7 @@ test("Codex afterAgent missing config and failed NAMS calls allow and log minima
     assert.deepEqual(missingConfigDiagnostics[0].payload.configSources, {
       apiKey: "missing",
       workspaceId: "missing",
-      baseUrl: "default",
+      baseUrl: "missing",
     });
     assert.doesNotMatch(missingConfigLog, /Authorization|Bearer|key/);
 
@@ -1354,7 +1494,7 @@ test("Codex afterTool missing config and failed NAMS calls allow and log minimal
     assert.deepEqual(missingConfigDiagnostics[0].payload.configSources, {
       apiKey: "missing",
       workspaceId: "missing",
-      baseUrl: "default",
+      baseUrl: "missing",
     });
     assert.doesNotMatch(missingConfigLog, /Authorization|Bearer|test-api-key/);
 

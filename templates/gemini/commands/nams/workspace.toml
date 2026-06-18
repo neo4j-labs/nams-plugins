@@ -1,0 +1,5 @@
+description = "Select the NAMS workspace for this Gemini session."
+
+prompt = """
+!{echo '{ "command_name": "nams:workspace", "command_args": "{{args}}" }' | nams-hooks workspaces run gemini --event CustomCommand}
+"""

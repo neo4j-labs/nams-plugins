@@ -2,19 +2,21 @@
 
 Date: 2026-05-10
 Status: Approved design
-Repository: nams-hooks
+Repository: nams-plugins
 
 ## Summary
 
-`nams-hooks` is a standalone Node.js integration layer that connects local agent harness hooks to the Neo4j Agent Memory Service (NAMS) REST API. Its hook runtime and generated release artifacts have zero runtime npm dependencies and use Node.js built-ins only, while the source repository may use dev-only build, generation, and test tooling. The first iteration supports macOS for Codex, Claude Code, Gemini CLI, and OpenCode. Gemini uses extension distribution. Claude Code can use a generated Claude plugin marketplace artifact, with project-level settings as a fallback path. Codex can use a generated repo marketplace plugin artifact, with project-level hooks as a fallback path. OpenCode uses a project-level plugin install. Runtime configuration, state, and logs live under user-level `~/.nams/`, with optional project overrides in `.nams/config.json`.
+`nams-hooks` is a standalone Node.js integration layer that connects local agent harness hooks to the Neo4j Agent Memory Service (NAMS) REST API. Its hook runtime and generated release artifacts have zero runtime npm dependencies and use Node.js built-ins only, while the source repository may use dev-only build, generation, and test tooling. The first iteration supports macOS for Codex, Claude Code, Gemini CLI, and OpenCode. Gemini uses extension distribution. Claude Code can use a generated Claude plugin marketplace artifact, with project-level settings as a fallback path. Codex can use a generated repo marketplace plugin artifact, with project-level hooks as a fallback path. OpenCode can use a generated self-contained marketplace artifact, with a `dist-local/` project plugin as a fallback path. Runtime configuration, state, and logs live under user-level `~/.nams/`, with optional project overrides in `.nams/config.json`.
+
+As of the umbrella rename, repository, npm package, and marketplace identity use
+`nams-plugins`; the hooks plugin and CLI executable remain `nams-hooks`.
 
 The hook runner owns deterministic memory persistence. Agents receive recalled context, but they are not responsible for deciding whether to write memory. The runner stores conversation messages, recalls relevant memory before agent work, and records limited tool metadata through NAMS REST endpoints.
 
 ## Source Inputs
 
 - Behavioral reference: `docs/nams-skill.md`
-- NAMS OpenAPI contract: `https://memory.neo4jlabs.com/openapi.json`
-- Local OpenAPI copy: `docs/nams-openapi.json`
+- Pinned NAMS OpenAPI contract: `docs/nams-openapi.json`
 - Claude Code hooks reference: `https://code.claude.com/docs/en/hooks`
 - Claude Code plugin marketplace reference: `https://code.claude.com/docs/en/plugin-marketplaces`
 - Gemini CLI hooks reference: `https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/writing-hooks.md`
@@ -64,7 +66,10 @@ This approach avoids per-harness logic drift while still respecting each platfor
 ```text
 nams-hooks/
   scripts/
-    build-dist.mjs
+    build-dist-common.mjs
+    build-dist-npm.mjs
+    build-dist-marketplace.mjs
+    build-dist-local.mjs
     generate-nams-client.mjs
   src/
     cli.ts
@@ -82,35 +87,52 @@ nams-hooks/
       opencode/
   install.mjs
   templates/
-    claude/
-      .claude-plugin/
-        marketplace.json
-      plugins/
-        nams-hooks/
-          .claude-plugin/
-            plugin.json
-          hooks/
-            hooks.json
-      .claude/
-        settings.local.json
-    codex/
-      .agents/
-        plugins/
+    local/
+      claude/
+        .claude/
+          settings.local.json
+      codex/
+        .codex/
+          hooks.json
+      gemini/
+        .gemini/
+          extensions/
+            gemini-nams-hooks/
+              gemini-extension.json
+              hooks/
+                hooks.json
+      opencode/
+        .opencode/
+          plugins/
+            nams-hooks.js
+    marketplace/
+      claude/
+        .claude-plugin/
           marketplace.json
-      plugins/
-        codex-nams-hooks/
-          .codex-plugin/
-            plugin.json
-          hooks/
-            hooks.json
-      hooks.json
+        plugins/
+          claude-nams-hooks/
+            .claude-plugin/
+              plugin.json
+            hooks/
+              hooks.json
+      codex/
+        .agents/
+          plugins/
+            marketplace.json
+        plugins/
+          codex-nams-hooks/
+            .codex-plugin/
+              plugin.json
+            hooks/
+              hooks.json
+      gemini/
+        gemini-extension.json
+        hooks/
+          hooks.json
     opencode/
-      plugins/
-        nams-hooks.js
-    gemini/
-      gemini-extension.json
-      hooks/
-        hooks.json
+      .opencode/
+        plugins/
+          nams-hooks.js
   docs/
     nams-openapi.json
     nams-skill.md
@@ -166,92 +188,131 @@ Dependency policy:
 Branch model:
 
 - `devel`: source branch containing TypeScript source, templates, docs, the pinned OpenAPI spec, the custom generator, and committed generated TypeScript client source.
-- `latest`: generated release/distribution branch containing runnable JavaScript, Gemini extension root files, Claude plugin marketplace files, and Codex repo marketplace files.
+- `latest`: generated release/distribution branch containing the validated marketplace release artifacts from `dist-marketplace/`.
 
-On `devel`, `dist/` is generated and ignored. `npm run dist` creates a Gemini-linkable extension tree, a Claude Code plugin marketplace tree, and a Codex repo marketplace tree in `dist/`:
+On `devel`, `dist/`, `dist-marketplace/`, and `dist-local/` are generated and ignored. `npm run dist` builds all three trees through the split projection scripts: `build-dist-npm.mjs`, `build-dist-marketplace.mjs`, and `build-dist-local.mjs`, with shared helpers in `build-dist-common.mjs`. `dist/` is the npm package artifact. `dist-marketplace/` is the self-contained marketplace release tree for Gemini, Claude Code, Codex, and OpenCode and is the only tree published to `latest`. `dist-local/` contains project-local configurations that call an installed `nams-hooks` executable. `dist/` and `dist-local/` are generated and verified on `devel` but are not published to `latest`.
 
 ```text
 dist/
-  .agents/
-    plugins/
-      marketplace.json
-  .claude-plugin/
-    marketplace.json
-  gemini-extension.json
-  hooks/
-    hooks.json
   bin/
     cli.js
     platforms/
     runtime/
     generated/
       nams-client.js
+  package.json
+
+dist-marketplace/
+  .agents/
+    plugins/
+      marketplace.json
+  .claude-plugin/
+    marketplace.json
+  gemini-extension.json
+  commands/
+    nams/
+      workspace.toml
+  hooks/
+    hooks.json
   plugins/
+    claude-nams-hooks/
+      package.json
+      .claude-plugin/
+        plugin.json
+      commands/
+        nams/
+          workspace.md
+      hooks/
+        hooks.json
+      bin/
+        cli.js
     codex-nams-hooks/
+      package.json
       .codex-plugin/
         plugin.json
       hooks/
         hooks.json
+      skills/
+        workspace/
+          SKILL.md
+          agents/
+            openai.yaml
       bin/
         cli.js
-        platforms/
-        runtime/
-        generated/
-          nams-client.js
-    nams-hooks/
-      .claude-plugin/
-        plugin.json
-      hooks/
-        hooks.json
+    gemini-nams-hooks/
+      package.json
       bin/
         cli.js
-        platforms/
-        runtime/
-        generated/
-          nams-client.js
-  docs/
-    nams-openapi.json
-  package.json
+    opencode-nams-hooks/
+      package.json
+      nams-hooks.js
+      bin/
+        cli.js
+
+dist-local/
+  claude/
+    .claude/
+      commands/
+        nams/
+          workspace.md
+      settings.local.json
+  codex/
+    .codex/
+      hooks.json
+  gemini/
+    .gemini/
+      commands/
+        nams/
+          workspace.toml
+      settings.json
+  opencode/
+    .opencode/
+      plugins/
+        nams-hooks.js
 ```
 
 Gemini users install from the generated release branch:
 
 ```bash
-gemini extensions install https://github.com/kubamarchwicki/nams-hooks --ref latest
+gemini extensions install https://github.com/neo4j-labs/nams-plugins --ref latest
 ```
 
 For local testing, link the generated extension folder:
 
 ```bash
-npm run dist
-gemini extensions link ./dist
+npm run dist:marketplace
+gemini extensions link ./dist-marketplace
 ```
 
-Gemini hook templates live under `templates/gemini/` on `devel`. The release artifact places `gemini-extension.json` and `hooks/hooks.json` at the extension root because Gemini expects those paths. Gemini hooks call the compiled runtime through `${extensionPath}`:
+Gemini marketplace artifacts place `gemini-extension.json`, `hooks/hooks.json`, and `commands/nams/workspace.toml` at the extension root because Gemini expects those paths. The self-contained marketplace tree bundles the compiled runtime under `plugins/gemini-nams-hooks/bin/cli.js`; local project configurations in `dist-local/gemini/` call an installed `nams-hooks` executable instead. Marketplace hooks call the bundled runtime through `${extensionPath}`:
 
 ```bash
-node "${extensionPath}/bin/cli.js" run gemini --event SessionStart
+node "${extensionPath}/plugins/gemini-nams-hooks/bin/cli.js" run gemini --event SessionStart
 ```
 
-Claude Code users can add the generated release tree as a plugin marketplace and install the `nams-hooks` plugin. Claude loads the plugin's standard `hooks/hooks.json` automatically, so `.claude-plugin/plugin.json` must not point its `hooks` field at that file. The plugin manifest declares user configuration for a required sensitive `NAMS_API_KEY`, a required non-sensitive `NAMS_WORKSPACE_ID`, and an optional `NAMS_BASE_URL` defaulting to `https://memory.neo4jlabs.com`. Plugin hooks call the bundled compiled runtime through `${CLAUDE_PLUGIN_ROOT}/bin/cli.js`, so Claude plugin installs do not require a global `nams-hooks` executable:
+The Gemini `/nams:workspace` custom command intentionally does not call the
+bundled extension runtime. It keeps a readable echo payload and requires an
+installed `nams-hooks` executable so local and marketplace workspace command
+behavior remain identical:
 
 ```bash
-claude plugin marketplace add kubamarchwicki/nams-hooks@latest
-claude plugin install nams-hooks@neo4j-nams-hooks
+echo '{ "command_name": "nams:workspace", "command_args": "<args>" }' | nams-hooks workspaces run gemini --event CustomCommand
 ```
 
-Codex users can add the generated release tree as a repo marketplace and install the available `nams-hooks` plugin. The Codex marketplace lives at `.agents/plugins/marketplace.json` and points to `./plugins/codex-nams-hooks`. The plugin bundles its own compiled `bin/cli.js` and standard `hooks/hooks.json`, with hook commands using `${PLUGIN_ROOT}/bin/cli.js`, so Codex marketplace installs do not require a global `nams-hooks` executable. Codex marketplace policy uses `authentication: "ON_USE"` as marketplace auth timing metadata, but plugin installs do not define NAMS credential values or prompts through plugin metadata; they use the existing `.nams/config.json` and `NAMS_*` environment configuration model:
+Claude Code users can add the generated release tree as a plugin marketplace and install the `nams-hooks` plugin. Claude loads the plugin's standard `hooks/hooks.json` automatically, so `.claude-plugin/plugin.json` must not point its `hooks` field at that file. The plugin manifest declares user configuration for a required sensitive `NAMS_API_KEY`, a required non-sensitive `NAMS_WORKSPACE_ID`, and a non-sensitive `NAMS_BASE_URL` with the standard service URL as its configuration default. Plugin hooks call the bundled compiled runtime through `${CLAUDE_PLUGIN_ROOT}/bin/cli.js`, so Claude plugin installs do not require a global `nams-hooks` executable:
 
 ```bash
-codex plugin marketplace add kubamarchwicki/nams-hooks@latest
+claude plugin marketplace add neo4j-labs/nams-plugins@latest
+claude plugin install nams-hooks@nams-plugins
 ```
 
-OpenCode distribution uses the released CLI package and project-level plugin. Codex and Claude Code can still use project-level settings fallbacks when plugin marketplace installs are not desired:
+Codex users can add the generated release tree as a repo marketplace and install the available `nams-hooks` plugin. The Codex marketplace lives at `.agents/plugins/marketplace.json` and points to `./plugins/codex-nams-hooks`. The plugin bundles its own compiled `bin/cli.js` and standard `hooks/hooks.json`, with hook commands using `${PLUGIN_ROOT}/bin/cli.js`, so Codex marketplace memory hooks do not require a global `nams-hooks` executable. The Codex `$nams:workspace` skill is intentionally different: it requires an installed `nams-hooks` executable so local and marketplace workspace command behavior remain identical. Codex marketplace policy uses `authentication: "ON_USE"` as marketplace auth timing metadata, but plugin installs do not define NAMS credential values or prompts through plugin metadata; they use the existing `.nams/config.json` and `NAMS_*` environment configuration model:
 
 ```bash
-npm install -g @neo4j-labs/nams-hooks
-nams-hooks install --harness codex,claude,opencode
+codex plugin marketplace add neo4j-labs/nams-plugins@latest
 ```
+
+OpenCode marketplace distribution is self-contained under `dist-marketplace/plugins/opencode-nams-hooks/`, with `nams-hooks.js` and bundled `bin/cli.js`. Local fallback/project configurations live under `dist-local/codex/.codex/`, `dist-local/claude/.claude/`, `dist-local/gemini/.gemini/`, and `dist-local/opencode/.opencode/`; those local artifacts call an installed `nams-hooks` executable.
 
 Manual or CI release flow:
 
@@ -260,18 +321,19 @@ Manual or CI release flow:
 3. Run `npm run openapi:generate`.
 4. Commit `docs/nams-openapi.json` and `src/generated/nams-client.ts` if they changed.
 5. Run package verification.
-6. Run release preparation to create the release tree.
-7. Replace `latest` contents with the validated release tree.
-8. Commit the release artifact on `latest`.
+6. Run release preparation to create the marketplace release tree from `dist-marketplace/`.
+7. Replace `latest` contents with the validated `dist-marketplace/` release tree.
+8. Commit the marketplace release artifact on `latest`.
 9. Force-update the `latest` tag and recreate the GitHub Release named `latest`.
 
 Rules:
 
-- `latest` is generated from `devel`; no hand edits.
+- Generated release artifacts are produced from `devel`; no hand edits.
 - The `latest` release tag is created from `latest`.
 - Gemini installs use `--ref latest`.
-- Codex, Claude, and OpenCode npm releases are produced from the same validated artifact.
-- `npm run package:check` must verify that Claude and Codex marketplace/plugin files are present in `dist/` and included by npm dry-run packing.
+- Codex, Claude, Gemini, and OpenCode marketplace release artifacts are produced from the same validated source tree.
+- `dist/` and `dist-local/` are verification artifacts on `devel`; they are not copied to `latest`.
+- `npm run package:check` must verify all generated artifacts: npm package output in `dist/`, self-contained marketplace output in `dist-marketplace/`, local project configuration output in `dist-local/`, and npm dry-run package contents.
 
 ## Configuration
 
@@ -281,7 +343,7 @@ Supported JSON keys:
 
 - `apiKey`: NAMS workspace API key, sent as `Authorization: Bearer <key>`.
 - `workspaceId`: NAMS workspace identifier for memory requests.
-- `baseUrl`: optional NAMS base URL, defaulting to `https://memory.neo4jlabs.com`.
+- `baseUrl`: NAMS base URL, defaulting to `https://memory.neo4jlabs.com` when provided by standard configuration examples or platform configuration templates. The runtime and generated client must not hardcode a production service URL.
 
 Example:
 
@@ -301,7 +363,7 @@ Platform-specific discovery:
 Claude plugin discovery sources:
 
 - `CLAUDE_PLUGIN_OPTION_NAMS_API_KEY`: fills `apiKey` from the Claude plugin's required sensitive `NAMS_API_KEY` setting.
-- `CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID`: fills `workspaceId` from the Claude plugin's required non-sensitive `NAMS_WORKSPACE_ID` setting.
+- `CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID`: fills `workspaceId` from the Claude plugin's optional non-sensitive `NAMS_WORKSPACE_ID` setting.
 - `CLAUDE_PLUGIN_OPTION_NAMS_BASE_URL`: fills `baseUrl` from the Claude plugin's optional `NAMS_BASE_URL` setting, whose plugin default is `https://memory.neo4jlabs.com`.
 
 Supported final environment overrides:
@@ -313,13 +375,10 @@ Supported final environment overrides:
 Required:
 
 - `apiKey`, from either JSON config or `NAMS_API_KEY`.
-- `workspaceId`, from JSON config, Claude plugin user configuration, or `NAMS_WORKSPACE_ID`.
-
-Optional:
-
 - `baseUrl`, from JSON config, Claude plugin user configuration, or `NAMS_BASE_URL`.
+- `workspaceId`, from JSON config, Claude plugin user configuration, or `NAMS_WORKSPACE_ID`, unless a harness-specific workspace-resolution phase selects one before memory starts.
 
-Final environment overrides are limited to `NAMS_API_KEY`, `NAMS_WORKSPACE_ID` and `NAMS_BASE_URL` unless a future design explicitly adds more. The runtime records sanitized `configSources` diagnostics in the session log, for example `apiKey: "env:NAMS_API_KEY"`, `workspaceId: "env:NAMS_WORKSPACE_ID"`, `workspaceId: "platform:claude:CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID"`, `baseUrl: "project:.nams/config.json"`, or `baseUrl: "default"`. It never logs secret values or full config objects.
+Final environment overrides are limited to `NAMS_API_KEY`, `NAMS_WORKSPACE_ID` and `NAMS_BASE_URL` unless a future design explicitly adds more. The runtime records sanitized `configSources` diagnostics in the session log, for example `apiKey: "env:NAMS_API_KEY"`, `workspaceId: "env:NAMS_WORKSPACE_ID"`, `workspaceId: "platform:claude:CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID"`, `baseUrl: "project:.nams/config.json"`, or `baseUrl: "missing"`. It never logs secret values or full config objects.
 
 `.env` files are not part of the target configuration model. Secrets remain outside committed harness configs. The installer ensures project `.nams/config.json` stays local and gitignored when it creates or modifies a project override.
 
@@ -448,21 +507,22 @@ Session end:
 Claude Code:
 
 - Strong v1 support because hook inputs include `session_id`, `transcript_path`, `cwd`, and event-specific fields.
-- Use generated Claude plugin marketplace distribution by default for releases. The plugin root contains the standard auto-loaded `hooks/hooks.json` and a bundled compiled `bin/cli.js`; hook commands reference `${CLAUDE_PLUGIN_ROOT}` rather than a global executable. The plugin manifest omits `hooks` unless future additional hook files are introduced, and declares Claude `userConfig` for the required sensitive NAMS API key plus optional base URL.
-- Keep project-level `.claude/settings.local.json` as a fallback path for local manual installs.
+- Use generated Claude plugin marketplace distribution by default for releases. The marketplace root is `dist-marketplace/.claude-plugin/marketplace.json`, and the plugin root is `dist-marketplace/plugins/claude-nams-hooks/`. The plugin contains the standard auto-loaded `hooks/hooks.json` and a bundled compiled `bin/cli.js`; hook commands reference `${CLAUDE_PLUGIN_ROOT}` rather than a global executable. The plugin manifest omits `hooks` unless future additional hook files are introduced, and declares Claude `userConfig` for the required sensitive NAMS API key plus optional workspace and base URL.
+- Keep `dist-local/claude/.claude/settings.local.json` as a fallback path for local manual installs that call an installed `nams-hooks`.
 - Use `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `Stop`.
 
 Gemini CLI:
 
-- Use Gemini extension distribution for v1. Source templates live under `templates/gemini/`, and release artifacts place `gemini-extension.json` plus `hooks/hooks.json` at extension root.
+- Use Gemini extension distribution for v1. Marketplace release artifacts place `gemini-extension.json`, `hooks/hooks.json`, and `commands/nams/workspace.toml` at the `dist-marketplace/` extension root, with the bundled runtime under `plugins/gemini-nams-hooks/bin/cli.js`.
+- Keep `dist-local/gemini/.gemini/` as a symlinkable project-local configuration that calls an installed `nams-hooks`, with hooks in `.gemini/settings.json` and commands in `.gemini/commands/`.
 - Use `SessionStart`, `BeforeAgent`, `AfterTool`, and `AfterAgent` where available.
 - `BeforeAgent` can inject relevant memory context.
 - `AfterAgent` can persist assistant responses when `prompt_response` or equivalent is present.
 
 Codex:
 
-- Use generated Codex repo marketplace distribution by default for releases. The marketplace root contains `.agents/plugins/marketplace.json`, the plugin root is `plugins/codex-nams-hooks/`, and plugin hooks reference `${PLUGIN_ROOT}` rather than a global executable.
-- Use project-level `.codex/hooks.json`.
+- Use generated Codex repo marketplace distribution by default for releases. The marketplace root is `dist-marketplace/.agents/plugins/marketplace.json`, the plugin root is `dist-marketplace/plugins/codex-nams-hooks/`, and plugin hooks reference `${PLUGIN_ROOT}` rather than a global executable.
+- Use `dist-local/codex/.codex/hooks.json` and `dist-local/codex/.codex/skills/workspace/` for project-level fallback installs that call an installed `nams-hooks`.
 - The repository template must use Codex's command-hook group shape for `SessionStart`:
   `{ "matcher": "startup|resume", "hooks": [{ "type": "command", "command": "nams-hooks run codex --event SessionStart", "statusMessage": "Loading session notes" }] }`.
   Do not use the stale short-form object that places `command` directly under `SessionStart`.
@@ -472,7 +532,8 @@ Codex:
 
 OpenCode:
 
-- Use a project-level `.opencode/plugins/nams-hooks.js` plugin.
+- Use generated OpenCode marketplace distribution under `dist-marketplace/plugins/opencode-nams-hooks/` for self-contained release artifacts, with a bundled compiled `bin/cli.js`.
+- Use `dist-local/opencode/.opencode/plugins/nams-hooks.js` for project-level fallback installs that call an installed `nams-hooks`.
 - The plugin maps `session.created`, `chat.message`, `experimental.chat.system.transform`, `experimental.text.complete`, and `tool.execute.after` to NAMS `SessionStart`, `BeforeAgent`, `AfterAgent`, and `AfterTool`.
 - `chat.message` creates or reuses the NAMS conversation, recalls memory, persists user messages, and stores pending context for system prompt injection.
 - `experimental.text.complete` persists exposed assistant text best-effort.
@@ -620,16 +681,16 @@ Manual validation:
 - Assistant response capture may be best-effort for some harness versions.
 - Prompt/context injection may be visible in some harness UIs even when intended as model context.
 - NAMS REST API shape may drift from the pinned OpenAPI copy. The build-time fetch and contract-test workflow should make drift explicit before release.
-- GitHub install from `master` means any accidental unreleased commit to `master` becomes installable immediately; branch protections should require release automation.
+- GitHub install from `latest` means any accidental unreleased commit to `latest` becomes installable immediately; branch protections should require release automation.
 
 ## Approval Record
 
 Approved decisions from brainstorming:
 
-- Standalone `nams-hooks` repo.
+- Standalone `nams-plugins` repo containing the `nams-hooks` runtime product.
 - First iteration: Codex, Claude Code, Gemini CLI, and OpenCode on macOS.
 - User-level runtime state and logs under `~/.nams/`.
-- Codex and Claude Code use generated marketplace distribution by default, with project-level settings as fallbacks; OpenCode uses a project-level plugin install; Gemini uses extension distribution for v1.
+- Codex, Claude Code, Gemini, and OpenCode use generated marketplace distribution for release artifacts, with `dist-local/` project-level configurations as fallbacks that call an installed `nams-hooks`.
 - Plain Node.js with built-in modules only.
 - JSON configuration with global defaults in `~/.nams/config.json`, optional project overrides in `.nams/config.json`, and final environment overrides from `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL`.
 - Deterministic REST writes from hook runner, not MCP-driven writes.
@@ -639,4 +700,4 @@ Approved decisions from brainstorming:
 - Rely on NAMS async entity extraction from stored messages.
 - Use TypeScript for source and release vanilla JavaScript.
 - Use a custom generated `NamsClient` for REST calls.
-- Use `devel` for source and generated TypeScript, and `master` for generated release distribution.
+- Use `devel` for source and generated TypeScript, and `latest` for validated marketplace release artifacts from `dist-marketplace/`; `dist/` and `dist-local/` remain generated verification artifacts on `devel`.

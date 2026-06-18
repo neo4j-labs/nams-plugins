@@ -1,0 +1,37 @@
+{
+  "name": "nams-hooks",
+  "version": "__PACKAGE_VERSION__",
+  "description": "Persistent Neo4j Agent Memory Service hooks for Claude Code.",
+  "author": {
+    "name": "Neo4j Labs"
+  },
+  "repository": "https://github.com/neo4j-labs/nams-plugins",
+  "license": "__PACKAGE_LICENSE__",
+  "keywords": [
+    "memory",
+    "context",
+    "persistence",
+    "neo4j",
+    "nams"
+  ],
+  "userConfig": {
+    "NAMS_API_KEY": {
+      "type": "string",
+      "title": "NAMS API key",
+      "description": "Neo4j Agent Memory Service API key.",
+      "sensitive": true,
+      "required": true
+    },
+    "NAMS_WORKSPACE_ID": {
+      "type": "string",
+      "title": "NAMS workspace ID",
+      "description": "Optional workspace ID for Neo4j Agent Memory Service. If omitted, nams-hooks auto-selects a single available workspace before memory starts."
+    },
+    "NAMS_BASE_URL": {
+      "type": "string",
+      "title": "NAMS base URL",
+      "description": "Neo4j Agent Memory Service API base URL.",
+      "default": "https://memory.neo4jlabs.com"
+    }
+  }
+}

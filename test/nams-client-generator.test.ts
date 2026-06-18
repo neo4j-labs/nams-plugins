@@ -213,6 +213,19 @@ test("generated NAMS client source does not read OpenAPI at runtime", async () =
   assert.doesNotMatch(source, /readFile/);
 });
 
+test("generated NAMS client requires an explicit base URL", async () => {
+  const { NamsClient } = await importGeneratedClient();
+
+  assert.throws(
+    () =>
+      new NamsClient({
+        apiKey: "test-key",
+        workspaceId: "workspace-1",
+      } as ConstructorParameters<typeof NamsClient>[0]),
+    /requires a baseUrl/,
+  );
+});
+
 test("generated NAMS client sends bearer JSON requests", async () => {
   const { NamsClient } = await importGeneratedClient();
   const requests: CapturedRequest[] = [];

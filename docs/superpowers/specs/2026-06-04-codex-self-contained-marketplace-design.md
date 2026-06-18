@@ -2,11 +2,14 @@
 
 Date: 2026-06-04
 Status: Approved design
-Repository: nams-hooks
+Repository: nams-plugins
 
 ## Summary
 
 `nams-hooks` will add a Codex repo marketplace release path that installs a self-contained Codex plugin. The Codex plugin bundles the compiled hook runtime and default lifecycle hook configuration, so a Codex marketplace install does not depend on a globally installed `nams-hooks` command.
+
+After the umbrella rename, the Codex marketplace name is `nams-plugins`, while
+the installable plugin remains `nams-hooks`.
 
 NAMS credentials remain configured through the existing runtime configuration model: user/project `.nams/config.json` plus `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment overrides. Codex plugin installation will not introduce a Claude-style plugin secret prompt because Codex's public plugin documentation does not currently describe an equivalent custom `userConfig` mechanism for arbitrary hook environment values.
 
@@ -66,7 +69,7 @@ dist/
 
 The marketplace file exposes a single plugin named `nams-hooks` with `source.path` set to `./plugins/codex-nams-hooks`. Its policy sets `installation` to `AVAILABLE` and `authentication` to `ON_USE`. It does not make the plugin installed by default, and it does not define Codex plugin NAMS credential prompts. The source directory is platform-specific because the existing Claude plugin release path already uses `dist/plugins/nams-hooks/hooks/hooks.json` for Claude-specific hook commands.
 
-The plugin manifest uses stable package metadata: `name`, `version`, `description`, `license`, `repository`, and keywords. Lifecycle hooks are provided through the default `hooks/hooks.json` file rather than inline manifest hook configuration.
+The plugin manifest uses stable package metadata: `name`, `version`, `description`, `license`, `repository`, and keywords. Its `repository` value is `https://github.com/neo4j-labs/nams-plugins`. Lifecycle hooks are provided through the default `hooks/hooks.json` file rather than inline manifest hook configuration.
 
 ## Hook Command Shape
 
