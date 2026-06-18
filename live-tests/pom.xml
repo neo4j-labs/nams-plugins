@@ -16,6 +16,8 @@
     <junit.jupiter.version>6.0.1</junit.jupiter.version>
     <assertj.version>3.27.6</assertj.version>
     <testcontainers.version>2.0.5</testcontainers.version>
+    <rest.assured.version>5.5.6</rest.assured.version>
+    <jackson.version>2.20.1</jackson.version>
     <slf4j.version>1.7.36</slf4j.version>
     <maven.surefire.version>3.5.4</maven.surefire.version>
   </properties>
@@ -59,6 +61,18 @@
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-simple</artifactId>
       <version>${slf4j.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.rest-assured</groupId>
+      <artifactId>rest-assured</artifactId>
+      <version>${rest.assured.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <version>${jackson.version}</version>
       <scope>test</scope>
     </dependency>
   </dependencies>
