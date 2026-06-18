@@ -1,8 +1,8 @@
 # Development
 
 This guide is for developing and testing `nams-hooks` from a local checkout.
-It deliberately uses generated local artifacts under `dist/`,
-`dist-marketplace/`, and `dist-local/` rather than the published release branch.
+It deliberately uses the generated development distribution trees:
+`dist/`, `dist-marketplace/`, and `dist-local/`.
 
 Runtime hook code is compiled from TypeScript to plain JavaScript and uses only
 Node.js built-ins. Development tooling, tests, and distribution assembly use
@@ -96,9 +96,14 @@ npm run dist
 
 The command creates three ignored trees:
 
-- `dist/`: npm package output with `bin/cli.js` and `package.json`.
-- `dist-marketplace/`: self-contained marketplace output for Gemini, Claude Code, Codex, and OpenCode.
-- `dist-local/`: project-local configurations that call an installed `nams-hooks`.
+- `dist/`: npm-installable package output with `bin/cli.js` and
+  `package.json`. Use this for `npm install -g ./dist`.
+- `dist-marketplace/`: self-contained marketplace output for Gemini,
+  Claude Code, Codex, and OpenCode. Marketplace hooks call bundled runtime
+  files under `dist-marketplace/plugins/<platform>-nams-hooks/bin/`.
+- `dist-local/`: project-shaped local configuration output for Gemini,
+  Claude Code, Codex, and OpenCode. These files call an installed
+  `nams-hooks` executable and do not include compiled runtime files.
 
 Use target-specific commands when you only need one tree:
 
@@ -108,7 +113,27 @@ npm run dist:marketplace
 npm run dist:local
 ```
 
-Do not hand-edit generated dist trees; change TypeScript source, templates, or build scripts instead.
+`dist-local/` is intended for quick local project testing. You can symlink its
+platform folders into a scratch project so rebuilding `dist-local/` updates the
+project configuration in place:
+
+```bash
+npm run dist:npm
+npm install -g ./dist
+npm run dist:local
+
+ln -sF <repository-root-or-worktree>/dist-local/gemini/.gemini /path/to/project/.gemini
+ln -sF <repository-root-or-worktree>/dist-local/codex/.codex /path/to/project/.codex
+ln -sF <repository-root-or-worktree>/dist-local/claude/.claude /path/to/project/.claude
+ln -sF <repository-root-or-worktree>/dist-local/opencode/.opencode /path/to/project/.opencode
+```
+
+Only replace a target project folder when it is disposable. If the project
+already has platform configuration, merge the generated hook, command, skill, or
+plugin entries from `dist-local/` instead of replacing the whole folder.
+
+Do not hand-edit generated dist trees; change TypeScript source, templates, or
+build scripts instead.
 
 ## Test Gemini CLI Locally
 
@@ -133,11 +158,13 @@ variables.
 
 Use this fallback path when you want to test the project-local Gemini
 configuration that calls an installed `nams-hooks` executable. The generated
-`.gemini` folder is symlinkable from a test project for fast exploration.
+`.gemini` folder is project-shaped and symlinkable from a test project for fast
+exploration.
 
 ```bash
 npm run dist:npm
 npm install -g ./dist
+npm run dist:local
 ln -sF <repository-root-or-worktree>/dist-local/gemini/.gemini /path/to/project/.gemini
 ```
 
@@ -172,13 +199,15 @@ Codex does not currently define NAMS credentials through plugin install prompts.
 
 ## Test Codex Project Hooks Locally
 
-Use this fallback path when you want to test the project-local `.codex/hooks.json`
-template rather than the Codex plugin marketplace.
+Use this fallback path when you want to test the project-local `.codex/`
+configuration rather than the Codex plugin marketplace. The generated folder
+contains `hooks.json` and the local `nams:workspace` skill.
 
 ```bash
 npm run dist:npm
 npm install -g ./dist
-cp -R dist-local/codex/.codex /path/to/project/.codex
+npm run dist:local
+ln -sF <repository-root-or-worktree>/dist-local/codex/.codex /path/to/project/.codex
 ```
 
 Enable hooks in `~/.codex/config.toml` or project-local `.codex/config.toml`:
@@ -190,7 +219,8 @@ hooks = true
 
 Start Codex from the target project and use `/hooks` to review and trust the new
 command hooks. Codex loads project-local `.codex/` configuration only after the
-project is trusted.
+project is trusted. If the project already has `.codex/` content, merge the
+generated hook and skill entries instead of replacing the folder.
 
 ## Test Claude Code Locally
 
@@ -240,11 +270,13 @@ Use this fallback path when you want to test project-local
 ```bash
 npm run dist:npm
 npm install -g ./dist
-cp -R dist-local/claude/.claude /path/to/project/.claude
+npm run dist:local
+ln -sF <repository-root-or-worktree>/dist-local/claude/.claude /path/to/project/.claude
 ```
 
 If `.claude/settings.local.json` already exists, merge the `hooks` entries from
-`dist-local/claude/.claude/settings.local.json` instead of replacing the file.
+`dist-local/claude/.claude/settings.local.json` and the generated command under
+`dist-local/claude/.claude/commands/` instead of replacing the folder.
 
 ## Test OpenCode Locally
 
@@ -252,8 +284,7 @@ OpenCode loads project plugins from `.opencode/plugins/`.
 
 ```bash
 npm run dist:local
-mkdir -p /path/to/project/.opencode/plugins
-cp dist-local/opencode/.opencode/plugins/nams-hooks.js /path/to/project/.opencode/plugins/nams-hooks.js
+ln -sF <repository-root-or-worktree>/dist-local/opencode/.opencode /path/to/project/.opencode
 ```
 
 If `nams-hooks` is not on OpenCode's `PATH`, build and install the npm artifact
@@ -263,6 +294,10 @@ before starting OpenCode:
 npm run dist:npm
 npm install -g ./dist
 ```
+
+If the target project already has `.opencode/`, keep that folder and symlink or
+copy only `dist-local/opencode/.opencode/plugins/nams-hooks.js` into
+`/path/to/project/.opencode/plugins/nams-hooks.js`.
 
 The OpenCode plugin listens for OpenCode events and routes them through the CLI
 gateway, for example:
