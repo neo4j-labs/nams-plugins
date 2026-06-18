@@ -1,12 +1,12 @@
 import type { MemoryPlatformAdapter, Platform, WorkspacePlatformAdapter } from "../interfaces.js";
 import { ClaudeAdapter } from "./claude/index.js";
-import { ClaudeWorkspaceAdapter } from "./claude/workspaces.js";
+import { claudeWorkspaceAdapter } from "./claude/workspaces.js";
 import { CodexAdapter } from "./codex/index.js";
-import { CodexWorkspaceAdapter } from "./codex/workspaces.js";
+import { codexWorkspaceAdapter } from "./codex/workspaces.js";
 import { GeminiAdapter } from "./gemini/index.js";
-import { GeminiWorkspaceAdapter } from "./gemini/workspaces.js";
+import { geminiWorkspaceAdapter } from "./gemini/workspaces.js";
 import { OpenCodeAdapter } from "./opencode/index.js";
-import { OpenCodeWorkspaceAdapter } from "./opencode/workspaces.js";
+import { opencodeWorkspaceAdapter } from "./opencode/workspaces.js";
 
 const memoryAdapters: Record<Platform, MemoryPlatformAdapter> = {
   gemini: new GeminiAdapter(),
@@ -20,10 +20,10 @@ export function getMemoryPlatformAdapter(platform: Platform): MemoryPlatformAdap
 }
 
 const workspaceAdapters: Record<Platform, WorkspacePlatformAdapter> = {
-  gemini: new GeminiWorkspaceAdapter(),
-  claude: new ClaudeWorkspaceAdapter(),
-  codex: new CodexWorkspaceAdapter(),
-  opencode: new OpenCodeWorkspaceAdapter(),
+  gemini: geminiWorkspaceAdapter,
+  claude: claudeWorkspaceAdapter,
+  codex: codexWorkspaceAdapter,
+  opencode: opencodeWorkspaceAdapter,
 };
 
 export function getWorkspacePlatformAdapter(platform: Platform): WorkspacePlatformAdapter {

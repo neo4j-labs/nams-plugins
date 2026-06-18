@@ -1,13 +1,10 @@
-import type { WorkspaceHookInvocation, WorkspaceHookResult, WorkspacePlatformAdapter } from "../../interfaces.js";
-import { configureWorkspaceSelection } from "../../runtime/workspace-configuration.js";
+import type { WorkspaceHookInvocation, WorkspaceHookResult } from "../../interfaces.js";
 import { codexWorkspaceCommandUsage, runActiveSessionWorkspaceUseCommand } from "../../runtime/workspace-use-command.js";
+import { makeWorkspaceAdapter, stringValue } from "../workspaces.js";
 
-export class CodexWorkspaceAdapter implements WorkspacePlatformAdapter {
-  async installConfigure(invocation: WorkspaceHookInvocation<"InstallConfigure">): Promise<WorkspaceHookResult> {
-    return configureWorkspaceSelection(invocation);
-  }
-
-  async customCommand(invocation: WorkspaceHookInvocation<"CustomCommand">): Promise<WorkspaceHookResult> {
+export const codexWorkspaceAdapter = makeWorkspaceAdapter(
+  "customCommand",
+  async (invocation: WorkspaceHookInvocation<"CustomCommand">): Promise<WorkspaceHookResult> => {
     const result = await runActiveSessionWorkspaceUseCommand(invocation, {
       commandName: stringValue(invocation.rawPayload.command_name),
       arguments: invocation.rawPayload.command_args,
@@ -29,9 +26,5 @@ export class CodexWorkspaceAdapter implements WorkspacePlatformAdapter {
         message,
       },
     };
-  }
-}
-
-function stringValue(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
+  },
+);
