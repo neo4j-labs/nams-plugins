@@ -1,5 +1,6 @@
 import type { HookInvocation, HookResult, MemoryPlatformAdapter } from "../../interfaces.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
+import { hasSeenAny, markSeen } from "../../runtime/dedupe.js";
 import {
   appendNamsFailureDiagnostic,
   appendRawPlatformLog,
@@ -317,14 +318,3 @@ function claudeToolCallDedupeKeys(
   };
 }
 
-function hasSeenAny(seen: string[], keys: string[]): boolean {
-  return keys.some((key) => seen.includes(key));
-}
-
-function markSeen(seen: string[], keys: string[]): void {
-  for (const key of keys) {
-    if (!seen.includes(key)) {
-      seen.push(key);
-    }
-  }
-}

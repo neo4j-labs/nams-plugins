@@ -1,6 +1,7 @@
 import type { HookInvocation, HookResult, MemoryPlatformAdapter } from "../../interfaces.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
 import { recordActiveWorkspaceSession } from "../../runtime/active-workspace-session.js";
+import { hasSeenAny, hasSeenAssistantMessage, markAssistantMessageSeen, markSeen, type AssistantMessageState } from "../../runtime/dedupe.js";
 import { pickStringFields } from "../../runtime/payload.js";
 import {
   appendNamsFailureDiagnostic,
@@ -174,7 +175,7 @@ export class GeminiAdapter implements MemoryPlatformAdapter {
         if (!hasSeenAssistantMessage(state, responseHash)) {
           await memory.storeAssistantMessage(state.conversationId, response);
         }
-        markAssistantMessageSeen(state, responseHash);
+        markAssistantMessageSeen(state, [responseHash]);
       }
 
       if (payloadInfo.transcriptPath !== undefined) {
@@ -411,11 +412,6 @@ function optionalString<K extends string>(key: K, value: string | undefined): { 
   return value !== undefined ? ({ [key]: value } as { [P in K]: string }) : {};
 }
 
-type AssistantMessageState = {
-  lastAssistantMessageHash?: string;
-  seenAssistantMessageHashes: string[];
-};
-
 type TraceState = {
   sessionKey: string;
   seenReasoningStepHashes: string[];
@@ -444,7 +440,7 @@ async function storeAssistantMessagesFromTranscript(
       if (!hasSeenAssistantMessage(state, responseHash)) {
         await memory.storeAssistantMessage(conversationId, content);
       }
-      markAssistantMessageSeen(state, responseHash);
+      markAssistantMessageSeen(state, [responseHash]);
     }
 
     if (entry.id !== undefined) {
@@ -523,18 +519,6 @@ function addCurrentParentStepId(stepIds: string[], stepId: string | undefined): 
   }
 }
 
-function hasSeenAny(seen: string[], keys: string[]): boolean {
-  return keys.some((key) => seen.includes(key));
-}
-
-function markSeen(seen: string[], keys: string[]): void {
-  for (const key of keys) {
-    if (!seen.includes(key)) {
-      seen.push(key);
-    }
-  }
-}
-
 function transcriptParentKey(
   entry: Extract<GeminiTranscriptEntry, { kind: "thought" | "toolCall" }>,
 ): string {
@@ -544,13 +528,3 @@ function transcriptParentKey(
   });
 }
 
-function hasSeenAssistantMessage(state: AssistantMessageState, messageHash: string): boolean {
-  return state.lastAssistantMessageHash === messageHash || state.seenAssistantMessageHashes.includes(messageHash);
-}
-
-function markAssistantMessageSeen(state: AssistantMessageState, messageHash: string): void {
-  state.lastAssistantMessageHash = messageHash;
-  if (!state.seenAssistantMessageHashes.includes(messageHash)) {
-    state.seenAssistantMessageHashes.push(messageHash);
-  }
-}

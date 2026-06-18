@@ -1,5 +1,6 @@
 import type { HookInvocation, HookResult, MemoryPlatformAdapter } from "../../interfaces.js";
 import { recordActiveWorkspaceSession } from "../../runtime/active-workspace-session.js";
+import { hasSeenAssistantMessage, markAssistantMessageSeen } from "../../runtime/dedupe.js";
 import { sha256 } from "../../runtime/hashing.js";
 import {
   appendNamsFailureDiagnostic,
@@ -436,19 +437,6 @@ function assistantMessageHashes(platform: string, sessionKey: string, content: s
 
 function assistantContentHash(platform: string, sessionKey: string, content: string): string {
   return sha256([platform, sessionKey, "assistant", content].join("\n"));
-}
-
-function hasSeenAssistantMessage(state: AssistantMessageState, hash: string): boolean {
-  return state.lastAssistantMessageHash === hash || state.seenAssistantMessageHashes.includes(hash);
-}
-
-function markAssistantMessageSeen(state: AssistantMessageState, hashes: string[]): void {
-  state.lastAssistantMessageHash = hashes[0];
-  for (const hash of hashes) {
-    if (!state.seenAssistantMessageHashes.includes(hash)) {
-      state.seenAssistantMessageHashes.push(hash);
-    }
-  }
 }
 
 function codexToolCallId(input: {

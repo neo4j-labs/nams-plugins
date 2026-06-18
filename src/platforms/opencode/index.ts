@@ -1,4 +1,5 @@
 import type { HookInvocation, HookResult, MemoryPlatformAdapter } from "../../interfaces.js";
+import { hasSeenAssistantMessage, markAssistantMessageSeen, markSeen } from "../../runtime/dedupe.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
 import {
   appendNamsFailureDiagnostic,
@@ -174,7 +175,7 @@ export class OpenCodeAdapter implements MemoryPlatformAdapter {
         const assistantHash = assistantMessageHash(invocation.platform, state.sessionKey, assistantText);
         if (!hasSeenAssistantMessage(state, assistantHash)) {
           await memory.storeAssistantMessage(state.conversationId, assistantText);
-          markAssistantMessageSeen(state, assistantHash);
+          markAssistantMessageSeen(state, [assistantHash]);
         }
       }
     } catch {
@@ -364,15 +365,6 @@ function assistantPartKey(payloadInfo: OpenCodePayloadInfo): string | undefined 
   return JSON.stringify([payloadInfo.messageId, payloadInfo.partId]);
 }
 
-function hasSeenAssistantMessage(state: SessionState, messageHash: string): boolean {
-  return state.lastAssistantMessageHash === messageHash || state.seenAssistantMessageHashes.includes(messageHash);
-}
-
-function markAssistantMessageSeen(state: SessionState, messageHash: string): void {
-  state.lastAssistantMessageHash = messageHash;
-  markSeen(state.seenAssistantMessageHashes, [messageHash]);
-}
-
 function assistantMessageHash(platform: HookInvocation["platform"], sessionKey: string, content: string): string {
   return sha256([platform, sessionKey, "assistant", content.trim()].join("\n"));
 }
@@ -389,10 +381,3 @@ function opencodeToolCallDedupeKey(
   return stableJsonHash({ sessionKey, toolName, input: serializeToolInput(toolInput) });
 }
 
-function markSeen(seen: string[], keys: string[]): void {
-  for (const key of keys) {
-    if (!seen.includes(key)) {
-      seen.push(key);
-    }
-  }
-}
