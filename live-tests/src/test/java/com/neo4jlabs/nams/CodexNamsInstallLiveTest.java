@@ -38,11 +38,12 @@ class CodexNamsInstallLiveTest {
                 "exec",
                 "--cd",
                 fixture.containerProject(),
+                "--skip-git-repo-check",
                 "--enable",
                 "hooks",
                 "--dangerously-bypass-hook-trust",
-                "--ask-for-approval",
-                "never",
+                "--config",
+                "approval_policy=never",
                 "--sandbox",
                 "workspace-write",
                 "--output-last-message",
@@ -55,7 +56,7 @@ class CodexNamsInstallLiveTest {
             assertThat(answer).isRegularFile();
             String response = Files.readString(answer);
             LOG.info("Codex response:\n{}", response);
-            assertThat(response).isNotBlank();
+            assertThat(response).isNotBlank().contains(marker);
         }
     }
 
