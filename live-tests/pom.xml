@@ -16,8 +16,21 @@
     <junit.jupiter.version>6.0.1</junit.jupiter.version>
     <assertj.version>3.27.6</assertj.version>
     <testcontainers.version>2.0.5</testcontainers.version>
+    <slf4j.version>1.7.36</slf4j.version>
     <maven.surefire.version>3.5.4</maven.surefire.version>
   </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.testcontainers</groupId>
+        <artifactId>testcontainers-bom</artifactId>
+        <version>${testcontainers.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
 
   <dependencies>
     <dependency>
@@ -35,13 +48,17 @@
     <dependency>
       <groupId>org.testcontainers</groupId>
       <artifactId>testcontainers</artifactId>
-      <version>${testcontainers.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.testcontainers</groupId>
-      <artifactId>junit-jupiter</artifactId>
-      <version>${testcontainers.version}</version>
+      <artifactId>testcontainers-junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-simple</artifactId>
+      <version>${slf4j.version}</version>
       <scope>test</scope>
     </dependency>
   </dependencies>
@@ -62,6 +79,13 @@
         <version>${maven.surefire.version}</version>
         <configuration>
           <useModulePath>false</useModulePath>
+          <systemPropertyVariables>
+            <org.slf4j.simpleLogger.defaultLogLevel>warn</org.slf4j.simpleLogger.defaultLogLevel>
+            <org.slf4j.simpleLogger.log.com.neo4jlabs.nams>info</org.slf4j.simpleLogger.log.com.neo4jlabs.nams>
+            <org.slf4j.simpleLogger.log.org.testcontainers>off</org.slf4j.simpleLogger.log.org.testcontainers>
+            <org.slf4j.simpleLogger.showDateTime>false</org.slf4j.simpleLogger.showDateTime>
+            <org.slf4j.simpleLogger.showThreadName>false</org.slf4j.simpleLogger.showThreadName>
+          </systemPropertyVariables>
         </configuration>
       </plugin>
     </plugins>
