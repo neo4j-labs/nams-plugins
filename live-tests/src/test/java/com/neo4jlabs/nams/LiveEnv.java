@@ -39,14 +39,16 @@ final class LiveEnv {
     private static Map<String, String> readEnvFile(Path path) {
         Map<String, String> parsed = new LinkedHashMap<>();
         try {
+            int lineNumber = 0;
             for (String rawLine : Files.readAllLines(path)) {
+                lineNumber++;
                 String line = rawLine.trim();
                 if (line.isEmpty() || line.startsWith("#")) {
                     continue;
                 }
                 int separator = line.indexOf('=');
                 assertThat(separator)
-                    .as("Invalid .env line: %s", rawLine)
+                    .as("Invalid .env line at %s line %d", path, lineNumber)
                     .isGreaterThan(0);
                 String key = line.substring(0, separator).trim();
                 String value = unquote(line.substring(separator + 1).trim());
