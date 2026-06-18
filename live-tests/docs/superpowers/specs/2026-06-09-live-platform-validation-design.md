@@ -16,8 +16,8 @@ assistant exchange to an existing NAMS workspace.
 The first implementation is a separate Maven project under `live-tests/`. Maven,
 JUnit 5, Testcontainers, and REST-assured own orchestration and assertions. Node
 is required inside platform containers to run the generated hook runtime, but the
-test orchestrator itself is Java. The suite consumes `dist/` from `npm run dist`
-as the artifact under test.
+test orchestrator itself is Java. The suite consumes `dist/` and `dist-local/`
+from `npm run dist` as the artifacts under test.
 
 ## Source Inputs
 
@@ -45,7 +45,7 @@ as the artifact under test.
 
 - Provide local-first live validation for Codex and Claude Code on Linux Docker.
 - Exercise project-local hook configuration, not marketplace installation.
-- Treat `dist/` as the generated artifact under test.
+- Treat `dist/` and `dist-local/` as generated artifacts under test.
 - Use committed, reviewable Dockerfiles for platform images.
 - Fail fast when live NAMS credentials or workspace preflight are invalid.
 - Verify local `.nams` state and JSONL logs for each platform run.
@@ -97,7 +97,7 @@ mvn test
 ```
 
 Maven fails if `../dist/bin/cli.js` and the platform hook templates needed by
-the scenario are not present.
+the scenario are not present under `../dist-local/`.
 
 ### Container Images
 
@@ -176,7 +176,8 @@ container and must include all platform credentials in the central redaction set
 ## Architecture
 
 `npm run dist` remains responsible for compiling TypeScript and assembling the
-generated distribution tree. The Maven suite treats `dist/` as immutable input.
+generated distribution trees. The Maven suite treats both `dist/` and
+`dist-local/` as immutable input.
 
 The live harness owns these concerns:
 
@@ -191,17 +192,26 @@ The generated hook runtime still owns actual memory behavior. The live harness
 does not import TypeScript modules, call platform adapters directly, or inspect
 OpenAPI at runtime.
 
-Project-local hook fixtures must call the generated runtime through an absolute
-Node command inside the container:
+The live test installs the generated npm package from `dist/` inside the
+platform container:
 
 ```bash
-node /nams-hooks/dist/bin/cli.js run <platform> --event <event>
+npm install -g /nams-hooks/dist
 ```
 
-The tests should not depend on `nams-hooks` being installed on `PATH`. Before
-running a platform scenario, the harness preflights the exact hook command with a
-minimal JSON payload in a disposable HOME/project so command resolution failures
-are reported before the platform CLI starts.
+The project-local configuration remains exactly the generated `dist-local/`
+configuration. The harness mounts `dist-local/` read-only and creates project
+symlinks to the relevant platform folder, for example:
+
+```text
+/workspace/project/.codex  -> /nams-hooks/dist-local/codex/.codex
+/workspace/project/.claude -> /nams-hooks/dist-local/claude/.claude
+```
+
+The tests should not rewrite generated hook commands. Before running a platform
+scenario, the harness preflights the installed `nams-hooks` command with a
+minimal JSON payload in a disposable HOME/project so global install or command
+resolution failures are reported before the platform CLI starts.
 
 ## Project Layout
 
@@ -222,9 +232,9 @@ live-tests/
     .../ClaudeProjectHooksLiveTest.java
 ```
 
-Java test sources use the package prefix `com.neo4j.nams.hooks.live`. Common
-live-test support stays shared, while platform-specific CLI flags and fixture
-details stay in platform scenario code.
+Java test sources use the package prefix `com.neo4jlabs.nams`. Common live-test
+support stays shared, while platform-specific CLI flags and fixture details stay
+in platform scenario code.
 
 ## Components
 
@@ -252,7 +262,8 @@ It should not become a complete NAMS SDK.
 - image build from the committed Dockerfile
 - environment variables for NAMS credentials
 - environment variables for the current platform credential
-- mounting or copying `dist/`
+- mounting `dist/` and `dist-local/`
+- installing `dist/` globally with npm inside the container
 - command execution with timeouts
 - version/preflight command execution
 - stdout, stderr, exit-code capture
@@ -265,8 +276,8 @@ It should not become a complete NAMS SDK.
 - a clean project directory
 - a clean HOME
 - project-local `.nams/` config only when useful for the scenario
-- project-local hook configuration that calls
-  `node /nams-hooks/dist/bin/cli.js`
+- project-local `.codex` or `.claude` symlink pointing at generated
+  `dist-local/<platform>/` configuration
 
 The runtime `.nams/state/<platform>/` and `.nams/logs/<platform>/` files should
 land under the disposable HOME. Test artifacts must not be written to the source
@@ -338,14 +349,13 @@ For each platform:
 5. The test checks the platform CLI version and platform authentication inside
    the container.
 6. The test creates a clean project directory and HOME inside the container.
-7. The test makes `dist/` available inside the container.
+7. The test mounts `dist/` and `dist-local/` under `/nams-hooks/`.
 8. The test installs project-local hook config:
-   - Codex: project `.codex/hooks.json` rewritten to call
-     `node /nams-hooks/dist/bin/cli.js`, plus local config needed to enable
-     hooks.
-   - Claude Code: project `.claude/settings.local.json` plus any
-     non-interactive local config needed to run hooks, rewritten to call
-     `node /nams-hooks/dist/bin/cli.js`.
+   - `npm install -g /nams-hooks/dist` installs the generated runtime package.
+   - Codex: project `.codex` symlink points to
+     `/nams-hooks/dist-local/codex/.codex`.
+   - Claude Code: project `.claude` symlink points to
+     `/nams-hooks/dist-local/claude/.claude`.
 9. The test runs the platform CLI with a unique marker prompt.
 10. The test captures process exit code, stdout, and stderr.
 11. The test reads `.nams/logs/<platform>/session-*.jsonl`.
@@ -399,10 +409,10 @@ Hard failures include:
 - missing required NAMS inputs
 - missing platform credentials for the platform under test
 - workspace preflight failure
-- missing `dist/` artifact
+- missing `dist/` or `dist-local/` artifact
 - platform CLI missing or version preflight failure
 - platform authentication preflight failure
-- generated hook command preflight failure
+- generated package install or `nams-hooks` command preflight failure
 - platform CLI prompt scenario exits unsuccessfully
 - no assistant answer visible in the platform CLI result
 - missing `.nams/logs/<platform>/session-*.jsonl`
