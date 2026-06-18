@@ -32,8 +32,33 @@ final class LiveEnv {
         return value;
     }
 
+    String optional(String name, String defaultValue) {
+        String value = values.get(name);
+        return value == null || value.isBlank() ? defaultValue : value;
+    }
+
+    String namsApiKey() {
+        return require("NAMS_API_KEY");
+    }
+
+    String namsWorkspaceId() {
+        return require("NAMS_WORKSPACE_ID");
+    }
+
+    String namsBaseUrl() {
+        return optional("NAMS_BASE_URL", "https://memory.neo4jlabs.com");
+    }
+
     Map<String, String> codexEnvironment() {
         return Map.of("OPENAI_API_KEY", require("OPENAI_API_KEY"));
+    }
+
+    Map<String, String> codexEnvironmentWithNams() {
+        Map<String, String> environment = new LinkedHashMap<>(codexEnvironment());
+        environment.put("NAMS_API_KEY", namsApiKey());
+        environment.put("NAMS_WORKSPACE_ID", namsWorkspaceId());
+        environment.put("NAMS_BASE_URL", namsBaseUrl());
+        return Map.copyOf(environment);
     }
 
     private static Map<String, String> readEnvFile(Path path) {
