@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { ensurePrivateFileMode } from "./permissions.js";
 import { RuntimeEnvironment } from "./paths.js";
+import { isPlainObject, nonBlankString } from "./util.js";
 
 export interface NamsRuntimeConfig {
   apiKey: string;
@@ -378,10 +379,3 @@ function applyEnvironmentOverrides(
   }
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function nonBlankString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() !== "" ? value : undefined;
-}

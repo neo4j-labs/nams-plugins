@@ -1,6 +1,7 @@
 import type { HookInvocation, HookResult, MemoryPlatformAdapter } from "../../interfaces.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
 import { recordActiveWorkspaceSession } from "../../runtime/active-workspace-session.js";
+import { firstDefined, firstRecord, firstString } from "../../runtime/util.js";
 import { hasSeenAny, hasSeenAssistantMessage, markAssistantMessageSeen, markSeen, type AssistantMessageState } from "../dedupe.js";
 import { pickStringFields } from "../payload.js";
 import {
@@ -344,17 +345,13 @@ interface GeminiAfterToolPayload {
 function parseGeminiAfterToolPayload(payload: Record<string, unknown>): GeminiAfterToolPayload {
   const toolResponse = firstRecord(payload.tool_response);
   const { toolName } = pickStringFields(payload, { toolName: "tool_name" });
+  const output = firstString(toolResponse?.llmContent);
+  const outputSummary = firstString(toolResponse?.returnDisplay);
   return {
     ...(toolName !== undefined ? { toolName } : {}),
     input: firstDefined(payload.tool_input) ?? {},
-    ...optionalString(
-      "output",
-      firstString(toolResponse?.llmContent),
-    ),
-    ...optionalString(
-      "outputSummary",
-      firstString(toolResponse?.returnDisplay),
-    ),
+    ...(output !== undefined ? { output } : {}),
+    ...(outputSummary !== undefined ? { outputSummary } : {}),
   };
 }
 
@@ -384,32 +381,6 @@ function geminiToolCallDedupeKeys(
     lookupKeys: [fallbackKey, idFallbackKey, fallbackHash],
     markKeys: [fallbackKey, fallbackHash],
   };
-}
-
-function firstString(...values: unknown[]): string | undefined {
-  for (const value of values) {
-    if (typeof value === "string" && value.trim() !== "") {
-      return value;
-    }
-  }
-  return undefined;
-}
-
-function firstDefined(...values: unknown[]): unknown {
-  return values.find((value) => value !== undefined);
-}
-
-function firstRecord(...values: unknown[]): Record<string, unknown> | undefined {
-  for (const value of values) {
-    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-      return value as Record<string, unknown>;
-    }
-  }
-  return undefined;
-}
-
-function optionalString<K extends string>(key: K, value: string | undefined): { [P in K]?: string } {
-  return value !== undefined ? ({ [key]: value } as { [P in K]: string }) : {};
 }
 
 type TraceState = {

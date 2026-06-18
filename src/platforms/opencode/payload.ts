@@ -1,3 +1,5 @@
+import { firstRecord, firstString } from "../../runtime/util.js";
+
 export interface OpenCodePayloadInfo {
   hookName?: string;
   eventType?: string;
@@ -106,25 +108,3 @@ function firstArray(...values: unknown[]): unknown[] | undefined {
   return undefined;
 }
 
-function firstRecord(...values: unknown[]): Record<string, unknown> | undefined {
-  for (const value of values) {
-    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-      return value as Record<string, unknown>;
-    }
-  }
-  return undefined;
-}
-
-function firstString(...values: unknown[]): string | undefined {
-  for (const value of values) {
-    const stringValue = optionalString(value);
-    if (stringValue !== undefined) {
-      return stringValue;
-    }
-  }
-  return undefined;
-}
-
-function optionalString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() !== "" ? value : undefined;
-}

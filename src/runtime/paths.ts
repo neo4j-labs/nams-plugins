@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { Platform } from "../interfaces.js";
 import { sha256 } from "./hashing.js";
+import { firstString } from "./util.js";
 
 export type RuntimeEnvironmentValues = Record<string, string | undefined>;
 export type RuntimeEnvironmentInput = RuntimeEnvironment | RuntimeEnvironmentValues | undefined;
@@ -20,7 +21,7 @@ export class RuntimeEnvironment {
   private constructor(private readonly values: RuntimeEnvironmentValues) {}
 
   value(name: string): string | undefined {
-    return firstNonBlank(this.values[name]);
+    return firstString(this.values[name]);
   }
 
   homeDirectory(): string | undefined {
@@ -79,10 +80,6 @@ export function sessionStateDirectory(
   environment: RuntimeEnvironmentInput = process.env,
 ): string {
   return RuntimeEnvironment.from(environment).sessionStateDirectory(platform);
-}
-
-function firstNonBlank(...values: Array<string | undefined>): string | undefined {
-  return values.find((value): value is string => typeof value === "string" && value.trim() !== "");
 }
 
 function formatStateTimestamp(value: string): string {

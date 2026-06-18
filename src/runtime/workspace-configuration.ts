@@ -3,6 +3,7 @@ import path from "node:path";
 import { NamsWorkspaceClient, type WorkspaceSummary } from "../generated/nams-client.js";
 import type { WorkspaceHookInvocation, WorkspaceHookResult } from "../interfaces.js";
 import { configDiagnosticPayload, loadNamsConnectionConfig } from "./config.js";
+import { nonBlankString } from "./util.js";
 import {
   assertNamsJsonConfigInputsSafe,
   writeNamsJsonConfig,
@@ -230,8 +231,8 @@ function parseConfigureInput(rawPayload: Record<string, unknown>): ConfigureInpu
     return undefined;
   }
 
-  const workspace = optionalString(rawPayload.workspace);
-  const sessionId = optionalString(rawPayload.sessionId);
+  const workspace = nonBlankString(rawPayload.workspace);
+  const sessionId = nonBlankString(rawPayload.sessionId);
   return {
     scope,
     ...(workspace !== undefined ? { workspace } : {}),
@@ -306,10 +307,6 @@ function workspaceChoices(workspaces: ValidWorkspace[]): string[] {
     const status = workspace.status?.trim() || "unknown-status";
     return `- ${name} (${role}, ${status}) - ${workspace.id}`;
   });
-}
-
-function optionalString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
 }
 
 function configureOutput(exitCode: number, message: string): WorkspaceHookResult {
