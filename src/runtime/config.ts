@@ -324,34 +324,24 @@ function applyJsonConfig(
   }
 }
 
+const CONFIG_FIELDS = [
+  { key: "apiKey", env: "NAMS_API_KEY" },
+  { key: "workspaceId", env: "NAMS_WORKSPACE_ID" },
+  { key: "baseUrl", env: "NAMS_BASE_URL" },
+] as const;
+
 function applyDiscoveredConfig(
   accumulated: Partial<NamsConnectionConfig>,
   sources: NamsConfigSources,
   config: DiscoveredNamsConfig,
 ): void {
-  const discoveredApiKey = config.apiKey;
-  if (discoveredApiKey !== undefined) {
-    const apiKey = nonBlankString(discoveredApiKey.value);
-    if (apiKey !== undefined) {
-      accumulated.apiKey = apiKey;
-      sources.apiKey = discoveredApiKey.source;
-    }
-  }
-  const discoveredWorkspaceId = config.workspaceId;
-  if (discoveredWorkspaceId !== undefined) {
-    const workspaceId = nonBlankString(discoveredWorkspaceId.value);
-    if (workspaceId !== undefined) {
-      accumulated.workspaceId = workspaceId;
-      sources.workspaceId = discoveredWorkspaceId.source;
-    }
-  }
-  const discoveredBaseUrl = config.baseUrl;
-  if (discoveredBaseUrl !== undefined) {
-    const baseUrl = nonBlankString(discoveredBaseUrl.value);
-    if (baseUrl !== undefined) {
-      accumulated.baseUrl = baseUrl;
-      sources.baseUrl = discoveredBaseUrl.source;
-    }
+  for (const { key } of CONFIG_FIELDS) {
+    const discovered = config[key];
+    if (discovered === undefined) continue;
+    const value = nonBlankString(discovered.value);
+    if (value === undefined) continue;
+    accumulated[key] = value;
+    sources[key] = discovered.source;
   }
 }
 
@@ -360,22 +350,21 @@ function applyEnvironmentOverrides(
   sources: NamsConfigSources,
   runtimeEnvironment: RuntimeEnvironment,
 ): void {
-  const apiKey = runtimeEnvironment.value("NAMS_API_KEY");
-  if (apiKey !== undefined) {
-    accumulated.apiKey = apiKey;
-    sources.apiKey = "env:NAMS_API_KEY";
-  }
-
-  const workspaceId = runtimeEnvironment.value("NAMS_WORKSPACE_ID");
-  if (workspaceId !== undefined) {
-    accumulated.workspaceId = workspaceId;
-    sources.workspaceId = "env:NAMS_WORKSPACE_ID";
-  }
-
-  const baseUrl = runtimeEnvironment.value("NAMS_BASE_URL");
-  if (baseUrl !== undefined) {
-    accumulated.baseUrl = baseUrl;
-    sources.baseUrl = "env:NAMS_BASE_URL";
+  for (const { key, env } of CONFIG_FIELDS) {
+    const value = runtimeEnvironment.value(env);
+    if (value === undefined) continue;
+    accumulated[key] = value;
+    switch (key) {
+      case "apiKey":
+        sources.apiKey = `env:${env}` as const;
+        break;
+      case "workspaceId":
+        sources.workspaceId = `env:${env}` as const;
+        break;
+      case "baseUrl":
+        sources.baseUrl = `env:${env}` as const;
+        break;
+    }
   }
 }
 
