@@ -1,4 +1,4 @@
-import { pickStringFields } from "../../runtime/payload.js";
+import { pickStringFields } from "../payload.js";
 
 export interface ClaudePayloadInfo {
   sessionId?: string;

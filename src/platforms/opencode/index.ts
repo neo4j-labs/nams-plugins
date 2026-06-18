@@ -1,5 +1,5 @@
 import type { HookInvocation, HookResult, MemoryPlatformAdapter } from "../../interfaces.js";
-import { hasSeenAssistantMessage, markAssistantMessageSeen, markSeen } from "../../runtime/dedupe.js";
+import { hasSeenAssistantMessage, markAssistantMessageSeen, markSeen } from "../dedupe.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
 import {
   appendNamsFailureDiagnostic,

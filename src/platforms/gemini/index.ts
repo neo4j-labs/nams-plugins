@@ -1,8 +1,8 @@
 import type { HookInvocation, HookResult, MemoryPlatformAdapter } from "../../interfaces.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
 import { recordActiveWorkspaceSession } from "../../runtime/active-workspace-session.js";
-import { hasSeenAny, hasSeenAssistantMessage, markAssistantMessageSeen, markSeen, type AssistantMessageState } from "../../runtime/dedupe.js";
-import { pickStringFields } from "../../runtime/payload.js";
+import { hasSeenAny, hasSeenAssistantMessage, markAssistantMessageSeen, markSeen, type AssistantMessageState } from "../dedupe.js";
+import { pickStringFields } from "../payload.js";
 import {
   appendNamsFailureDiagnostic,
   appendRawPlatformLog,

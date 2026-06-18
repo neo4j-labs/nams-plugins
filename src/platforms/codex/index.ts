@@ -1,6 +1,6 @@
 import type { HookInvocation, HookResult, MemoryPlatformAdapter } from "../../interfaces.js";
 import { recordActiveWorkspaceSession } from "../../runtime/active-workspace-session.js";
-import { hasSeenAssistantMessage, markAssistantMessageSeen } from "../../runtime/dedupe.js";
+import { hasSeenAssistantMessage, markAssistantMessageSeen } from "../dedupe.js";
 import { sha256 } from "../../runtime/hashing.js";
 import {
   appendNamsFailureDiagnostic,
