@@ -5,14 +5,21 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import {
-  RuntimeEnvironment,
+  envValue,
+  globalConfigPath,
+  homeDirectory,
+  namsHome,
+  platformLogDirectory,
+  projectConfigPath,
+  requireNamsHome,
+  sessionStateDirectory,
   sessionStatePath,
 } from "../src/runtime/paths.js";
 
 test("resolves NAMS home from HOME", async () => {
   const homeDir = await mkdtemp(path.join(tmpdir(), "nams-home-"));
   try {
-    assert.equal(RuntimeEnvironment.from({ HOME: homeDir }).namsHome(), path.join(homeDir, ".nams"));
+    assert.equal(namsHome({ HOME: homeDir }), path.join(homeDir, ".nams"));
   } finally {
     await rm(homeDir, { recursive: true, force: true });
   }
@@ -21,7 +28,7 @@ test("resolves NAMS home from HOME", async () => {
 test("resolves NAMS home from USERPROFILE when HOME is absent", async () => {
   const homeDir = await mkdtemp(path.join(tmpdir(), "nams-home-"));
   try {
-    assert.equal(RuntimeEnvironment.from({ USERPROFILE: homeDir }).namsHome(), path.join(homeDir, ".nams"));
+    assert.equal(namsHome({ USERPROFILE: homeDir }), path.join(homeDir, ".nams"));
   } finally {
     await rm(homeDir, { recursive: true, force: true });
   }
@@ -30,29 +37,19 @@ test("resolves NAMS home from USERPROFILE when HOME is absent", async () => {
 test("builds config, state, and log paths under NAMS home", async () => {
   const homeDir = await mkdtemp(path.join(tmpdir(), "nams-home-"));
   try {
-    const runtimeEnvironment = RuntimeEnvironment.from({ HOME: homeDir });
+    const env = { HOME: homeDir };
 
-    assert.equal(runtimeEnvironment.homeDirectory(), homeDir);
-    assert.equal(runtimeEnvironment.value("HOME"), homeDir);
-    assert.equal(runtimeEnvironment.globalConfigPath(), path.join(homeDir, ".nams", "config.json"));
-    assert.equal(runtimeEnvironment.projectConfigPath("/tmp/project"), path.join("/tmp/project", ".nams", "config.json"));
-    assert.equal(runtimeEnvironment.platformLogDirectory("gemini"), path.join(homeDir, ".nams", "logs", "gemini"));
+    assert.equal(homeDirectory(env), homeDir);
+    assert.equal(envValue(env, "HOME"), homeDir);
+    assert.equal(globalConfigPath(env), path.join(homeDir, ".nams", "config.json"));
+    assert.equal(projectConfigPath("/tmp/project"), path.join("/tmp/project", ".nams", "config.json"));
+    assert.equal(platformLogDirectory("gemini", env), path.join(homeDir, ".nams", "logs", "gemini"));
     assert.equal(
-      runtimeEnvironment.sessionStateDirectory("gemini"),
+      sessionStateDirectory("gemini", env),
       path.join(homeDir, ".nams", "state", "gemini"),
     );
     assert.equal(
-      runtimeEnvironment.sessionStatePath("gemini", "session/1", "2026-05-11T12:00:01.234Z"),
-      path.join(
-        homeDir,
-        ".nams",
-        "state",
-        "gemini",
-        `session-2026-05-11T120001.234Z--${sha256("session/1")}.json`,
-      ),
-    );
-    assert.equal(
-      sessionStatePath("gemini", "session/1", "2026-05-11T12:00:01.234Z", runtimeEnvironment),
+      sessionStatePath("gemini", "session/1", "2026-05-11T12:00:01.234Z", env),
       path.join(
         homeDir,
         ".nams",
@@ -67,7 +64,7 @@ test("builds config, state, and log paths under NAMS home", async () => {
 });
 
 test("throws a stable error when no home directory is available", async () => {
-  assert.throws(() => RuntimeEnvironment.from({}).requireNamsHome(), /Unable to resolve NAMS home directory/);
+  assert.throws(() => requireNamsHome({}), /Unable to resolve NAMS home directory/);
 });
 
 function sha256(value: string): string {

@@ -1,7 +1,7 @@
 import { mkdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import type { Platform } from "../interfaces.js";
-import { RuntimeEnvironment, type RuntimeEnvironmentInput } from "./paths.js";
+import { sessionStateDirectory } from "./paths.js";
 import { ensurePrivateDirectory, writePrivateFile } from "./permissions.js";
 
 export const ACTIVE_WORKSPACE_SESSION_TTL_MS = 60_000;
@@ -25,7 +25,7 @@ export interface RecordActiveWorkspaceSessionInput {
   projectDirectory: string;
   statePath?: string;
   touchedAt?: Date;
-  environment?: RuntimeEnvironmentInput;
+  environment?: NodeJS.ProcessEnv;
 }
 
 export interface ResolveActiveWorkspaceSessionInput {
@@ -34,7 +34,7 @@ export interface ResolveActiveWorkspaceSessionInput {
   now?: Date;
   ttlMs?: number;
   winnerGapMs?: number;
-  environment?: RuntimeEnvironmentInput;
+  environment?: NodeJS.ProcessEnv;
 }
 
 export type ActiveWorkspaceSessionResolution =
@@ -48,9 +48,9 @@ interface ActiveWorkspaceSessionMarker {
 
 export function activeWorkspaceSessionsPath(
   platform: Platform,
-  environment: RuntimeEnvironmentInput = process.env,
+  environment: NodeJS.ProcessEnv = process.env,
 ): string {
-  return path.join(RuntimeEnvironment.from(environment).sessionStateDirectory(platform), "active-workspace-sessions.json");
+  return path.join(sessionStateDirectory(platform, environment), "active-workspace-sessions.json");
 }
 
 export async function recordActiveWorkspaceSession(input: RecordActiveWorkspaceSessionInput): Promise<void> {

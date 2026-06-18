@@ -1,7 +1,7 @@
 import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";
 import { writePrivateFile } from "./permissions.js";
-import { RuntimeEnvironment } from "./paths.js";
+import { globalConfigPath, projectConfigPath } from "./paths.js";
 
 export type NamsConfigWriteScope = "project" | "user";
 
@@ -47,7 +47,7 @@ export async function assertNamsJsonConfigInputsSafe(
   destinationScope: NamsConfigWriteScope,
 ): Promise<void> {
   await assertNamsJsonConfigPathSafe({ projectDirectory, scope: "project" });
-  if (destinationScope === "user" || RuntimeEnvironment.fromProcess().globalConfigPath() !== undefined) {
+  if (destinationScope === "user" || globalConfigPath() !== undefined) {
     await assertNamsJsonConfigPathSafe({ projectDirectory, scope: "user" });
   }
 }
@@ -84,12 +84,11 @@ async function rejectUnsafeConfigFile(configPath: string): Promise<void> {
 }
 
 function configPathForScope(scope: NamsConfigWriteScope, projectDirectory: string): string {
-  const runtimeEnvironment = RuntimeEnvironment.fromProcess();
   if (scope === "project") {
-    return runtimeEnvironment.projectConfigPath(projectDirectory);
+    return projectConfigPath(projectDirectory);
   }
 
-  const globalPath = runtimeEnvironment.globalConfigPath();
+  const globalPath = globalConfigPath();
   if (globalPath === undefined) {
     throw new Error("Unable to resolve NAMS home directory from HOME or USERPROFILE");
   }

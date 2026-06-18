@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { ensurePrivateFileMode } from "./permissions.js";
-import { RuntimeEnvironment } from "./paths.js";
+import { envValue, globalConfigPath, projectConfigPath } from "./paths.js";
 import { isPlainObject, nonBlankString } from "./util.js";
 
 export interface NamsRuntimeConfig {
@@ -42,7 +42,7 @@ export interface DiscoveredNamsConfig {
   baseUrl?: DiscoveredNamsConfigValue;
 }
 
-export type NamsConfigDiscovery = (runtimeEnvironment: RuntimeEnvironment) => DiscoveredNamsConfig | Promise<DiscoveredNamsConfig>;
+export type NamsConfigDiscovery = (env: NodeJS.ProcessEnv) => DiscoveredNamsConfig | Promise<DiscoveredNamsConfig>;
 
 export type NamsConfigLoadResult =
   | {
@@ -159,7 +159,7 @@ export async function loadNamsConnectionConfig(
   projectDirectory: string,
   discoverConfig?: NamsConfigDiscovery,
 ): Promise<NamsConnectionConfigLoadResult> {
-  const runtimeEnvironment = RuntimeEnvironment.fromProcess();
+  const env = process.env;
   const accumulated: Partial<NamsConnectionConfig> = {};
   const sources: NamsConfigSources = {
     apiKey: "missing",
@@ -167,14 +167,14 @@ export async function loadNamsConnectionConfig(
     baseUrl: "missing",
   };
 
-  const globalResult = await readGlobalJsonConfig(runtimeEnvironment);
+  const globalResult = await readGlobalJsonConfig(env);
   if (!globalResult.ok) {
     return invalidJsonResult(globalResult.source);
   }
   applyJsonConfig(accumulated, sources, globalResult.config, "global:~/.nams/config.json");
 
   const projectResult = await readJsonConfig(
-    runtimeEnvironment.projectConfigPath(projectDirectory),
+    projectConfigPath(projectDirectory),
     "project:.nams/config.json",
   );
   if (!projectResult.ok) {
@@ -183,9 +183,9 @@ export async function loadNamsConnectionConfig(
   applyJsonConfig(accumulated, sources, projectResult.config, "project:.nams/config.json");
 
   if (discoverConfig !== undefined) {
-    applyDiscoveredConfig(accumulated, sources, await discoverConfig(runtimeEnvironment));
+    applyDiscoveredConfig(accumulated, sources, await discoverConfig(env));
   }
-  applyEnvironmentOverrides(accumulated, sources, runtimeEnvironment);
+  applyEnvironmentOverrides(accumulated, sources, env);
 
   if (accumulated.apiKey === undefined) {
     return {
@@ -267,8 +267,8 @@ async function readJsonConfig(path: string, source: JsonConfigSource): Promise<J
   };
 }
 
-async function readGlobalJsonConfig(runtimeEnvironment: RuntimeEnvironment): Promise<JsonConfigReadResult> {
-  const configPath = runtimeEnvironment.globalConfigPath();
+async function readGlobalJsonConfig(env: NodeJS.ProcessEnv): Promise<JsonConfigReadResult> {
+  const configPath = globalConfigPath(env);
   if (configPath === undefined) {
     return { ok: true, config: {} };
   }
@@ -336,13 +336,13 @@ function applyDiscoveredConfig(
 function applyEnvironmentOverrides(
   accumulated: Partial<NamsConnectionConfig>,
   sources: NamsConfigSources,
-  runtimeEnvironment: RuntimeEnvironment,
+  env: NodeJS.ProcessEnv,
 ): void {
-  for (const { key, env } of CONFIG_FIELDS) {
-    const value = runtimeEnvironment.value(env);
+  for (const { key, env: envVar } of CONFIG_FIELDS) {
+    const value = envValue(env, envVar);
     if (value === undefined) continue;
     accumulated[key] = value;
-    sources[key] = `env:${env}` as const;
+    sources[key] = `env:${envVar}` as const;
   }
 }
 
