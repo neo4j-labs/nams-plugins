@@ -135,6 +135,62 @@ plugin entries from `dist-local/` instead of replacing the whole folder.
 Do not hand-edit generated dist trees; change TypeScript source, templates, or
 build scripts instead.
 
+## New Platform Checklist
+
+Use this abstract checklist before adding support for another agent harness.
+For a task-by-task implementation plan, see
+`docs/superpowers/plans/2026-06-09-new-platform-onboarding.md`.
+
+- Identify the platform id, supported OS scope, native hook lifecycle, install
+  model, configuration surface, and unsupported events before touching runtime
+  code.
+- Map native hook events to the typed NAMS lifecycle events:
+  `SessionStart`, `BeforeAgent`, `AfterAgent`, and `AfterTool`. Keep native
+  event names inside platform adapters and templates; CLI commands must pass
+  `--event <NAMS event>` explicitly.
+- Keep `src/cli.ts` as the platform-agnostic gateway. It should parse the
+  command, platform, typed event, and opaque stdin JSON only.
+- Add platform code under `src/platforms/<platform>/`, normally
+  `index.ts`, `payload.ts`, `workspaces.ts`, and `transcript.ts` only when a
+  documented transcript source is needed.
+- Add the platform id to `src/interfaces.ts` and statically register memory and
+  workspace adapters in `src/platforms/index.ts`.
+- Write parser and gateway tests first. Cover documented payload fields,
+  fallback project directory behavior, blank strings, unsupported aliases, and
+  the rule that payload event-name fields never drive routing.
+- Implement the adapter incrementally: log-only session start, before-agent
+  memory recall and prompt persistence, workspace resolution when supported,
+  best-effort assistant persistence, and tool metadata capture.
+- Store only exposed user messages, assistant responses, and operational tool
+  summaries. Do not infer hidden reasoning or scrape output from unsupported
+  harness fields.
+- Keep configuration, state, logging, duplicate suppression, workspace
+  resolution, and NAMS HTTP behavior in shared runtime modules unless the
+  platform contract truly requires a new adapter boundary.
+- Add templates only after the native install model and hook command shape are
+  known. Use `templates/local/<platform>/` for project-local config that calls
+  installed `nams-hooks`, `templates/marketplace/<platform>/` for
+  self-contained bundled-runtime artifacts, and `templates/<platform>/` only for
+  shared fragments.
+- Wire distribution through the split projection scripts. Local templates belong
+  in `scripts/build-dist-local.mjs` and generate under
+  `dist-local/<platform>/`; marketplace or extension templates belong in
+  `scripts/build-dist-marketplace.mjs` and generate under
+  `dist-marketplace/`. Leave `dist/` npm-only unless the package runtime shape
+  itself changes.
+- Extend `scripts/check-dist.mjs` to prove the generated files match the chosen
+  install model: marketplace commands use bundled runtime paths, local commands
+  use installed `nams-hooks`, `dist-local/` has no compiled runtime, `dist/`
+  stays npm-only, and OpenAPI artifacts are absent.
+- Update `README.md`, `INSTALL.md`, this guide, and
+  `docs/superpowers/specs/2026-05-10-nams-hooks-design.md` when the platform
+  becomes official. Create a dedicated design spec only for new architecture,
+  distribution, blocking behavior, workspace, or payload-source decisions.
+- Verify with targeted platform tests, `npm run check`, and
+  `npm run package:check` when templates or distribution checks changed. Manual
+  validation should use a throwaway project or temp HOME and must not write
+  `.nams/` artifacts into this repository.
+
 ## Test Gemini CLI Locally
 
 Build the marketplace extension tree and link it into Gemini:

@@ -6,7 +6,7 @@
 
 **Architecture:** New platforms are additive adapters behind the existing CLI gateway. `src/cli.ts` continues to parse only the command, platform, typed `--event`, and opaque stdin JSON; all native hook parsing, stdout shaping, transcript handling, and platform-specific fallback behavior lives under `src/platforms/<platform>/`. Shared runtime modules continue to own config, local state, logging, workspace resolution, duplicate suppression, and NAMS REST calls through the generated client.
 
-**Tech Stack:** TypeScript, Node.js built-ins only for runtime code, generated `NamsClient`, Node's built-in `node:test`, `fetch-mock` test support, ArchUnitTS architecture tests, source templates under `templates/`, and generated release checks through `npm run package:check`.
+**Tech Stack:** TypeScript, Node.js built-ins only for runtime code, generated `NamsClient`, Node's built-in `node:test`, `fetch-mock` test support, ArchUnitTS architecture tests, split source templates under `templates/local/`, `templates/marketplace/`, and optional shared `templates/<platform>/`, split distribution projection scripts, and generated distribution checks through `npm run package:check`.
 
 ---
 
@@ -18,7 +18,9 @@ This is a generic onboarding guide. The examples use:
 - Platform id: `antygravity`
 - Source folder: `src/platforms/antygravity/`
 - Test folder: `test/antygravity/`
-- Template folder: `templates/antygravity/`
+- Local template folder: `templates/local/antygravity/`
+- Marketplace template folder: `templates/marketplace/antygravity/`
+- Shared template folder, only when needed by both outputs: `templates/antygravity/`
 
 When adding a different platform, choose one stable lowercase id and apply the same file pattern consistently. Do not add runtime dependencies, do not teach `src/cli.ts` native payload details, do not infer `invocation.event` from payload fields, and do not fetch OpenAPI or inspect schemas at hook runtime.
 
@@ -50,8 +52,10 @@ Create for Antygravity:
 - `test/antygravity/antygravity-payload.test.ts`: parser contract tests.
 - `test/antygravity/antygravity-memory-flow.test.ts`: mocked NAMS memory-flow tests.
 - `test/antygravity/antygravity-workspaces.test.ts`: workspace preflight tests when the platform supports a pre-memory hook.
-- `test/antygravity-template.test.ts`: template shape and command tests when source templates are added.
-- `templates/antygravity/`: platform-native hook templates or plugin files when the platform has an installable artifact.
+- `test/antygravity-template.test.ts`: template shape, local command, marketplace command, and projection tests when source templates are added.
+- `templates/local/antygravity/`: project-shaped local config or shim files that call an installed `nams-hooks` executable.
+- `templates/marketplace/antygravity/`: self-contained marketplace or extension files that call bundled runtime files.
+- `templates/antygravity/`: optional shared fragments only when both local and marketplace outputs use the same source.
 
 Modify:
 
@@ -59,8 +63,10 @@ Modify:
 - `src/platforms/index.ts`: statically register the memory and workspace adapters.
 - `test/architecture.test.ts`: include the new platform in platform-boundary and concrete-adapter rules.
 - `test/cli-session-start.test.ts`: add gateway routing coverage for the new platform and supported typed events.
-- `scripts/build-dist.mjs`: copy or render Antygravity templates only when they are part of the generated release artifact.
-- `scripts/check-dist.mjs`: verify generated Antygravity release files only when `build-dist` emits them.
+- `scripts/build-dist-local.mjs`: project Antygravity local templates to `dist-local/antygravity/` when the platform has a project-local install path.
+- `scripts/build-dist-marketplace.mjs`: project Antygravity marketplace templates and bundled runtime to `dist-marketplace/` when the platform has a self-contained marketplace or extension install path.
+- `scripts/build-dist-common.mjs`: modify only when the existing projection kinds cannot express the Antygravity output.
+- `scripts/check-dist.mjs`: verify generated Antygravity files only for the output trees that the build scripts emit.
 - `README.md`, `INSTALL.md`, and `DEVELOPMENT.md`: document support level, install path, config requirements, and local validation commands.
 - `docs/superpowers/specs/2026-05-10-nams-hooks-design.md`: amend supported-platform notes when Antygravity becomes an official target.
 
@@ -700,15 +706,18 @@ git commit -m "feat: record antygravity tool metadata" -m "Co-authored-by: Codex
 
 ---
 
-### Task 7: Add Templates And Distribution Wiring
+### Task 7: Add Templates And Distribution Projections
 
 **Files:**
 
-- Create: `templates/antygravity/`
+- Create: `templates/local/antygravity/` when Antygravity has project-local config.
+- Create: `templates/marketplace/antygravity/` when Antygravity has a self-contained marketplace or extension artifact.
+- Create: `templates/antygravity/` only for fragments shared by both local and marketplace templates.
 - Create: `test/antygravity-template.test.ts`
-- Modify: `scripts/build-dist.mjs`
+- Modify: `scripts/build-dist-local.mjs` when local project config is generated.
+- Modify: `scripts/build-dist-marketplace.mjs` when marketplace or extension output is generated.
+- Modify: `scripts/build-dist-common.mjs` only when a new projection kind is required.
 - Modify: `scripts/check-dist.mjs`
-- Modify: `package.json` only if source templates must be included in npm package files
 
 - [ ] **Step 1: Choose the installation model**
 
@@ -719,54 +728,93 @@ Use the least surprising native model:
 - Project-local config or plugin shim if Antygravity requires local files like OpenCode.
 - Global CLI fallback only when no self-contained platform install exists.
 
-Do not add a template until the native hook command shape is known.
+Keep the output tree responsibilities separate:
+
+- `dist/` is the npm-installable package artifact only. It should contain the compiled runtime under `bin/` and `package.json`, not platform marketplace metadata, project-local config, source templates, or OpenAPI artifacts.
+- `dist-marketplace/` is the self-contained marketplace or extension output. Hook commands in this tree must call bundled runtime files, such as `${PLUGIN_ROOT}/bin/cli.js`, `${CLAUDE_PLUGIN_ROOT}/bin/cli.js`, `${extensionPath}/plugins/antygravity-nams-hooks/bin/cli.js`, or the Antygravity-native equivalent.
+- `dist-local/` is symlinkable or copyable project config. Hook commands in this tree intentionally call an installed `nams-hooks` executable and must not include compiled runtime files or marketplace roots.
+
+Do not add templates until the native hook command shape and install model are known.
 
 - [ ] **Step 2: Write template tests first**
 
 Assert:
 
 - Each native hook maps to the correct typed NAMS event.
-- Hook commands call the bundled runtime path for self-contained installs.
-- The template never calls a global `nams-hooks` executable when a bundled CLI path is available.
-- Workspace preflight runs before memory `BeforeAgent` when the platform supports it.
+- Marketplace hook commands call the bundled runtime path for self-contained installs.
+- Marketplace templates never call a global `nams-hooks` executable when a bundled CLI path is available.
+- Local project templates intentionally call the installed `nams-hooks` executable.
+- Local generated files are symlinkable or copyable into a project root without depending on repository source paths.
+- Workspace preflight or workspace command templates route through `workspaces run antygravity --event <workspace-event>` when the platform supports them.
 - Templates do not contain API keys, secret placeholders, or hardcoded NAMS service URLs.
 
-Example command expectation:
+Example marketplace command expectation:
 
 ```ts
 assert.equal(
   command,
-  'node "${extensionPath}/bin/cli.js" run antygravity --event BeforeAgent',
+  'node "${extensionPath}/plugins/antygravity-nams-hooks/bin/cli.js" run antygravity --event BeforeAgent',
 );
 ```
 
 Replace `${extensionPath}` with the Antygravity-native root variable.
 
+Example local command expectation:
+
+```ts
+assert.equal(command, "nams-hooks run antygravity --event BeforeAgent");
+```
+
 - [ ] **Step 3: Create source templates**
 
-Create only the native files Antygravity needs under `templates/antygravity/`. Hook commands must pass the typed NAMS event explicitly:
+Create only the native files Antygravity needs in the matching source tree:
+
+- `templates/marketplace/antygravity/` for marketplace manifests, extension roots, plugin metadata, hooks, command files, or shims that use bundled runtime paths.
+- `templates/local/antygravity/` for project-shaped fallback config or shims that use the installed executable.
+- `templates/antygravity/` only for shared fragments that are rendered into both target trees by explicit projection entries.
+
+Marketplace hook commands must pass the typed NAMS event explicitly:
 
 ```bash
 node "<platform-plugin-root>/bin/cli.js" run antygravity --event SessionStart
-node "<platform-plugin-root>/bin/cli.js" workspaces antygravity --event BeforeAgent
+node "<platform-plugin-root>/bin/cli.js" workspaces run antygravity --event <workspace-event>
 node "<platform-plugin-root>/bin/cli.js" run antygravity --event BeforeAgent
 node "<platform-plugin-root>/bin/cli.js" run antygravity --event AfterAgent
 node "<platform-plugin-root>/bin/cli.js" run antygravity --event AfterTool
 ```
 
-- [ ] **Step 4: Wire release generation**
+Local hook commands use the installed executable:
 
-Update `scripts/build-dist.mjs` only for artifacts that belong in `dist/`. Self-contained plugin installs should copy `.build/tsc` into the platform plugin's `bin/` folder and mark `bin/cli.js` executable, matching the Claude and Codex pattern.
+```bash
+nams-hooks run antygravity --event SessionStart
+nams-hooks workspaces run antygravity --event <workspace-event>
+nams-hooks run antygravity --event BeforeAgent
+nams-hooks run antygravity --event AfterAgent
+nams-hooks run antygravity --event AfterTool
+```
+
+- [ ] **Step 4: Wire distribution generation**
+
+Update only the projection script for the output tree Antygravity uses:
+
+- Add local project config to `scripts/build-dist-local.mjs` with `to: "antygravity"` under `dist-local/antygravity/`. Local projections should render installed-command templates and should not copy `.build/tsc`.
+- Add marketplace or extension output to `scripts/build-dist-marketplace.mjs`. Self-contained plugin installs should add template projections, a `packageJson` projection when a plugin package is needed, and a `runtime` projection that copies `.build/tsc` into `dist-marketplace/plugins/antygravity-nams-hooks/bin/` and marks `bin/cli.js` executable.
+- Leave `scripts/build-dist-npm.mjs` alone unless the npm package runtime shape itself changes.
+- Update `scripts/build-dist-common.mjs` only when Antygravity needs a reusable projection kind that existing `template`, `runtime`, `packageJson`, or platform shim projections cannot express.
 
 - [ ] **Step 5: Add release checks**
 
 Update `scripts/check-dist.mjs` to verify:
 
-- Required Antygravity files exist in `dist/`.
-- Plugin or extension metadata versions match `package.json`.
-- Runtime CLI files are executable.
+- Required Antygravity files exist in `dist-marketplace/` and/or `dist-local/`, depending on the chosen install model.
+- `dist/` remains npm-only and does not include Antygravity marketplace metadata, project-local config, source templates, or OpenAPI artifacts.
+- Marketplace plugin or extension metadata versions match `package.json`.
+- Marketplace runtime CLI files are executable.
+- Marketplace commands use bundled runtime paths and do not require global `nams-hooks`.
+- Local commands intentionally use installed `nams-hooks`.
+- `dist-local/` does not include compiled runtime files, marketplace roots, or bundled plugin directories.
 - OpenAPI artifacts are absent.
-- npm dry-run package output includes required plugin files when applicable.
+- npm dry-run package output includes only the npm runtime package files and documentation, not generated marketplace or local project artifacts.
 
 - [ ] **Step 6: Verify templates and package output**
 
@@ -782,12 +830,14 @@ Expected: PASS.
 
 Commit:
 
+Stage only the outputs that actually changed. For example:
+
 ```bash
-git add templates/antygravity test/antygravity-template.test.ts scripts/build-dist.mjs scripts/check-dist.mjs package.json package-lock.json
+git add templates/local/antygravity templates/marketplace/antygravity templates/antygravity test/antygravity-template.test.ts scripts/build-dist-local.mjs scripts/build-dist-marketplace.mjs scripts/build-dist-common.mjs scripts/check-dist.mjs
 git commit -m "feat: package antygravity hook templates" -m "Co-authored-by: Codex <codex@openai.com>"
 ```
 
-Omit `package.json` and `package-lock.json` from the commit when they did not change.
+Omit template or script paths that do not exist or did not change.
 
 ---
 
@@ -886,9 +936,12 @@ npm run package:check
 Expected:
 
 - Full checks pass.
-- `dist/` is generated from source.
+- `dist/`, `dist-local/`, and `dist-marketplace/` are generated from source.
 - Distribution checks pass.
-- No OpenAPI files are packaged into runtime artifacts.
+- `dist/` remains npm-only.
+- Marketplace artifacts, when added, live under `dist-marketplace/`.
+- Project-local artifacts, when added, live under `dist-local/`.
+- No OpenAPI files are packaged into runtime or generated distribution artifacts.
 - No runtime dependencies are added.
 
 - [ ] **Step 4: Inspect dependency policy**
@@ -911,7 +964,7 @@ Commit only fixes that were required by verification.
 
 - No source files unless manual validation exposes a defect.
 
-- [ ] **Step 1: Build a local release artifact**
+- [ ] **Step 1: Build local distribution artifacts**
 
 Run:
 
@@ -919,11 +972,20 @@ Run:
 npm run dist
 ```
 
-Expected: `dist/` contains the Antygravity artifact when the platform uses generated distribution files.
+Expected:
+
+- `dist/` contains only the npm package runtime.
+- `dist-marketplace/` contains Antygravity marketplace or extension artifacts when Antygravity uses a self-contained install path.
+- `dist-local/` contains Antygravity project-local config when Antygravity uses a local fallback path.
 
 - [ ] **Step 2: Link or install into a throwaway project**
 
-Use the Antygravity-native local install command. Keep all test config under the throwaway project or temp HOME. Do not write `.nams/` artifacts into the repository root.
+Use the Antygravity-native local install command for the chosen output tree:
+
+- For marketplace or extension validation, install or link the generated artifact from `dist-marketplace/`.
+- For project-local validation, install the npm artifact with `npm install -g ./dist`, then symlink or copy the project-shaped config from `dist-local/antygravity/` into the throwaway project.
+
+Keep all test config under the throwaway project or temp HOME. Do not write `.nams/` artifacts into the repository root.
 
 - [ ] **Step 3: Validate session start**
 
