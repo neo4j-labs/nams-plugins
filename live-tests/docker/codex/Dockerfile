@@ -1,13 +1,10 @@
-FROM ghcr.io/openai/codex-universal:latest
-
-SHELL ["/bin/bash", "-lc"]
+FROM node:24-bookworm-slim
 
 WORKDIR /workspace
 
-RUN npm install -g @openai/codex \
-  && ln -sf "$(command -v node)" /usr/local/bin/node \
-  && ln -sf "$(command -v npm)" /usr/local/bin/npm \
-  && ln -sf "$(command -v codex)" /usr/local/bin/codex \
-  && node --version \
-  && npm --version \
-  && codex --version
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends git ca-certificates bash \
+  && rm -rf /var/lib/apt/lists/* \
+  && npm install -g @openai/codex
+
+CMD ["sleep", "infinity"]

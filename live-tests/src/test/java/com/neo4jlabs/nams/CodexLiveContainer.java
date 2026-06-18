@@ -28,8 +28,6 @@ final class CodexLiveContainer implements AutoCloseable {
             .withFileSystemBind(fixture.hostProject().toString(), fixture.containerProject(), BindMode.READ_WRITE)
             .withEnv(environment)
             .withEnv("HOME", fixture.containerHome())
-            .withEnv("NPM_CONFIG_PREFIX", fixture.containerHome() + "/.npm-global")
-            .withEnv("PATH", fixture.containerHome() + "/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
             .withWorkingDirectory(fixture.containerProject());
         container.start();
         return new CodexLiveContainer(container);

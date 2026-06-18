@@ -42,13 +42,11 @@ class CodexContainerSmokeTest {
                 .isZero();
             assertThat(version.getStdout() + version.getStderr()).containsIgnoringCase("codex");
 
-            Container.ExecResult prompt = container.execInContainer(
-                "codex",
-                "exec",
+            Container.ExecResult prompt = container.execInContainer(CodexCli.exec(
                 "--cd",
                 "/workspace",
                 "Say hello from nams live tests"
-            );
+            ));
 
             String output = prompt.getStdout() + prompt.getStderr();
             LOG.info("codex exec exit={}\n{}", prompt.getExitCode(), output);

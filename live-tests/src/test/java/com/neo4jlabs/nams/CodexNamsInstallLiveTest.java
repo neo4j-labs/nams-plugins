@@ -19,7 +19,13 @@ class CodexNamsInstallLiveTest {
         LiveEnv env = LiveEnv.load();
         try (ProjectFixture fixture = ProjectFixture.create("codex");
              CodexLiveContainer codex = CodexLiveContainer.start(fixture, env.codexEnvironment())) {
-            assertZero(codex.shell("npm install -g /nams-hooks/dist"), "npm install -g /nams-hooks/dist");
+            assertZero(
+                codex.shell("mkdir -p /tmp/nams-hooks-pack"
+                    + " && cd /tmp/nams-hooks-pack"
+                    + " && npm pack /nams-hooks/dist >/tmp/nams-hooks-pack/package.txt"
+                    + " && npm install -g \"/tmp/nams-hooks-pack/$(cat /tmp/nams-hooks-pack/package.txt)\""),
+                "npm install -g packed /nams-hooks/dist"
+            );
             assertZero(
                 codex.shell("ln -s /nams-hooks/dist-local/codex/.codex " + fixture.containerProject() + "/.codex"),
                 "link Codex config"
@@ -33,9 +39,7 @@ class CodexNamsInstallLiveTest {
 
             String marker = "nams-hooks-live codex install " + UUID.randomUUID();
             String answerPath = fixture.containerProject() + "/.live-tests/codex-answer.txt";
-            Container.ExecResult result = codex.exec(
-                "codex",
-                "exec",
+            Container.ExecResult result = codex.exec(CodexCli.exec(
                 "--cd",
                 fixture.containerProject(),
                 "--skip-git-repo-check",
@@ -49,7 +53,7 @@ class CodexNamsInstallLiveTest {
                 "--output-last-message",
                 answerPath,
                 "Reply with a short greeting and include this marker: " + marker
-            );
+            ));
             assertZero(result, "codex exec");
 
             Path answer = fixture.hostProject().resolve(".live-tests/codex-answer.txt");
