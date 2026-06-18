@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { GeminiAdapter } from "../../src/platforms/gemini/index.js";
+import { geminiMemoryAdapter } from "../../src/platforms/gemini/index.js";
 import { loadSessionState } from "../../src/runtime/session-state.js";
 import { createNamsFetchMock } from "../support/nams-fetch-mock.js";
 import { namsHome, readSingleSessionLog as readRuntimeSingleSessionLog } from "../support/runtime-home.js";
@@ -37,7 +37,7 @@ test("initializes Gemini session state on SessionStart without creating a conver
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
     testEnv(projectDir);
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     const result = await adapter.startSession({
       platform: "gemini",
@@ -63,7 +63,7 @@ test("records Gemini active workspace session marker on SessionStart", async () 
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
     const env = testEnv(projectDir);
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     await adapter.startSession({
       platform: "gemini",
@@ -104,7 +104,7 @@ test("creates Gemini conversation, recalls memory, and stores first BeforeAgent 
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     const result = await adapter.beforeAgent({
       platform: "gemini",
@@ -224,7 +224,7 @@ test("Gemini BeforeAgent uses entity search context when conversation context fa
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     const result = await adapter.beforeAgent({
       platform: "gemini",
@@ -265,7 +265,7 @@ test("does not store duplicate Gemini BeforeAgent user prompt twice", async () =
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
     const invocation = {
       platform: "gemini",
       event: "BeforeAgent",
@@ -295,7 +295,7 @@ test("allows Gemini BeforeAgent when NAMS returns an error", async () => {
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     const result = await adapter.beforeAgent({
       platform: "gemini",
@@ -327,7 +327,7 @@ test("Gemini BeforeAgent returns recalled context when user message persistence 
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     const result = await adapter.beforeAgent({
       platform: "gemini",
@@ -355,7 +355,7 @@ test("Gemini BeforeAgent continues when NAMS_API_KEY is missing", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
     testEnv(projectDir);
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     const result = await adapter.beforeAgent({
       platform: "gemini",
@@ -403,7 +403,7 @@ test("Gemini BeforeAgent uses auto-selected workspace when NAMS_WORKSPACE_ID is 
       NAMS_API_KEY: "key",
       NAMS_BASE_URL: "https://memory.example.test",
     });
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
     const invocation = {
       platform: "gemini" as const,
       event: "BeforeAgent" as const,
@@ -440,7 +440,7 @@ test("Gemini BeforeAgent notifies and continues when multiple workspaces are ava
       NAMS_API_KEY: "key",
       NAMS_BASE_URL: "https://memory.example.test",
     });
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     const result = await adapter.beforeAgent({
       platform: "gemini",
@@ -493,7 +493,7 @@ test("Gemini BeforeAgent ignores workspace command result prompt", async () => {
       NAMS_API_KEY: "key",
       NAMS_BASE_URL: "https://memory.example.test",
     });
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     const result = await adapter.beforeAgent({
       platform: "gemini",
@@ -526,7 +526,7 @@ test("Gemini BeforeAgent logs invalid config diagnostics without raw JSON conten
     await mkdir(path.join(projectDir, ".nams"), { recursive: true });
     await writeFile(path.join(projectDir, ".nams", "config.json"), '{"apiKey":"secret-config-value"', "utf8");
     testEnv(projectDir);
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     const result = await adapter.beforeAgent({
       platform: "gemini",
@@ -568,7 +568,7 @@ test("Gemini BeforeAgent continues when NAMS request fails", async () => {
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     const result = await adapter.beforeAgent({
       platform: "gemini",
@@ -605,7 +605,7 @@ test("Gemini NAMS failure diagnostics do not include arbitrary error text", asyn
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     const result = await adapter.beforeAgent({
       platform: "gemini",
@@ -631,7 +631,7 @@ test("Gemini session log keeps hook events together and includes user prompt fie
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
     testEnv(projectDir);
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     await adapter.startSession({
       platform: "gemini",
@@ -683,7 +683,7 @@ test("Gemini AfterAgent platform log keeps raw assistant response fields", async
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
     testEnv(projectDir);
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     await adapter.afterAgent({
       platform: "gemini",
@@ -711,7 +711,7 @@ test("Gemini AfterTool platform log keeps raw tool output fields", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
     testEnv(projectDir);
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     const result = await adapter.afterTool({
       platform: "gemini",
@@ -755,7 +755,7 @@ test("Gemini platform log keeps nested non-sensitive payload fields", async () =
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-gemini-flow-"));
   try {
     testEnv(projectDir);
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "gemini",
@@ -801,7 +801,7 @@ test("Gemini hooks continue when observability log writes fail", async () => {
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     const beforeAgentResult = await adapter.beforeAgent({
       platform: "gemini",
@@ -847,7 +847,7 @@ test("records Gemini AfterTool payload as a reasoning step with tool output", as
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "gemini",
@@ -918,7 +918,7 @@ test("ignores undocumented Gemini AfterTool output fallback fields", async () =>
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "gemini",
@@ -976,7 +976,7 @@ test("ignores undocumented Gemini AfterTool tool name aliases", async () => {
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "gemini",
@@ -1024,7 +1024,7 @@ test("does not duplicate Gemini AfterTool metadata for the same documented tool 
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "gemini",
@@ -1073,7 +1073,7 @@ test("records distinct Gemini AfterTool calls with different documented tool inp
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "gemini",
@@ -1148,7 +1148,7 @@ test("does not duplicate AfterTool when transcript later contains the same tool 
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "gemini",
@@ -1201,7 +1201,7 @@ test("stores Gemini AfterAgent prompt_response as an assistant message", async (
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "gemini",
@@ -1255,7 +1255,7 @@ test("stores Gemini AfterAgent assistant message from transcript when prompt_res
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "gemini",
@@ -1310,7 +1310,7 @@ test("does not duplicate prompt_response assistant messages during later transcr
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "gemini",
@@ -1412,7 +1412,7 @@ test("deduplicates repeated Gemini transcript thoughts by reasoning body", async
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "gemini",
@@ -1498,7 +1498,7 @@ test("records Gemini transcript thoughts and sanitized tool metadata", async () 
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "gemini",
@@ -1592,7 +1592,7 @@ test("deduplicates repeated Gemini transcript tool ids", async () => {
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "gemini",
@@ -1676,7 +1676,7 @@ test("preserves reasoning step id when retrying a failed transcript tool call", 
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "gemini",
@@ -1767,7 +1767,7 @@ test("does not attach reasoning step from a previous transcript entry to a later
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "gemini",
@@ -1852,7 +1852,7 @@ test("does not attach reasoning step when a transcript entry has multiple though
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "gemini",
@@ -1918,7 +1918,7 @@ test("deduplicates repeated parent transcript tool id despite changed status and
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new GeminiAdapter();
+    const adapter = geminiMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "gemini",

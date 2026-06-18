@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { ClaudeAdapter } from "../../src/platforms/claude/index.js";
+import { claudeMemoryAdapter } from "../../src/platforms/claude/index.js";
 import { sessionStatePath } from "../../src/runtime/paths.js";
 import { loadSessionState } from "../../src/runtime/session-state.js";
 import { createNamsFetchMock } from "../support/nams-fetch-mock.js";
@@ -47,7 +47,7 @@ test("initializes Claude session state on SessionStart without creating a conver
       NAMS_WORKSPACE_ID: "workspace-1",
       NAMS_BASE_URL: "https://memory.example.test",
     });
-    const adapter = new ClaudeAdapter();
+    const adapter = claudeMemoryAdapter;
     const payload = {
       session_id: "session-1",
       cwd: projectDir,
@@ -101,7 +101,7 @@ test("creates Claude conversation, recalls memory, injects additionalContext, an
       NAMS_WORKSPACE_ID: "workspace-1",
       NAMS_BASE_URL: "https://memory.example.test",
     });
-    const adapter = new ClaudeAdapter();
+    const adapter = claudeMemoryAdapter;
 
     const result = await adapter.beforeAgent({
       platform: "claude",
@@ -164,7 +164,7 @@ test("Claude BeforeAgent auto-selects a single listed workspace when config work
       NAMS_API_KEY: "key",
       NAMS_BASE_URL: "https://memory.example.test",
     });
-    const adapter = new ClaudeAdapter();
+    const adapter = claudeMemoryAdapter;
 
     const result = await adapter.beforeAgent({
       platform: "claude",
@@ -205,7 +205,7 @@ test("Claude BeforeAgent skips memory when multiple listed workspaces require se
       NAMS_API_KEY: "key",
       NAMS_BASE_URL: "https://memory.example.test",
     });
-    const adapter = new ClaudeAdapter();
+    const adapter = claudeMemoryAdapter;
 
     const result = await adapter.beforeAgent({
       platform: "claude",
@@ -272,7 +272,7 @@ test("does not store duplicate Claude UserPromptSubmit prompt twice through Befo
       NAMS_WORKSPACE_ID: "workspace-1",
       NAMS_BASE_URL: "https://memory.example.test",
     });
-    const adapter = new ClaudeAdapter();
+    const adapter = claudeMemoryAdapter;
     const invocation = {
       platform: "claude",
       event: "BeforeAgent",
@@ -303,7 +303,7 @@ test("stores Claude Stop last_assistant_message as an assistant message through 
       NAMS_WORKSPACE_ID: "workspace-1",
       NAMS_BASE_URL: "https://memory.example.test",
     });
-    const adapter = new ClaudeAdapter();
+    const adapter = claudeMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "claude",
@@ -348,7 +348,7 @@ test("does not duplicate Claude Stop assistant messages through AfterAgent", asy
       NAMS_WORKSPACE_ID: "workspace-1",
       NAMS_BASE_URL: "https://memory.example.test",
     });
-    const adapter = new ClaudeAdapter();
+    const adapter = claudeMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "claude",
@@ -389,7 +389,7 @@ test("continues when Claude NAMS apiKey is missing and logs sanitized config dia
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-claude-flow-"));
   try {
     const env = testEnv(projectDir);
-    const adapter = new ClaudeAdapter();
+    const adapter = claudeMemoryAdapter;
 
     const result = await adapter.beforeAgent({
       platform: "claude",
@@ -431,7 +431,7 @@ test("continues when Claude project config cannot be read and logs sanitized con
       NAMS_API_KEY: "secret-api-key",
       NAMS_BASE_URL: "https://memory.example.test",
     });
-    const adapter = new ClaudeAdapter();
+    const adapter = claudeMemoryAdapter;
 
     const result = await adapter.beforeAgent({
       platform: "claude",
@@ -486,7 +486,7 @@ test("Claude BeforeAgent uses entity search context when conversation recall fai
       NAMS_WORKSPACE_ID: "workspace-1",
       NAMS_BASE_URL: "https://memory.example.test",
     });
-    const adapter = new ClaudeAdapter();
+    const adapter = claudeMemoryAdapter;
 
     const result = await adapter.beforeAgent({
       platform: "claude",
@@ -529,7 +529,7 @@ test("records Claude PostToolUse as reasoning step and tool call", async () => {
       NAMS_WORKSPACE_ID: "workspace-1",
       NAMS_BASE_URL: "https://memory.example.test",
     });
-    const adapter = new ClaudeAdapter();
+    const adapter = claudeMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "claude",
@@ -603,7 +603,7 @@ test("does not duplicate Claude PostToolUse records for the same tool_use_id", a
       NAMS_WORKSPACE_ID: "workspace-1",
       NAMS_BASE_URL: "https://memory.example.test",
     });
-    const adapter = new ClaudeAdapter();
+    const adapter = claudeMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "claude",
@@ -658,7 +658,7 @@ test("records Claude PostToolUse with tool_use_id after matching no-id fallback 
       NAMS_WORKSPACE_ID: "workspace-1",
       NAMS_BASE_URL: "https://memory.example.test",
     });
-    const adapter = new ClaudeAdapter();
+    const adapter = claudeMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "claude",

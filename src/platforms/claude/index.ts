@@ -19,8 +19,7 @@ import { formatWorkspaceSelectionNotice } from "../workspace-selection.js";
 import { discoverClaudeNamsConfig } from "./config.js";
 import { parseClaudePayload } from "./payload.js";
 
-export class ClaudeAdapter implements MemoryPlatformAdapter {
-  async startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
+async function startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
     const payloadInfo = parseClaudePayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({
       platform: invocation.platform,
@@ -34,9 +33,9 @@ export class ClaudeAdapter implements MemoryPlatformAdapter {
     await saveSessionState(invocation.platform, state.sessionKey, state);
 
     return allowOutput();
-  }
+}
 
-  async beforeAgent(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult> {
+async function beforeAgent(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult> {
     const payloadInfo = parseClaudePayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({
       platform: invocation.platform,
@@ -109,9 +108,9 @@ export class ClaudeAdapter implements MemoryPlatformAdapter {
 
     await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput(additionalContext);
-  }
+}
 
-  async afterAgent(invocation: HookInvocation<"AfterAgent">): Promise<HookResult> {
+async function afterAgent(invocation: HookInvocation<"AfterAgent">): Promise<HookResult> {
     const payloadInfo = parseClaudePayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({
       platform: invocation.platform,
@@ -169,9 +168,9 @@ export class ClaudeAdapter implements MemoryPlatformAdapter {
 
     await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
-  }
+}
 
-  async afterTool(invocation: HookInvocation<"AfterTool">): Promise<HookResult> {
+async function afterTool(invocation: HookInvocation<"AfterTool">): Promise<HookResult> {
     const payloadInfo = parseClaudePayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({
       platform: invocation.platform,
@@ -247,8 +246,9 @@ export class ClaudeAdapter implements MemoryPlatformAdapter {
 
     await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
-  }
 }
+
+export const claudeMemoryAdapter: Required<MemoryPlatformAdapter> = { startSession, beforeAgent, afterAgent, afterTool };
 
 function allowOutput(additionalContext?: string): HookResult {
   return {
@@ -317,4 +317,3 @@ function claudeToolCallDedupeKeys(
     markKeys: [fallbackKey, fallbackHash],
   };
 }
-

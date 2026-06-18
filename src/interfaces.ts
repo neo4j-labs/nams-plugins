@@ -31,12 +31,12 @@ export interface WorkspaceHookInvocation<E extends WorkspaceHookEvent = Workspac
   processCwd: string;
 }
 
-export interface MemoryPlatformAdapter {
-  startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult>;
-  beforeAgent?(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult>;
-  afterAgent?(invocation: HookInvocation<"AfterAgent">): Promise<HookResult>;
-  afterTool?(invocation: HookInvocation<"AfterTool">): Promise<HookResult>;
-}
+export type MemoryPlatformAdapter = {
+  startSession: (invocation: HookInvocation<"SessionStart">) => Promise<HookResult>;
+  beforeAgent?: (invocation: HookInvocation<"BeforeAgent">) => Promise<HookResult>;
+  afterAgent?: (invocation: HookInvocation<"AfterAgent">) => Promise<HookResult>;
+  afterTool?: (invocation: HookInvocation<"AfterTool">) => Promise<HookResult>;
+};
 
 export interface WorkspacePlatformAdapter {
   beforeAgent?(invocation: WorkspaceHookInvocation<"BeforeAgent">): Promise<HookResult>;

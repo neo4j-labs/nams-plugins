@@ -16,8 +16,7 @@ import {
 import { formatWorkspaceSelectionNotice } from "../workspace-selection.js";
 import { parseOpenCodePayload, type OpenCodePayloadInfo } from "./payload.js";
 
-export class OpenCodeAdapter implements MemoryPlatformAdapter {
-  async startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
+async function startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
     const payloadInfo = parseOpenCodePayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({
       platform: invocation.platform,
@@ -32,9 +31,9 @@ export class OpenCodeAdapter implements MemoryPlatformAdapter {
     await saveSessionState(invocation.platform, state.sessionKey, state);
 
     return allowOutput();
-  }
+}
 
-  async beforeAgent(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult> {
+async function beforeAgent(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult> {
     const payloadInfo = parseOpenCodePayload(invocation.rawPayload, invocation.processCwd);
     if (payloadInfo.hookName === "experimental.chat.system.transform") {
       return consumePendingContext(invocation, payloadInfo);
@@ -122,9 +121,9 @@ export class OpenCodeAdapter implements MemoryPlatformAdapter {
 
     await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
-  }
+}
 
-  async afterAgent(invocation: HookInvocation<"AfterAgent">): Promise<HookResult> {
+async function afterAgent(invocation: HookInvocation<"AfterAgent">): Promise<HookResult> {
     const payloadInfo = parseOpenCodePayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({
       platform: invocation.platform,
@@ -186,9 +185,9 @@ export class OpenCodeAdapter implements MemoryPlatformAdapter {
 
     await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
-  }
+}
 
-  async afterTool(invocation: HookInvocation<"AfterTool">): Promise<HookResult> {
+async function afterTool(invocation: HookInvocation<"AfterTool">): Promise<HookResult> {
     const payloadInfo = parseOpenCodePayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({
       platform: invocation.platform,
@@ -269,9 +268,9 @@ export class OpenCodeAdapter implements MemoryPlatformAdapter {
 
     await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
-  }
-
 }
+
+export const opencodeMemoryAdapter: Required<MemoryPlatformAdapter> = { startSession, beforeAgent, afterAgent, afterTool };
 
 function allowOutput(): HookResult {
   return { stdout: { continue: true, suppressOutput: true } };
@@ -380,4 +379,3 @@ function opencodeToolCallDedupeKey(
   }
   return stableJsonHash({ sessionKey, toolName, input: serializeToolInput(toolInput) });
 }
-

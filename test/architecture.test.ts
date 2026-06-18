@@ -170,8 +170,8 @@ test("memory platform adapter contract is named explicitly", async () => {
   const interfaceContent = await readFile("src/interfaces.ts", "utf8");
   const registryContent = await readFile("src/platforms/index.ts", "utf8");
 
-  assert.match(interfaceContent, /\bexport interface MemoryPlatformAdapter\b/);
-  assert.doesNotMatch(interfaceContent, /\bexport interface PlatformAdapter\b/);
+  assert.match(interfaceContent, /\bexport type MemoryPlatformAdapter\b/);
+  assert.doesNotMatch(interfaceContent, /\bexport type PlatformAdapter\b/);
   assert.match(registryContent, /\bgetMemoryPlatformAdapter\b/);
   assert.doesNotMatch(registryContent, /\bgetPlatformAdapter\b/);
 });
@@ -201,7 +201,7 @@ test("platform session-start contract names local session initialization", async
   const interfaceContent = await readFile("src/interfaces.ts", "utf8");
   const cliContent = await readFile("src/cli.ts", "utf8");
 
-  assert.match(interfaceContent, /\bstartSession\(invocation: HookInvocation<"SessionStart">\): Promise<HookResult>;/);
+  assert.match(interfaceContent, /\bstartSession[:(]/);
   assert.equal(/\bstartConversation\b/.test(interfaceContent), false);
   assert.match(cliContent, /\badapter\.startSession\(/);
   assert.equal(/\badapter\.startConversation\b/.test(cliContent), false);
@@ -210,7 +210,7 @@ test("platform session-start contract names local session initialization", async
     const filePath = `src/platforms/${platform}/index.ts`;
     const content = await readFile(filePath, "utf8");
 
-    assert.match(content, /\basync startSession\(invocation: HookInvocation<"SessionStart">\): Promise<HookResult>/);
+    assert.match(content, /\basync function startSession\(invocation: HookInvocation<"SessionStart">\): Promise<HookResult>/);
     assert.equal(/\bstartConversation\b/.test(content), false);
   }
 });

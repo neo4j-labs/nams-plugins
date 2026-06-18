@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { CodexAdapter } from "../../src/platforms/codex/index.js";
+import { codexMemoryAdapter } from "../../src/platforms/codex/index.js";
 import {
   createInitialSessionState,
   loadSessionState,
@@ -42,7 +42,7 @@ test("initializes Codex session state on SessionStart without creating a convers
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
   try {
     testEnv(projectDir);
-    const adapter = new CodexAdapter();
+    const adapter = codexMemoryAdapter;
 
     const result = await adapter.startSession({
       platform: "codex",
@@ -77,7 +77,7 @@ test("Codex beforeAgent with no prompt saves state, logs raw event, and does not
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new CodexAdapter();
+    const adapter = codexMemoryAdapter;
 
     const result = await adapter.beforeAgent({
       platform: "codex",
@@ -127,7 +127,7 @@ test("creates Codex conversation, recalls memory, returns context, and stores Us
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new CodexAdapter();
+    const adapter = codexMemoryAdapter;
 
     const result = await adapter.beforeAgent({
       platform: "codex",
@@ -217,7 +217,7 @@ test("Codex beforeAgent auto-selects a single listed workspace when config works
       NAMS_API_KEY: "key",
       NAMS_BASE_URL: "https://memory.example.test",
     });
-    const adapter = new CodexAdapter();
+    const adapter = codexMemoryAdapter;
 
     const result = await adapter.beforeAgent({
       platform: "codex",
@@ -258,7 +258,7 @@ test("Codex beforeAgent skips memory when multiple listed workspaces require sel
       NAMS_API_KEY: "key",
       NAMS_BASE_URL: "https://memory.example.test",
     });
-    const adapter = new CodexAdapter();
+    const adapter = codexMemoryAdapter;
 
     const result = await adapter.beforeAgent({
       platform: "codex",
@@ -311,7 +311,7 @@ test("Codex beforeAgent treats explicit workspace skill prompt as control input"
       NAMS_API_KEY: "key",
       NAMS_BASE_URL: "https://memory.example.test",
     });
-    const adapter = new CodexAdapter();
+    const adapter = codexMemoryAdapter;
 
     const result = await adapter.beforeAgent({
       platform: "codex",
@@ -351,7 +351,7 @@ test("duplicate Codex beforeAgent prompt stores one user message", async () => {
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new CodexAdapter();
+    const adapter = codexMemoryAdapter;
     const invocation = {
       platform: "codex",
       event: "BeforeAgent",
@@ -377,7 +377,7 @@ test("missing Codex NAMS_API_KEY returns allow output and minimal diagnostic log
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
   try {
     testEnv(projectDir);
-    const adapter = new CodexAdapter();
+    const adapter = codexMemoryAdapter;
 
     const result = await adapter.beforeAgent({
       platform: "codex",
@@ -415,7 +415,7 @@ test("Codex beforeAgent logs invalid config diagnostics without raw JSON content
     await mkdir(path.join(projectDir, ".nams"), { recursive: true });
     await writeFile(path.join(projectDir, ".nams", "config.json"), '{"apiKey":"secret-config-value"', "utf8");
     testEnv(projectDir);
-    const adapter = new CodexAdapter();
+    const adapter = codexMemoryAdapter;
 
     const result = await adapter.beforeAgent({
       platform: "codex",
@@ -465,7 +465,7 @@ test("Codex recall failure still stores prompt and can return entity search cont
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new CodexAdapter();
+    const adapter = codexMemoryAdapter;
 
     const result = await adapter.beforeAgent({
       platform: "codex",
@@ -513,7 +513,7 @@ test("Codex entity search failure still stores prompt and can return conversatio
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new CodexAdapter();
+    const adapter = codexMemoryAdapter;
 
     const result = await adapter.beforeAgent({
       platform: "codex",
@@ -563,7 +563,7 @@ test("Codex message failure returns recalled additional context and fails open",
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new CodexAdapter();
+    const adapter = codexMemoryAdapter;
 
     const result = await adapter.beforeAgent({
       platform: "codex",
@@ -596,7 +596,7 @@ test("stores Codex Stop last_assistant_message as an assistant message", async (
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new CodexAdapter();
+    const adapter = codexMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "codex",
@@ -659,7 +659,7 @@ test("stores Codex transcript assistant message when last_assistant_message is a
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new CodexAdapter();
+    const adapter = codexMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "codex",
@@ -704,7 +704,7 @@ test("repeated Codex Stop last_assistant_message with same turn_id stores once",
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new CodexAdapter();
+    const adapter = codexMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "codex",
@@ -750,7 +750,7 @@ test("Codex Stop last_assistant_message with same content and different turn_id 
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new CodexAdapter();
+    const adapter = codexMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "codex",
@@ -824,7 +824,7 @@ test("Codex transcript fallback does not duplicate an entry id", async () => {
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new CodexAdapter();
+    const adapter = codexMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "codex",
@@ -886,7 +886,7 @@ test("Codex transcript fallback dedupes same assistant content when id changes",
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new CodexAdapter();
+    const adapter = codexMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "codex",
@@ -941,7 +941,7 @@ test("Codex transcript fallback does not duplicate a direct assistant response",
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new CodexAdapter();
+    const adapter = codexMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "codex",
@@ -1012,7 +1012,7 @@ test("Codex transcript fallback without entry id still dedupes by assistant cont
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new CodexAdapter();
+    const adapter = codexMemoryAdapter;
 
     await adapter.beforeAgent({
       platform: "codex",
@@ -1087,7 +1087,7 @@ test("records Codex transcript web search calls during AfterAgent", async () => 
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new CodexAdapter();
+    const adapter = codexMemoryAdapter;
 
     const invocation = {
       platform: "codex",
@@ -1135,7 +1135,7 @@ test("Codex afterAgent with no conversationId returns allow output and does not 
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new CodexAdapter();
+    const adapter = codexMemoryAdapter;
 
     const result = await adapter.afterAgent({
       platform: "codex",
@@ -1174,7 +1174,7 @@ test("Codex afterAgent missing config and failed NAMS calls allow and log minima
     await saveSessionState("codex", missingConfigState.sessionKey, missingConfigState);
 
     testEnv(missingConfigDir);
-    const missingConfigResult = await new CodexAdapter().afterAgent({
+    const missingConfigResult = await codexMemoryAdapter.afterAgent({
       platform: "codex",
       event: "AfterAgent",
       processCwd: missingConfigDir,
@@ -1215,7 +1215,7 @@ test("Codex afterAgent missing config and failed NAMS calls allow and log minima
       NAMS_WORKSPACE_ID: "workspace-1",
       NAMS_BASE_URL: "https://memory.example.test",
     });
-    const namsFailureResult = await new CodexAdapter().afterAgent({
+    const namsFailureResult = await codexMemoryAdapter.afterAgent({
       platform: "codex",
       event: "AfterAgent",
       processCwd: namsFailureDir,
@@ -1251,7 +1251,7 @@ test("records Codex PostToolUse as reasoning step and tool call", async () => {
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new CodexAdapter();
+    const adapter = codexMemoryAdapter;
 
     const result = await adapter.afterTool({
       platform: "codex",
@@ -1308,7 +1308,7 @@ test("Codex afterTool sanitizes output-like fields from tool input", async () =>
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new CodexAdapter();
+    const adapter = codexMemoryAdapter;
 
     await adapter.afterTool({
       platform: "codex",
@@ -1353,7 +1353,7 @@ test("repeated Codex afterTool with same tool_use_id records one tool call", asy
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new CodexAdapter();
+    const adapter = codexMemoryAdapter;
     const invocation = {
       platform: "codex",
       event: "AfterTool",
@@ -1389,7 +1389,7 @@ test("Codex afterTool without tool_use_id dedupes by fallback hash", async () =>
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new CodexAdapter();
+    const adapter = codexMemoryAdapter;
     const invocation = {
       platform: "codex",
       event: "AfterTool",
@@ -1425,7 +1425,7 @@ test("Codex afterTool records distinct tool_use_id values with same input", asyn
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const adapter = new CodexAdapter();
+    const adapter = codexMemoryAdapter;
     const basePayload = {
       hook_event_name: "PostToolUse",
       session_id: "session-1",
@@ -1469,7 +1469,7 @@ test("Codex afterTool missing config and failed NAMS calls allow and log minimal
 
     testEnv(missingConfigDir);
 
-    const missingConfigResult = await new CodexAdapter().afterTool({
+    const missingConfigResult = await codexMemoryAdapter.afterTool({
       platform: "codex",
       event: "AfterTool",
       processCwd: missingConfigDir,
@@ -1504,7 +1504,7 @@ test("Codex afterTool missing config and failed NAMS calls allow and log minimal
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const namsFailureResult = await new CodexAdapter().afterTool({
+    const namsFailureResult = await codexMemoryAdapter.afterTool({
       platform: "codex",
       event: "AfterTool",
       processCwd: namsFailureDir,
@@ -1544,13 +1544,13 @@ test("Codex afterTool without conversationId or toolName saves state and does no
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const noConversationAdapter = new CodexAdapter();
+    const noConversationAdapter = codexMemoryAdapter;
     testEnv(noToolNameDir, {
         NAMS_API_KEY: "key",
         NAMS_WORKSPACE_ID: "workspace-1",
         NAMS_BASE_URL: "https://memory.example.test",
       });
-    const noToolNameAdapter = new CodexAdapter();
+    const noToolNameAdapter = codexMemoryAdapter;
 
     testEnv(noConversationDir, {
       NAMS_API_KEY: "key",
@@ -1601,7 +1601,7 @@ test("raw Codex hook logs are session-scoped and include raw UserPromptSubmit pa
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-codex-flow-"));
   try {
     testEnv(projectDir);
-    const adapter = new CodexAdapter();
+    const adapter = codexMemoryAdapter;
 
     await adapter.startSession({
       platform: "codex",
@@ -1653,7 +1653,7 @@ test("Codex observability log write failure does not block response", async () =
     await mkdir(namsHome(homeDir), { recursive: true });
     await writeFile(path.join(namsHome(homeDir), "logs"), "not a directory", "utf8");
     testEnv(projectDir);
-    const adapter = new CodexAdapter();
+    const adapter = codexMemoryAdapter;
 
     const result = await adapter.beforeAgent({
       platform: "codex",
