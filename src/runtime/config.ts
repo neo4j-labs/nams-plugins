@@ -23,24 +23,12 @@ export type ConfigSource =
   | "missing"
   | JsonConfigSource
   | PlatformConfigSource
-  | "env:NAMS_API_KEY";
-
-export type WorkspaceIdSource =
-  | "missing"
-  | JsonConfigSource
-  | PlatformConfigSource
-  | "env:NAMS_WORKSPACE_ID";
-
-export type BaseUrlSource =
-  | "missing"
-  | JsonConfigSource
-  | PlatformConfigSource
-  | "env:NAMS_BASE_URL";
+  | `env:NAMS_${string}`;
 
 export interface NamsConfigSources {
   apiKey: ConfigSource;
-  workspaceId: WorkspaceIdSource;
-  baseUrl: BaseUrlSource;
+  workspaceId: ConfigSource;
+  baseUrl: ConfigSource;
 }
 
 export interface DiscoveredNamsConfigValue {
@@ -354,17 +342,7 @@ function applyEnvironmentOverrides(
     const value = runtimeEnvironment.value(env);
     if (value === undefined) continue;
     accumulated[key] = value;
-    switch (key) {
-      case "apiKey":
-        sources.apiKey = `env:${env}` as const;
-        break;
-      case "workspaceId":
-        sources.workspaceId = `env:${env}` as const;
-        break;
-      case "baseUrl":
-        sources.baseUrl = `env:${env}` as const;
-        break;
-    }
+    sources[key] = `env:${env}` as const;
   }
 }
 
