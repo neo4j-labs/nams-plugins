@@ -12,7 +12,6 @@ import {
   type Platform,
   type WorkspaceHookEvent,
   type WorkspaceHookInvocation,
-  type WorkspaceHookResult,
   type WorkspacePlatformAdapter,
 } from "./interfaces.js";
 import { getMemoryPlatformAdapter, getWorkspacePlatformAdapter } from "./platforms/index.js";
@@ -143,7 +142,7 @@ async function routeEvent(
 async function routeWorkspaceEvent(
   adapter: WorkspacePlatformAdapter,
   invocation: WorkspaceHookInvocation,
-): Promise<WorkspaceHookResult> {
+): Promise<HookResult> {
   switch (invocation.event) {
     case "BeforeAgent":
       return adapter.beforeAgent?.({ ...invocation, event: "BeforeAgent" }) ?? allowHook();
@@ -162,7 +161,7 @@ function allowHook(): HookResult {
   return { stdout: { continue: true, suppressOutput: true } };
 }
 
-function writeWorkspaceConfigureResult(result: WorkspaceHookResult): number {
+function writeWorkspaceConfigureResult(result: HookResult): number {
   const exitCode = typeof result.stdout.exitCode === "number" ? result.stdout.exitCode : 0;
   const message = typeof result.stdout.message === "string" ? result.stdout.message : JSON.stringify(result.stdout);
   const stream = exitCode === 0 ? process.stdout : process.stderr;

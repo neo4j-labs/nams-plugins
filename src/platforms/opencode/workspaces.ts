@@ -1,10 +1,10 @@
-import type { WorkspaceHookInvocation, WorkspaceHookResult } from "../../interfaces.js";
+import type { HookResult, WorkspaceHookInvocation } from "../../interfaces.js";
 import { runSessionWorkspaceUseCommand, slashWorkspaceCommandUsage } from "../../runtime/workspace-use-command.js";
 import { makeWorkspaceAdapter, stringValue } from "../workspaces.js";
 
 export const opencodeWorkspaceAdapter = makeWorkspaceAdapter(
   "commandExecuteBefore",
-  async (invocation: WorkspaceHookInvocation<"CommandExecuteBefore">): Promise<WorkspaceHookResult> => {
+  async (invocation: WorkspaceHookInvocation<"CommandExecuteBefore">): Promise<HookResult> => {
     const result = await runSessionWorkspaceUseCommand(invocation, {
       commandName: stringValue(invocation.rawPayload.command),
       arguments: invocation.rawPayload.arguments,

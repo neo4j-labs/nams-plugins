@@ -1,7 +1,7 @@
 import { lstat, readdir } from "node:fs/promises";
 import path from "node:path";
 import { NamsWorkspaceClient, type WorkspaceSummary } from "../generated/nams-client.js";
-import type { WorkspaceHookInvocation, WorkspaceHookResult } from "../interfaces.js";
+import type { HookResult, WorkspaceHookInvocation } from "../interfaces.js";
 import { configDiagnosticPayload, loadNamsConnectionConfig } from "./config.js";
 import { nonBlankString } from "./util.js";
 import {
@@ -30,7 +30,7 @@ type WorkspaceSelectionResult =
 
 export async function configureWorkspaceSelection(
   invocation: WorkspaceHookInvocation<"InstallConfigure">,
-): Promise<WorkspaceHookResult> {
+): Promise<HookResult> {
   const configureInput = parseConfigureInput(invocation.rawPayload);
   if (configureInput === undefined) {
     return configureOutput(1, "NAMS workspace configure requires --scope project, --scope user, or --scope session.");
@@ -79,7 +79,7 @@ async function configureSessionWorkspaceSelection(
   invocation: WorkspaceHookInvocation<"InstallConfigure">,
   configureInput: ConfigureInput,
   projectDirectory: string,
-): Promise<WorkspaceHookResult> {
+): Promise<HookResult> {
   if (configureInput.sessionId === undefined) {
     return configureOutput(1, "NAMS workspace configure --scope session requires --session-id.");
   }
@@ -134,7 +134,7 @@ async function configureSessionWorkspaceSelection(
 async function preflightSessionStateDestination(
   platform: WorkspaceHookInvocation<"InstallConfigure">["platform"],
   sessionKey: string,
-): Promise<WorkspaceHookResult | undefined> {
+): Promise<HookResult | undefined> {
   let stateDirectory: string;
   try {
     stateDirectory = sessionStateDirectory(platform);
@@ -215,7 +215,7 @@ async function listWorkspaces(
 async function preflightConfigurePaths(
   projectDirectory: string,
   scope: NamsConfigWriteScope,
-): Promise<WorkspaceHookResult | undefined> {
+): Promise<HookResult | undefined> {
   try {
     await assertNamsJsonConfigInputsSafe(projectDirectory, scope);
     return undefined;
@@ -309,7 +309,7 @@ function workspaceChoices(workspaces: ValidWorkspace[]): string[] {
   });
 }
 
-function configureOutput(exitCode: number, message: string): WorkspaceHookResult {
+function configureOutput(exitCode: number, message: string): HookResult {
   return {
     stdout: {
       continue: exitCode === 0,

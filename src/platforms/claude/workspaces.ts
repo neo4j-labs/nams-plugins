@@ -1,4 +1,4 @@
-import type { WorkspaceHookInvocation, WorkspaceHookResult } from "../../interfaces.js";
+import type { HookResult, WorkspaceHookInvocation } from "../../interfaces.js";
 import { runSessionWorkspaceUseCommand, slashWorkspaceCommandUsage } from "../../runtime/workspace-use-command.js";
 import { makeWorkspaceAdapter, stringValue } from "../workspaces.js";
 
@@ -9,7 +9,7 @@ const claudeWorkspaceCommandUsage = [
 
 export const claudeWorkspaceAdapter = makeWorkspaceAdapter(
   "userPromptExpansion",
-  async (invocation: WorkspaceHookInvocation<"UserPromptExpansion">): Promise<WorkspaceHookResult> => {
+  async (invocation: WorkspaceHookInvocation<"UserPromptExpansion">): Promise<HookResult> => {
     const result = await runSessionWorkspaceUseCommand(invocation, {
       commandName: stringValue(invocation.rawPayload.command_name),
       arguments: invocation.rawPayload.command_args,

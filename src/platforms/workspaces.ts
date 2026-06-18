@@ -1,4 +1,4 @@
-import type { WorkspaceHookInvocation, WorkspaceHookResult, WorkspacePlatformAdapter } from "../interfaces.js";
+import type { HookResult, WorkspaceHookInvocation, WorkspacePlatformAdapter } from "../interfaces.js";
 import { configureWorkspaceSelection } from "../runtime/workspace-configuration.js";
 
 type CustomCommandKey = keyof Pick<
@@ -7,10 +7,10 @@ type CustomCommandKey = keyof Pick<
 >;
 
 type CustomCommandHandler<K extends CustomCommandKey> = K extends "userPromptExpansion"
-  ? (invocation: WorkspaceHookInvocation<"UserPromptExpansion">) => Promise<WorkspaceHookResult>
+  ? (invocation: WorkspaceHookInvocation<"UserPromptExpansion">) => Promise<HookResult>
   : K extends "commandExecuteBefore"
-    ? (invocation: WorkspaceHookInvocation<"CommandExecuteBefore">) => Promise<WorkspaceHookResult>
-    : (invocation: WorkspaceHookInvocation<"CustomCommand">) => Promise<WorkspaceHookResult>;
+    ? (invocation: WorkspaceHookInvocation<"CommandExecuteBefore">) => Promise<HookResult>
+    : (invocation: WorkspaceHookInvocation<"CustomCommand">) => Promise<HookResult>;
 
 export function makeWorkspaceAdapter<K extends CustomCommandKey>(
   customCommandHook: K,

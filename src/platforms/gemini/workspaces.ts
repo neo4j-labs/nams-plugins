@@ -1,10 +1,10 @@
-import type { WorkspaceHookInvocation, WorkspaceHookResult } from "../../interfaces.js";
+import type { HookResult, WorkspaceHookInvocation } from "../../interfaces.js";
 import { runActiveSessionWorkspaceUseCommand, slashWorkspaceCommandUsage } from "../../runtime/workspace-use-command.js";
 import { makeWorkspaceAdapter, stringValue } from "../workspaces.js";
 
 export const geminiWorkspaceAdapter = makeWorkspaceAdapter(
   "customCommand",
-  async (invocation: WorkspaceHookInvocation<"CustomCommand">): Promise<WorkspaceHookResult> => {
+  async (invocation: WorkspaceHookInvocation<"CustomCommand">): Promise<HookResult> => {
     const result = await runActiveSessionWorkspaceUseCommand(invocation, {
       commandName: stringValue(invocation.rawPayload.command_name),
       arguments: invocation.rawPayload.command_args,

@@ -31,8 +31,6 @@ export interface WorkspaceHookInvocation<E extends WorkspaceHookEvent = Workspac
   processCwd: string;
 }
 
-export type WorkspaceHookResult = HookResult;
-
 export interface MemoryPlatformAdapter {
   startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult>;
   beforeAgent?(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult>;
@@ -41,11 +39,11 @@ export interface MemoryPlatformAdapter {
 }
 
 export interface WorkspacePlatformAdapter {
-  beforeAgent?(invocation: WorkspaceHookInvocation<"BeforeAgent">): Promise<WorkspaceHookResult>;
-  installConfigure?(invocation: WorkspaceHookInvocation<"InstallConfigure">): Promise<WorkspaceHookResult>;
-  userPromptExpansion?(invocation: WorkspaceHookInvocation<"UserPromptExpansion">): Promise<WorkspaceHookResult>;
-  commandExecuteBefore?(invocation: WorkspaceHookInvocation<"CommandExecuteBefore">): Promise<WorkspaceHookResult>;
-  customCommand?(invocation: WorkspaceHookInvocation<"CustomCommand">): Promise<WorkspaceHookResult>;
+  beforeAgent?(invocation: WorkspaceHookInvocation<"BeforeAgent">): Promise<HookResult>;
+  installConfigure?(invocation: WorkspaceHookInvocation<"InstallConfigure">): Promise<HookResult>;
+  userPromptExpansion?(invocation: WorkspaceHookInvocation<"UserPromptExpansion">): Promise<HookResult>;
+  commandExecuteBefore?(invocation: WorkspaceHookInvocation<"CommandExecuteBefore">): Promise<HookResult>;
+  customCommand?(invocation: WorkspaceHookInvocation<"CustomCommand">): Promise<HookResult>;
 }
 
 export function isPlatform(value: string | undefined): value is Platform {
