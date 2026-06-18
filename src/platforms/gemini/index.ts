@@ -1,6 +1,7 @@
 import type { HookInvocation, HookResult, MemoryPlatformAdapter } from "../../interfaces.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
 import { recordActiveWorkspaceSession } from "../../runtime/active-workspace-session.js";
+import { pickStringFields } from "../../runtime/payload.js";
 import {
   appendNamsFailureDiagnostic,
   appendRawPlatformLog,
@@ -341,8 +342,9 @@ interface GeminiAfterToolPayload {
 
 function parseGeminiAfterToolPayload(payload: Record<string, unknown>): GeminiAfterToolPayload {
   const toolResponse = firstRecord(payload.tool_response);
+  const { toolName } = pickStringFields(payload, { toolName: "tool_name" });
   return {
-    ...optionalString("toolName", firstString(payload.tool_name)),
+    ...(toolName !== undefined ? { toolName } : {}),
     input: firstDefined(payload.tool_input) ?? {},
     ...optionalString(
       "output",

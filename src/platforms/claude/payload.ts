@@ -1,3 +1,5 @@
+import { pickStringFields } from "../../runtime/payload.js";
+
 export interface ClaudePayloadInfo {
   sessionId?: string;
   projectDirectory: string;
@@ -13,35 +15,28 @@ export interface ClaudePayloadInfo {
 }
 
 export function parseClaudePayload(payload: Record<string, unknown>, processCwd: string): ClaudePayloadInfo {
-  const sessionId = payload.session_id as string | undefined;
-  const projectDirectory = payload.cwd as string | undefined ?? processCwd;
-  const transcriptPath = payload.transcript_path as string | undefined;
-  const source = payload.source as string | undefined;
-  const prompt = payload.prompt as string | undefined;
-  const toolUseId = payload.tool_use_id as string | undefined;
-  const toolName = payload.tool_name as string | undefined;
+  const strings = pickStringFields(payload, {
+    sessionId: "session_id",
+    transcriptPath: "transcript_path",
+    source: "source",
+    prompt: "prompt",
+    toolUseId: "tool_use_id",
+    toolName: "tool_name",
+    lastAssistantMessage: "last_assistant_message",
+  });
+
+  const projectDirectory = pickStringFields(payload, { cwd: "cwd" }).cwd ?? processCwd;
   const toolInput = payload.tool_input;
   const toolResponse = payload.tool_response;
   const durationMs = toNumber(payload.duration_ms);
-  const lastAssistantMessage = payload.last_assistant_message as string | undefined;
 
   return {
-    ...(!isBlankOrEmpty(sessionId) ? { sessionId } : {}),
-    projectDirectory: !isBlankOrEmpty(projectDirectory) ? projectDirectory : processCwd,
-    ...(!isBlankOrEmpty(transcriptPath) ? { transcriptPath } : {}),
-    ...(!isBlankOrEmpty(source) ? { source } : {}),
-    ...(!isBlankOrEmpty(prompt) ? { prompt } : {}),
-    ...(!isBlankOrEmpty(toolUseId) ? { toolUseId } : {}),
-    ...(!isBlankOrEmpty(toolName) ? { toolName } : {}),
+    ...strings,
+    projectDirectory,
     ...(toolInput !== undefined ? { toolInput } : {}),
     ...(toolResponse !== undefined ? { toolResponse } : {}),
     ...(durationMs !== undefined ? { durationMs } : {}),
-    ...(!isBlankOrEmpty(lastAssistantMessage) ? { lastAssistantMessage } : {}),
   };
-}
-
-function isBlankOrEmpty(value: string | undefined): value is undefined {
-  return value === undefined || value.trim() === "";
 }
 
 function toNumber(value: unknown): number | undefined {
