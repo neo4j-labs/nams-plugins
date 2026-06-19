@@ -1,5 +1,6 @@
 import { mkdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import type { Platform } from "../interfaces.js";
 import { sessionStateDirectory } from "./paths.js";
 import { ensurePrivateDirectory, writePrivateFile } from "./permissions.js";
@@ -194,10 +195,6 @@ function isMarkerObject(value: unknown): value is { sessions: unknown } {
 
 async function writeMarker(markerPath: string, marker: ActiveWorkspaceSessionMarker): Promise<void> {
   await writePrivateFile(markerPath, `${JSON.stringify(marker, null, 2)}\n`);
-}
-
-async function delay(durationMs: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, durationMs));
 }
 
 function isErrorCode(error: unknown, code: string): boolean {
