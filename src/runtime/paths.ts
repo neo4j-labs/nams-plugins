@@ -1,88 +1,56 @@
 import path from "node:path";
 import type { Platform } from "../interfaces.js";
 import { sha256 } from "./hashing.js";
+import { firstString } from "./util.js";
 
-export type RuntimeEnvironmentValues = Record<string, string | undefined>;
-export type RuntimeEnvironmentInput = RuntimeEnvironment | RuntimeEnvironmentValues | undefined;
+export function envValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  return firstString(env[name]);
+}
 
-export class RuntimeEnvironment {
-  static from(input: RuntimeEnvironmentInput = process.env): RuntimeEnvironment {
-    if (input instanceof RuntimeEnvironment) {
-      return input;
-    }
-    return new RuntimeEnvironment(input ?? process.env);
+export function homeDirectory(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return envValue(env, "HOME") ?? envValue(env, "USERPROFILE");
+}
+
+export function namsHome(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const home = homeDirectory(env);
+  return home === undefined ? undefined : path.join(home, ".nams");
+}
+
+export function requireNamsHome(env: NodeJS.ProcessEnv = process.env): string {
+  const home = namsHome(env);
+  if (home === undefined) {
+    throw new Error("Unable to resolve NAMS home directory from HOME or USERPROFILE");
   }
+  return home;
+}
 
-  static fromProcess(): RuntimeEnvironment {
-    return new RuntimeEnvironment(process.env);
-  }
+export function globalConfigPath(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const home = namsHome(env);
+  return home === undefined ? undefined : path.join(home, "config.json");
+}
 
-  private constructor(private readonly values: RuntimeEnvironmentValues) {}
+export function projectConfigPath(projectDirectory: string): string {
+  return path.join(projectDirectory, ".nams", "config.json");
+}
 
-  value(name: string): string | undefined {
-    return firstNonBlank(this.values[name]);
-  }
-
-  homeDirectory(): string | undefined {
-    return this.value("HOME") ?? this.value("USERPROFILE");
-  }
-
-  namsHome(): string | undefined {
-    const home = this.homeDirectory();
-    return home === undefined ? undefined : path.join(home, ".nams");
-  }
-
-  requireNamsHome(): string {
-    const namsHome = this.namsHome();
-    if (namsHome === undefined) {
-      throw new Error("Unable to resolve NAMS home directory from HOME or USERPROFILE");
-    }
-    return namsHome;
-  }
-
-  globalConfigPath(): string | undefined {
-    const namsHome = this.namsHome();
-    return namsHome === undefined ? undefined : path.join(namsHome, "config.json");
-  }
-
-  projectConfigPath(projectDirectory: string): string {
-    return path.join(projectDirectory, ".nams", "config.json");
-  }
-
-  sessionStateDirectory(platform: Platform): string {
-    return path.join(this.requireNamsHome(), "state", platform);
-  }
-
-  sessionStatePath(platform: Platform, sessionKey: string, createdAt: string): string {
-    return path.join(
-      this.sessionStateDirectory(platform),
-      `session-${formatStateTimestamp(createdAt)}--${sha256(sessionKey)}.json`,
-    );
-  }
-
-  platformLogDirectory(platform: Platform): string {
-    return path.join(this.requireNamsHome(), "logs", platform);
-  }
+export function sessionStateDirectory(platform: Platform, env: NodeJS.ProcessEnv = process.env): string {
+  return path.join(requireNamsHome(env), "state", platform);
 }
 
 export function sessionStatePath(
   platform: Platform,
   sessionKey: string,
   createdAt: string,
-  environment: RuntimeEnvironmentInput = process.env,
+  env: NodeJS.ProcessEnv = process.env,
 ): string {
-  return RuntimeEnvironment.from(environment).sessionStatePath(platform, sessionKey, createdAt);
+  return path.join(
+    sessionStateDirectory(platform, env),
+    `session-${formatStateTimestamp(createdAt)}--${sha256(sessionKey)}.json`,
+  );
 }
 
-export function sessionStateDirectory(
-  platform: Platform,
-  environment: RuntimeEnvironmentInput = process.env,
-): string {
-  return RuntimeEnvironment.from(environment).sessionStateDirectory(platform);
-}
-
-function firstNonBlank(...values: Array<string | undefined>): string | undefined {
-  return values.find((value): value is string => typeof value === "string" && value.trim() !== "");
+export function platformLogDirectory(platform: Platform, env: NodeJS.ProcessEnv = process.env): string {
+  return path.join(requireNamsHome(env), "logs", platform);
 }
 
 function formatStateTimestamp(value: string): string {

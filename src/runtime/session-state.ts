@@ -3,7 +3,7 @@ import path from "node:path";
 import type { Platform } from "../interfaces.js";
 import { sha256 } from "./hashing.js";
 import { writePrivateFile } from "./permissions.js";
-import { RuntimeEnvironment } from "./paths.js";
+import { sessionStateDirectory, sessionStatePath as sessionStatePathFn } from "./paths.js";
 
 export type SessionWorkspaceSource =
   | "config"
@@ -59,7 +59,7 @@ export async function loadSessionState(
   platform: Platform,
   sessionKey: string,
 ): Promise<SessionState | null> {
-  const statePath = await findSessionStatePath(RuntimeEnvironment.fromProcess(), platform, sessionKey);
+  const statePath = await findSessionStatePath(process.env, platform, sessionKey);
   if (statePath === undefined) {
     return null;
   }
@@ -85,7 +85,7 @@ export async function saveSessionState(
   sessionKey: string,
   state: SessionState,
 ): Promise<void> {
-  const statePath = RuntimeEnvironment.fromProcess().sessionStatePath(platform, sessionKey, state.createdAt);
+  const statePath = sessionStatePathFn(platform, sessionKey, state.createdAt);
   await writePrivateFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
 }
 
@@ -106,11 +106,11 @@ export function createInitialSessionState(input: ResolveSessionKeyInput, now = n
 }
 
 async function findSessionStatePath(
-  environment: RuntimeEnvironment,
+  env: NodeJS.ProcessEnv,
   platform: Platform,
   sessionKey: string,
 ): Promise<string | undefined> {
-  const stateDirectory = environment.sessionStateDirectory(platform);
+  const stateDirectory = sessionStateDirectory(platform, env);
   const suffix = `--${sha256(sessionKey)}.json`;
   let filenames: string[];
   try {

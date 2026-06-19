@@ -1,5 +1,6 @@
 import type { HookInvocation, HookResult, MemoryPlatformAdapter } from "../../interfaces.js";
 import { recordActiveWorkspaceSession } from "../../runtime/active-workspace-session.js";
+import { hasSeenAssistantMessage, markAssistantMessageSeen } from "../dedupe.js";
 import { sha256 } from "../../runtime/hashing.js";
 import {
   appendNamsFailureDiagnostic,
@@ -27,8 +28,7 @@ import { formatWorkspaceSelectionNotice } from "../workspace-selection.js";
 import { parseCodexPayload } from "./payload.js";
 import { readCodexTranscript, type CodexTranscriptEntry } from "./transcript.js";
 
-export class CodexAdapter implements MemoryPlatformAdapter {
-  async startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
+async function startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
     const payloadInfo = parseCodexPayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({
       platform: invocation.platform,
@@ -42,9 +42,9 @@ export class CodexAdapter implements MemoryPlatformAdapter {
     await saveSessionState(invocation.platform, state.sessionKey, state);
 
     return { stdout: { continue: true, suppressOutput: true } };
-  }
+}
 
-  async beforeAgent(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult> {
+async function beforeAgent(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult> {
     const payloadInfo = parseCodexPayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({
       platform: invocation.platform,
@@ -135,9 +135,9 @@ export class CodexAdapter implements MemoryPlatformAdapter {
 
     await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput(additionalContext);
-  }
+}
 
-  async afterAgent(invocation: HookInvocation<"AfterAgent">): Promise<HookResult> {
+async function afterAgent(invocation: HookInvocation<"AfterAgent">): Promise<HookResult> {
     const payloadInfo = parseCodexPayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({
       platform: invocation.platform,
@@ -199,9 +199,9 @@ export class CodexAdapter implements MemoryPlatformAdapter {
 
     await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
-  }
+}
 
-  async afterTool(invocation: HookInvocation<"AfterTool">): Promise<HookResult> {
+async function afterTool(invocation: HookInvocation<"AfterTool">): Promise<HookResult> {
     const payloadInfo = parseCodexPayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({
       platform: invocation.platform,
@@ -276,9 +276,9 @@ export class CodexAdapter implements MemoryPlatformAdapter {
 
     await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowPostToolUseOutput();
-  }
-
 }
+
+export const codexMemoryAdapter: Required<MemoryPlatformAdapter> = { startSession, beforeAgent, afterAgent, afterTool };
 
 function allowOutput(additionalContext?: string): HookResult {
   return {
@@ -436,19 +436,6 @@ function assistantMessageHashes(platform: string, sessionKey: string, content: s
 
 function assistantContentHash(platform: string, sessionKey: string, content: string): string {
   return sha256([platform, sessionKey, "assistant", content].join("\n"));
-}
-
-function hasSeenAssistantMessage(state: AssistantMessageState, hash: string): boolean {
-  return state.lastAssistantMessageHash === hash || state.seenAssistantMessageHashes.includes(hash);
-}
-
-function markAssistantMessageSeen(state: AssistantMessageState, hashes: string[]): void {
-  state.lastAssistantMessageHash = hashes[0];
-  for (const hash of hashes) {
-    if (!state.seenAssistantMessageHashes.includes(hash)) {
-      state.seenAssistantMessageHashes.push(hash);
-    }
-  }
 }
 
 function codexToolCallId(input: {

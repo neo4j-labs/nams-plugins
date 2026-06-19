@@ -4,7 +4,7 @@ import type { HookEvent, HookInvocation, Platform } from "../interfaces.js";
 import { configDiagnosticPayload, type NamsConfigLoadResult } from "./config.js";
 import { sha256 } from "./hashing.js";
 import { appendPrivateFile } from "./permissions.js";
-import { RuntimeEnvironment } from "./paths.js";
+import { platformLogDirectory } from "./paths.js";
 import type { SessionState } from "./session-state.js";
 
 export interface PlatformLogEntry {
@@ -17,7 +17,7 @@ export interface PlatformLogEntry {
 }
 
 export async function appendPlatformLog(entry: PlatformLogEntry): Promise<void> {
-  const logDir = RuntimeEnvironment.fromProcess().platformLogDirectory(entry.platform);
+  const logDir = platformLogDirectory(entry.platform);
   const logPath = path.join(logDir, logFileName(entry));
   const logEntry = {
     timestamp: new Date().toISOString(),
@@ -59,15 +59,6 @@ export async function appendNamsRequestLog(
     sessionKey: state.sessionKey,
   });
 }
-
-export const workspaceDiagnosticMessages = {
-  loadedFromConfig: "NAMS workspace loaded from config",
-  loadedFromSessionState: "NAMS workspace loaded from session state",
-  autoSelected: "NAMS workspace auto-selected",
-  selectionRequired: "NAMS workspace selection required",
-  listEmpty: "NAMS workspace list empty",
-  requestFailed: "NAMS workspace request failed",
-} as const;
 
 export async function appendWorkspaceDiagnostic(
   invocation: HookInvocation,

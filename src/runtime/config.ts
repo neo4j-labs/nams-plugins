@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { ensurePrivateFileMode } from "./permissions.js";
-import { RuntimeEnvironment } from "./paths.js";
+import { envValue, globalConfigPath, projectConfigPath } from "./paths.js";
+import { isPlainObject, nonBlankString } from "./util.js";
 
 export interface NamsRuntimeConfig {
   apiKey: string;
@@ -22,24 +23,12 @@ export type ConfigSource =
   | "missing"
   | JsonConfigSource
   | PlatformConfigSource
-  | "env:NAMS_API_KEY";
-
-export type WorkspaceIdSource =
-  | "missing"
-  | JsonConfigSource
-  | PlatformConfigSource
-  | "env:NAMS_WORKSPACE_ID";
-
-export type BaseUrlSource =
-  | "missing"
-  | JsonConfigSource
-  | PlatformConfigSource
-  | "env:NAMS_BASE_URL";
+  | `env:NAMS_${string}`;
 
 export interface NamsConfigSources {
   apiKey: ConfigSource;
-  workspaceId: WorkspaceIdSource;
-  baseUrl: BaseUrlSource;
+  workspaceId: ConfigSource;
+  baseUrl: ConfigSource;
 }
 
 export interface DiscoveredNamsConfigValue {
@@ -53,7 +42,7 @@ export interface DiscoveredNamsConfig {
   baseUrl?: DiscoveredNamsConfigValue;
 }
 
-export type NamsConfigDiscovery = (runtimeEnvironment: RuntimeEnvironment) => DiscoveredNamsConfig | Promise<DiscoveredNamsConfig>;
+export type NamsConfigDiscovery = (env: NodeJS.ProcessEnv) => DiscoveredNamsConfig | Promise<DiscoveredNamsConfig>;
 
 export type NamsConfigLoadResult =
   | {
@@ -170,7 +159,7 @@ export async function loadNamsConnectionConfig(
   projectDirectory: string,
   discoverConfig?: NamsConfigDiscovery,
 ): Promise<NamsConnectionConfigLoadResult> {
-  const runtimeEnvironment = RuntimeEnvironment.fromProcess();
+  const env = process.env;
   const accumulated: Partial<NamsConnectionConfig> = {};
   const sources: NamsConfigSources = {
     apiKey: "missing",
@@ -178,14 +167,14 @@ export async function loadNamsConnectionConfig(
     baseUrl: "missing",
   };
 
-  const globalResult = await readGlobalJsonConfig(runtimeEnvironment);
+  const globalResult = await readGlobalJsonConfig(env);
   if (!globalResult.ok) {
     return invalidJsonResult(globalResult.source);
   }
   applyJsonConfig(accumulated, sources, globalResult.config, "global:~/.nams/config.json");
 
   const projectResult = await readJsonConfig(
-    runtimeEnvironment.projectConfigPath(projectDirectory),
+    projectConfigPath(projectDirectory),
     "project:.nams/config.json",
   );
   if (!projectResult.ok) {
@@ -194,9 +183,9 @@ export async function loadNamsConnectionConfig(
   applyJsonConfig(accumulated, sources, projectResult.config, "project:.nams/config.json");
 
   if (discoverConfig !== undefined) {
-    applyDiscoveredConfig(accumulated, sources, await discoverConfig(runtimeEnvironment));
+    applyDiscoveredConfig(accumulated, sources, await discoverConfig(env));
   }
-  applyEnvironmentOverrides(accumulated, sources, runtimeEnvironment);
+  applyEnvironmentOverrides(accumulated, sources, env);
 
   if (accumulated.apiKey === undefined) {
     return {
@@ -278,28 +267,23 @@ async function readJsonConfig(path: string, source: JsonConfigSource): Promise<J
   };
 }
 
-async function readGlobalJsonConfig(runtimeEnvironment: RuntimeEnvironment): Promise<JsonConfigReadResult> {
-  const configPath = runtimeEnvironment.globalConfigPath();
+async function readGlobalJsonConfig(env: NodeJS.ProcessEnv): Promise<JsonConfigReadResult> {
+  const configPath = globalConfigPath(env);
   if (configPath === undefined) {
     return { ok: true, config: {} };
   }
   return readJsonConfig(configPath, "global:~/.nams/config.json");
 }
 
-function invalidJsonResult(errorSource: JsonConfigSource, sources: NamsConfigSources = defaultSources()): NamsConnectionConfigLoadResult {
+function invalidJsonResult(
+  errorSource: JsonConfigSource,
+  sources: NamsConfigSources = { apiKey: "missing", workspaceId: "missing", baseUrl: "missing" },
+): NamsConnectionConfigLoadResult {
   return {
     ok: false,
     reason: "invalid-json",
     errorSource,
     sources,
-  };
-}
-
-function defaultSources(): NamsConfigSources {
-  return {
-    apiKey: "missing",
-    workspaceId: "missing",
-    baseUrl: "missing",
   };
 }
 
@@ -323,65 +307,37 @@ function applyJsonConfig(
   }
 }
 
+const CONFIG_FIELDS = [
+  { key: "apiKey", env: "NAMS_API_KEY" },
+  { key: "workspaceId", env: "NAMS_WORKSPACE_ID" },
+  { key: "baseUrl", env: "NAMS_BASE_URL" },
+] as const;
+
 function applyDiscoveredConfig(
   accumulated: Partial<NamsConnectionConfig>,
   sources: NamsConfigSources,
   config: DiscoveredNamsConfig,
 ): void {
-  const discoveredApiKey = config.apiKey;
-  if (discoveredApiKey !== undefined) {
-    const apiKey = nonBlankString(discoveredApiKey.value);
-    if (apiKey !== undefined) {
-      accumulated.apiKey = apiKey;
-      sources.apiKey = discoveredApiKey.source;
-    }
-  }
-  const discoveredWorkspaceId = config.workspaceId;
-  if (discoveredWorkspaceId !== undefined) {
-    const workspaceId = nonBlankString(discoveredWorkspaceId.value);
-    if (workspaceId !== undefined) {
-      accumulated.workspaceId = workspaceId;
-      sources.workspaceId = discoveredWorkspaceId.source;
-    }
-  }
-  const discoveredBaseUrl = config.baseUrl;
-  if (discoveredBaseUrl !== undefined) {
-    const baseUrl = nonBlankString(discoveredBaseUrl.value);
-    if (baseUrl !== undefined) {
-      accumulated.baseUrl = baseUrl;
-      sources.baseUrl = discoveredBaseUrl.source;
-    }
+  for (const { key } of CONFIG_FIELDS) {
+    const discovered = config[key];
+    if (discovered === undefined) continue;
+    const value = nonBlankString(discovered.value);
+    if (value === undefined) continue;
+    accumulated[key] = value;
+    sources[key] = discovered.source;
   }
 }
 
 function applyEnvironmentOverrides(
   accumulated: Partial<NamsConnectionConfig>,
   sources: NamsConfigSources,
-  runtimeEnvironment: RuntimeEnvironment,
+  env: NodeJS.ProcessEnv,
 ): void {
-  const apiKey = runtimeEnvironment.value("NAMS_API_KEY");
-  if (apiKey !== undefined) {
-    accumulated.apiKey = apiKey;
-    sources.apiKey = "env:NAMS_API_KEY";
-  }
-
-  const workspaceId = runtimeEnvironment.value("NAMS_WORKSPACE_ID");
-  if (workspaceId !== undefined) {
-    accumulated.workspaceId = workspaceId;
-    sources.workspaceId = "env:NAMS_WORKSPACE_ID";
-  }
-
-  const baseUrl = runtimeEnvironment.value("NAMS_BASE_URL");
-  if (baseUrl !== undefined) {
-    accumulated.baseUrl = baseUrl;
-    sources.baseUrl = "env:NAMS_BASE_URL";
+  for (const { key, env: envVar } of CONFIG_FIELDS) {
+    const value = envValue(env, envVar);
+    if (value === undefined) continue;
+    accumulated[key] = value;
+    sources[key] = `env:${envVar}` as const;
   }
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function nonBlankString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() !== "" ? value : undefined;
-}

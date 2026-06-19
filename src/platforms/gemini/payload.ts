@@ -1,3 +1,5 @@
+import { pickStringFields } from "../payload.js";
+
 export interface GeminiPayloadInfo {
   sessionId?: string;
   projectDirectory: string;
@@ -7,21 +9,17 @@ export interface GeminiPayloadInfo {
 }
 
 export function parseGeminiPayload(payload: Record<string, unknown>, processCwd: string): GeminiPayloadInfo {
-  const sessionId = payload.session_id as string | undefined;
-  const projectDirectory = payload.cwd as string | undefined;
-  const transcriptPath = payload.transcript_path as string | undefined;
-  const prompt = payload.prompt as string | undefined;
-  const promptResponse = payload.prompt_response as string | undefined;
+  const strings = pickStringFields(payload, {
+    sessionId: "session_id",
+    transcriptPath: "transcript_path",
+    prompt: "prompt",
+    promptResponse: "prompt_response",
+  });
+
+  const projectDirectory = pickStringFields(payload, { cwd: "cwd" }).cwd ?? processCwd;
 
   return {
-    ...(!isBlankOrEmpty(sessionId) ? { sessionId } : {}),
-    projectDirectory: !isBlankOrEmpty(projectDirectory) ? projectDirectory : processCwd,
-    ...(!isBlankOrEmpty(transcriptPath) ? { transcriptPath } : {}),
-    ...(!isBlankOrEmpty(prompt) ? { prompt } : {}),
-    ...(!isBlankOrEmpty(promptResponse) ? { promptResponse } : {}),
+    ...strings,
+    projectDirectory,
   };
-}
-
-function isBlankOrEmpty(value: string | undefined): value is undefined {
-  return value === undefined || value.trim() === "";
 }

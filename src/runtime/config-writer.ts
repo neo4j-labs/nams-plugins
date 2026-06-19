@@ -1,7 +1,7 @@
 import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";
 import { writePrivateFile } from "./permissions.js";
-import { RuntimeEnvironment } from "./paths.js";
+import { globalConfigPath, projectConfigPath } from "./paths.js";
 
 export type NamsConfigWriteScope = "project" | "user";
 
@@ -37,8 +37,8 @@ export async function assertNamsJsonConfigPathSafe(
   input: Pick<WriteNamsJsonConfigInput, "scope" | "projectDirectory">,
 ): Promise<WriteNamsJsonConfigResult> {
   const configPath = configPathForScope(input.scope, input.projectDirectory);
-  await rejectSymlink(path.dirname(configPath));
-  await rejectUnsafeConfigFile(configPath);
+  await rejectUnsafePath(path.dirname(configPath), "directory");
+  await rejectUnsafePath(configPath, "file");
   return { path: configPath };
 }
 
@@ -47,49 +47,35 @@ export async function assertNamsJsonConfigInputsSafe(
   destinationScope: NamsConfigWriteScope,
 ): Promise<void> {
   await assertNamsJsonConfigPathSafe({ projectDirectory, scope: "project" });
-  if (destinationScope === "user" || RuntimeEnvironment.fromProcess().globalConfigPath() !== undefined) {
+  if (destinationScope === "user" || globalConfigPath() !== undefined) {
     await assertNamsJsonConfigPathSafe({ projectDirectory, scope: "user" });
   }
 }
 
-async function rejectSymlink(configPath: string): Promise<void> {
+async function rejectUnsafePath(target: string, kind: "directory" | "file"): Promise<void> {
+  let stats;
   try {
-    const file = await lstat(configPath);
-    if (file.isSymbolicLink()) {
-      throw new Error("NAMS config path must not be a symbolic link");
-    }
+    stats = await lstat(target);
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
       return;
     }
     throw error;
   }
-}
-
-async function rejectUnsafeConfigFile(configPath: string): Promise<void> {
-  try {
-    const file = await lstat(configPath);
-    if (file.isSymbolicLink()) {
-      throw new Error("NAMS config path must not be a symbolic link");
-    }
-    if (!file.isFile() || file.nlink > 1) {
-      throw new Error("NAMS config path is unsafe; existing config must be a regular file without hard links");
-    }
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      return;
-    }
-    throw error;
+  if (stats.isSymbolicLink()) {
+    throw new Error("NAMS config path must not be a symbolic link");
+  }
+  if (kind === "file" && (!stats.isFile() || stats.nlink > 1)) {
+    throw new Error("NAMS config path is unsafe; existing config must be a regular file without hard links");
   }
 }
 
 function configPathForScope(scope: NamsConfigWriteScope, projectDirectory: string): string {
-  const runtimeEnvironment = RuntimeEnvironment.fromProcess();
   if (scope === "project") {
-    return runtimeEnvironment.projectConfigPath(projectDirectory);
+    return projectConfigPath(projectDirectory);
   }
 
-  const globalPath = runtimeEnvironment.globalConfigPath();
+  const globalPath = globalConfigPath();
   if (globalPath === undefined) {
     throw new Error("Unable to resolve NAMS home directory from HOME or USERPROFILE");
   }

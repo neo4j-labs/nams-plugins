@@ -1,5 +1,6 @@
 import type { HookInvocation, HookResult, MemoryPlatformAdapter } from "../../interfaces.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
+import { hasSeenAny, markSeen } from "../dedupe.js";
 import {
   appendNamsFailureDiagnostic,
   appendRawPlatformLog,
@@ -18,8 +19,7 @@ import { formatWorkspaceSelectionNotice } from "../workspace-selection.js";
 import { discoverClaudeNamsConfig } from "./config.js";
 import { parseClaudePayload } from "./payload.js";
 
-export class ClaudeAdapter implements MemoryPlatformAdapter {
-  async startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
+async function startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
     const payloadInfo = parseClaudePayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({
       platform: invocation.platform,
@@ -33,9 +33,9 @@ export class ClaudeAdapter implements MemoryPlatformAdapter {
     await saveSessionState(invocation.platform, state.sessionKey, state);
 
     return allowOutput();
-  }
+}
 
-  async beforeAgent(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult> {
+async function beforeAgent(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult> {
     const payloadInfo = parseClaudePayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({
       platform: invocation.platform,
@@ -108,9 +108,9 @@ export class ClaudeAdapter implements MemoryPlatformAdapter {
 
     await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput(additionalContext);
-  }
+}
 
-  async afterAgent(invocation: HookInvocation<"AfterAgent">): Promise<HookResult> {
+async function afterAgent(invocation: HookInvocation<"AfterAgent">): Promise<HookResult> {
     const payloadInfo = parseClaudePayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({
       platform: invocation.platform,
@@ -168,9 +168,9 @@ export class ClaudeAdapter implements MemoryPlatformAdapter {
 
     await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
-  }
+}
 
-  async afterTool(invocation: HookInvocation<"AfterTool">): Promise<HookResult> {
+async function afterTool(invocation: HookInvocation<"AfterTool">): Promise<HookResult> {
     const payloadInfo = parseClaudePayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({
       platform: invocation.platform,
@@ -246,8 +246,9 @@ export class ClaudeAdapter implements MemoryPlatformAdapter {
 
     await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
-  }
 }
+
+export const claudeMemoryAdapter: Required<MemoryPlatformAdapter> = { startSession, beforeAgent, afterAgent, afterTool };
 
 function allowOutput(additionalContext?: string): HookResult {
   return {
@@ -271,7 +272,10 @@ function workspaceResultOutput(
   sessionId?: string,
 ): HookResult {
   if (result.reason === "selection-required") {
-    const message = formatWorkspaceSelectionNotice("claude", result.workspaces, sessionId, claudeSlashCommandLines());
+    const message = formatWorkspaceSelectionNotice("claude", result.workspaces, sessionId, [
+      "In Claude Code sessions with nams-hooks installed, you can select a workspace with: /nams:workspace use <workspace-id-or-name>",
+      "For marketplace plugin installs, use: /nams-hooks:nams:workspace use <workspace-id-or-name>",
+    ]);
     return {
       stdout: {
         continue: true,
@@ -285,13 +289,6 @@ function workspaceResultOutput(
     };
   }
   return allowOutput();
-}
-
-function claudeSlashCommandLines(): string[] {
-  return [
-    "In Claude Code sessions with nams-hooks installed, you can select a workspace with: /nams:workspace use <workspace-id-or-name>",
-    "For marketplace plugin installs, use: /nams-hooks:nams:workspace use <workspace-id-or-name>",
-  ];
 }
 
 function claudeToolCallDedupeKeys(
@@ -315,16 +312,4 @@ function claudeToolCallDedupeKeys(
     lookupKeys: [fallbackKey, fallbackHash],
     markKeys: [fallbackKey, fallbackHash],
   };
-}
-
-function hasSeenAny(seen: string[], keys: string[]): boolean {
-  return keys.some((key) => seen.includes(key));
-}
-
-function markSeen(seen: string[], keys: string[]): void {
-  for (const key of keys) {
-    if (!seen.includes(key)) {
-      seen.push(key);
-    }
-  }
 }

@@ -1,4 +1,5 @@
 import type { HookInvocation, HookResult, MemoryPlatformAdapter } from "../../interfaces.js";
+import { hasSeenAssistantMessage, markAssistantMessageSeen, markSeen } from "../dedupe.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
 import {
   appendNamsFailureDiagnostic,
@@ -15,8 +16,7 @@ import {
 import { formatWorkspaceSelectionNotice } from "../workspace-selection.js";
 import { parseOpenCodePayload, type OpenCodePayloadInfo } from "./payload.js";
 
-export class OpenCodeAdapter implements MemoryPlatformAdapter {
-  async startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
+async function startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
     const payloadInfo = parseOpenCodePayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({
       platform: invocation.platform,
@@ -31,9 +31,9 @@ export class OpenCodeAdapter implements MemoryPlatformAdapter {
     await saveSessionState(invocation.platform, state.sessionKey, state);
 
     return allowOutput();
-  }
+}
 
-  async beforeAgent(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult> {
+async function beforeAgent(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult> {
     const payloadInfo = parseOpenCodePayload(invocation.rawPayload, invocation.processCwd);
     if (payloadInfo.hookName === "experimental.chat.system.transform") {
       return consumePendingContext(invocation, payloadInfo);
@@ -121,9 +121,9 @@ export class OpenCodeAdapter implements MemoryPlatformAdapter {
 
     await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
-  }
+}
 
-  async afterAgent(invocation: HookInvocation<"AfterAgent">): Promise<HookResult> {
+async function afterAgent(invocation: HookInvocation<"AfterAgent">): Promise<HookResult> {
     const payloadInfo = parseOpenCodePayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({
       platform: invocation.platform,
@@ -174,7 +174,7 @@ export class OpenCodeAdapter implements MemoryPlatformAdapter {
         const assistantHash = assistantMessageHash(invocation.platform, state.sessionKey, assistantText);
         if (!hasSeenAssistantMessage(state, assistantHash)) {
           await memory.storeAssistantMessage(state.conversationId, assistantText);
-          markAssistantMessageSeen(state, assistantHash);
+          markAssistantMessageSeen(state, [assistantHash]);
         }
       }
     } catch {
@@ -185,9 +185,9 @@ export class OpenCodeAdapter implements MemoryPlatformAdapter {
 
     await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
-  }
+}
 
-  async afterTool(invocation: HookInvocation<"AfterTool">): Promise<HookResult> {
+async function afterTool(invocation: HookInvocation<"AfterTool">): Promise<HookResult> {
     const payloadInfo = parseOpenCodePayload(invocation.rawPayload, invocation.processCwd);
     const initialState = createInitialSessionState({
       platform: invocation.platform,
@@ -268,9 +268,9 @@ export class OpenCodeAdapter implements MemoryPlatformAdapter {
 
     await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
-  }
-
 }
+
+export const opencodeMemoryAdapter: Required<MemoryPlatformAdapter> = { startSession, beforeAgent, afterAgent, afterTool };
 
 function allowOutput(): HookResult {
   return { stdout: { continue: true, suppressOutput: true } };
@@ -364,15 +364,6 @@ function assistantPartKey(payloadInfo: OpenCodePayloadInfo): string | undefined 
   return JSON.stringify([payloadInfo.messageId, payloadInfo.partId]);
 }
 
-function hasSeenAssistantMessage(state: SessionState, messageHash: string): boolean {
-  return state.lastAssistantMessageHash === messageHash || state.seenAssistantMessageHashes.includes(messageHash);
-}
-
-function markAssistantMessageSeen(state: SessionState, messageHash: string): void {
-  state.lastAssistantMessageHash = messageHash;
-  markSeen(state.seenAssistantMessageHashes, [messageHash]);
-}
-
 function assistantMessageHash(platform: HookInvocation["platform"], sessionKey: string, content: string): string {
   return sha256([platform, sessionKey, "assistant", content.trim()].join("\n"));
 }
@@ -387,12 +378,4 @@ function opencodeToolCallDedupeKey(
     return `opencode-call-id:${stableJsonHash({ sessionKey, toolCallId })}`;
   }
   return stableJsonHash({ sessionKey, toolName, input: serializeToolInput(toolInput) });
-}
-
-function markSeen(seen: string[], keys: string[]): void {
-  for (const key of keys) {
-    if (!seen.includes(key)) {
-      seen.push(key);
-    }
-  }
 }

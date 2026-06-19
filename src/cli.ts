@@ -2,9 +2,9 @@
 
 import process from "node:process";
 import {
-  isHookEvent,
-  isPlatform,
-  isWorkspaceHookEvent,
+  hookEvents,
+  platforms,
+  workspaceHookEvents,
   type HookEvent,
   type HookInvocation,
   type HookResult,
@@ -12,7 +12,6 @@ import {
   type Platform,
   type WorkspaceHookEvent,
   type WorkspaceHookInvocation,
-  type WorkspaceHookResult,
   type WorkspacePlatformAdapter,
 } from "./interfaces.js";
 import { getMemoryPlatformAdapter, getWorkspacePlatformAdapter } from "./platforms/index.js";
@@ -111,6 +110,18 @@ function parseArgs(argv: string[]): CliArgs | null {
   return null;
 }
 
+function isPlatform(value: string | undefined): value is Platform {
+  return value !== undefined && platforms.includes(value as Platform);
+}
+
+function isHookEvent(value: string | undefined): value is HookEvent {
+  return value !== undefined && hookEvents.includes(value as HookEvent);
+}
+
+function isWorkspaceHookEvent(value: string | undefined): value is WorkspaceHookEvent {
+  return value !== undefined && workspaceHookEvents.includes(value as WorkspaceHookEvent);
+}
+
 function flagValue(argv: string[], flag: string): string | undefined | null {
   const flagIndex = argv.indexOf(flag);
   if (flagIndex < 0) {
@@ -143,7 +154,7 @@ async function routeEvent(
 async function routeWorkspaceEvent(
   adapter: WorkspacePlatformAdapter,
   invocation: WorkspaceHookInvocation,
-): Promise<WorkspaceHookResult> {
+): Promise<HookResult> {
   switch (invocation.event) {
     case "BeforeAgent":
       return adapter.beforeAgent?.({ ...invocation, event: "BeforeAgent" }) ?? allowHook();
@@ -162,7 +173,7 @@ function allowHook(): HookResult {
   return { stdout: { continue: true, suppressOutput: true } };
 }
 
-function writeWorkspaceConfigureResult(result: WorkspaceHookResult): number {
+function writeWorkspaceConfigureResult(result: HookResult): number {
   const exitCode = typeof result.stdout.exitCode === "number" ? result.stdout.exitCode : 0;
   const message = typeof result.stdout.message === "string" ? result.stdout.message : JSON.stringify(result.stdout);
   const stream = exitCode === 0 ? process.stdout : process.stderr;
