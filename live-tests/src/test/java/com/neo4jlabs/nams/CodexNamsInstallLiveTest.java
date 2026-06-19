@@ -17,8 +17,10 @@ class CodexNamsInstallLiveTest {
     @Test
     void installsNamsHooksLinksCodexConfigAndPrintsModelResponse() throws Exception {
         LiveEnv env = LiveEnv.load();
+        NamsLiveClient nams = new NamsLiveClient(env);
+        nams.assertWorkspaceExists();
         try (ProjectFixture fixture = ProjectFixture.create("codex");
-             CodexLiveContainer codex = CodexLiveContainer.start(fixture, env.codexEnvironment())) {
+             CodexLiveContainer codex = CodexLiveContainer.start(fixture, env.codexEnvironmentWithNams())) {
             assertZero(
                 codex.shell("mkdir -p /tmp/nams-hooks-pack"
                     + " && cd /tmp/nams-hooks-pack"
@@ -61,6 +63,10 @@ class CodexNamsInstallLiveTest {
             String response = Files.readString(answer);
             LOG.info("Codex response:\n{}", response);
             assertThat(response).isNotBlank().contains(marker);
+
+            CodexSessionState state = CodexSessionState.readFromHome(fixture.hostHome());
+            nams.assertConversationExists(state.conversationId());
+            LOG.info("Verified NAMS conversation: {}", state.conversationId());
         }
     }
 

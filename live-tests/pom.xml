@@ -19,7 +19,9 @@
     <rest.assured.version>5.5.6</rest.assured.version>
     <jackson.version>2.20.1</jackson.version>
     <slf4j.version>1.7.36</slf4j.version>
+    <properties.maven.plugin.version>1.2.1</properties.maven.plugin.version>
     <maven.surefire.version>3.5.4</maven.surefire.version>
+    <live.env.file>${project.basedir}/.env</live.env.file>
   </properties>
 
   <dependencyManagement>
@@ -104,4 +106,53 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <profile>
+      <id>load-dotenv</id>
+      <activation>
+        <file>
+          <exists>${project.basedir}/.env</exists>
+        </file>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>properties-maven-plugin</artifactId>
+            <version>${properties.maven.plugin.version}</version>
+            <executions>
+              <execution>
+                <id>load-dotenv</id>
+                <phase>initialize</phase>
+                <goals>
+                  <goal>read-project-properties</goal>
+                </goals>
+                <configuration>
+                  <files>
+                    <file>${live.env.file}</file>
+                  </files>
+                  <keyPrefix>dotenv.</keyPrefix>
+                  <override>true</override>
+                  <quiet>true</quiet>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <configuration>
+              <environmentVariables>
+                <OPENAI_API_KEY>${dotenv.OPENAI_API_KEY}</OPENAI_API_KEY>
+                <NAMS_API_KEY>${dotenv.NAMS_API_KEY}</NAMS_API_KEY>
+                <NAMS_WORKSPACE_ID>${dotenv.NAMS_WORKSPACE_ID}</NAMS_WORKSPACE_ID>
+                <NAMS_BASE_URL>${dotenv.NAMS_BASE_URL}</NAMS_BASE_URL>
+              </environmentVariables>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>
