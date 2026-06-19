@@ -36,6 +36,9 @@ final class CodexSessionState {
 
         try {
             JsonNode root = MAPPER.readTree(latestState.toFile());
+            assertThat(root)
+                .as("JSON root in " + latestState)
+                .isNotNull();
             JsonNode conversationIdNode = root.get("conversationId");
             assertThat(conversationIdNode)
                 .as("conversationId in " + latestState)
