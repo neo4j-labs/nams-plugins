@@ -21,20 +21,50 @@ Project-local hook configuration is the point of these tests. Do not switch live
 tests to marketplace, extension-store, or interactive installation flows unless a
 new design explicitly asks for it.
 
+## Code Organization
+
+Shared live-test infrastructure lives in `com.neo4jlabs.nams`. Platform-specific
+code lives in `com.neo4jlabs.nams.<platform>` and the matching source directory,
+for example `live-tests/src/test/java/com/neo4jlabs/nams/codex/`.
+
+Use the shared helpers instead of recreating one-off plumbing:
+
+- `LiveTestPaths` for repo, Dockerfile, `dist/`, and `dist-local/` paths.
+- `ProjectFixture` for disposable HOME/project directories.
+- `ContainerExecResultAssert` for Testcontainers command assertions.
+- `NamsLiveClient` plus `NamsLiveClientAssert` for NAMS preflight and
+  conversation assertions.
+
+Keep platform wrappers responsible for platform mechanics. For Codex, use
+`CodexLiveContainer` for install/config/login/preflight steps and `CodexCli` for
+`codex exec` command construction. Do not reintroduce flat-package Codex test
+classes or ad hoc `assertZero` helpers.
+
 ## Credentials And Secrets
 
-Live tests use real credentials and a real existing NAMS workspace. Load them
-through environment variables or `live-tests/.env`; never commit `.env`, print
-secrets, or include raw env lines in assertion messages.
+Live tests use real credentials and a real existing NAMS workspace. Maven loads
+`live-tests/.env` through the `load-dotenv` profile and passes values into
+Surefire as environment variables. Java test code should read them through
+`NamsLiveClient.requireEnv(...)` or helper methods built on it; do not add a
+second `.env` parser.
+
+Never commit `.env`, print secrets, or include raw env lines in assertion
+messages. Guard against unresolved Maven placeholders the same way
+`NamsLiveClient.requireEnv(...)` does.
 
 Required NAMS inputs are:
 
 - `NAMS_API_KEY`
 - `NAMS_WORKSPACE_ID`
+- `NAMS_BASE_URL`
 
 Platform tests should pass only the credential variables required by that
 platform. Missing credentials should fail or skip according to the current test
 contract for that platform, but must never result in an interactive prompt.
+
+When a platform container needs NAMS credentials, start from
+`NamsLiveClient.namsEnvironment()` and add only that platform's credential, for
+example `OPENAI_API_KEY` for Codex via `NamsLiveClient.requireEnv(...)`.
 
 ## Prompt Execution
 
@@ -49,8 +79,9 @@ When a platform command invokes a real model from inside a container:
 - Centralize those options in a small platform helper so future tests cannot
 inherit expensive user defaults by accident.
 
-For Codex, use `CodexCli.exec(...)`; it pins `gpt-5.4-mini` and
-`model_reasoning_effort=low`.
+For Codex, construct commands with the fluent `CodexCli` builder. Always include
+`withModel("gpt-5.4-mini")` and `withModelReasoningEffort("low")` for real
+prompt invocations unless a later design explicitly changes the model policy.
 
 ## Adding A New Platform Test
 
@@ -70,15 +101,18 @@ NAMS assertions.
    command produces either a response or a clear auth/runtime error.
 
 4. Add an install/config test.
-   Install `nams-hooks` from mounted `dist/`, link the platform's project-local
-   config from `dist-local/`, preflight the installed hook command, authenticate
-   non-interactively, run one tiny prompt, and assert the answer file or stdout
-   contains a unique marker.
+   Put the test under `com.neo4jlabs.nams.<platform>`. Install `nams-hooks` from
+   mounted `dist/`, link the platform's project-local config from `dist-local/`,
+   preflight the installed hook command, authenticate non-interactively, run one
+   tiny prompt, and assert the answer file or stdout contains a unique marker.
+   Prefer platform container methods and shared AssertJ helpers over inline shell
+   assertion utilities.
 
 5. Add NAMS verification only after the platform run is stable.
-   Preflight that the configured workspace exists before starting the platform
-   scenario, then assert that the unique conversation or message marker appears
-   through the NAMS REST API.
+   Use `NamsLiveClient` and `NamsLiveClientAssert`. Preflight that the configured
+   workspace exists before starting the platform scenario, pass
+   `NamsLiveClient.namsEnvironment()` into the container, then assert the created
+   conversation exists through the NAMS REST API.
 
 6. Keep platform-specific details isolated.
    Put model flags, trust flags, auth commands, hook event flags, and CLI quirks
@@ -99,8 +133,7 @@ Useful commands from `live-tests/`:
 
 ```bash
 mvn test
-mvn test -Dtest=CodexContainerSmokeTest
-mvn test -Dtest=CodexNamsInstallLiveTest
+mvn test -Dtest=CodexNamsLiveTest
 ```
 
 Run the narrow test for the platform you changed, then run `mvn test` before
