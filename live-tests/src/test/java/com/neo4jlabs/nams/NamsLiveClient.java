@@ -73,4 +73,35 @@ public class NamsLiveClient {
             .extract()
             .path("id");
     }
+
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> messages(String conversationId) {
+        return given()
+            .baseUri(baseUrl)
+            .accept(ContentType.JSON)
+            .header("Authorization", "Bearer " + apiKey)
+            .header("X-Workspace-Id", workspaceId)
+            .queryParam("limit", 50)
+            .when()
+            .get("/v1/conversations/{id}/messages", conversationId)
+            .then()
+            .statusCode(200)
+            .extract()
+            .path("messages");
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> reasoningTrace(String conversationId) {
+        return given()
+            .baseUri(baseUrl)
+            .accept(ContentType.JSON)
+            .header("Authorization", "Bearer " + apiKey)
+            .header("X-Workspace-Id", workspaceId)
+            .when()
+            .get("/v1/reasoning/trace/{conversationId}", conversationId)
+            .then()
+            .statusCode(200)
+            .extract()
+            .as(Map.class);
+    }
 }
