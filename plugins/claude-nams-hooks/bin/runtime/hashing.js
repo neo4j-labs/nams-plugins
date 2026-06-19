@@ -11,17 +11,8 @@ function sortJson(value) {
     }
     if (typeof value === "object" && value !== null) {
         return Object.fromEntries(Object.entries(value)
-            .sort(([left], [right]) => compareCodeUnits(left, right))
+            .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
             .map(([key, nestedValue]) => [key, sortJson(nestedValue)]));
     }
     return value;
-}
-function compareCodeUnits(left, right) {
-    if (left < right) {
-        return -1;
-    }
-    if (left > right) {
-        return 1;
-    }
-    return 0;
 }

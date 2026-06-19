@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import process from "node:process";
-import { isHookEvent, isPlatform, isWorkspaceHookEvent, } from "./interfaces.js";
+import { hookEvents, platforms, workspaceHookEvents, } from "./interfaces.js";
 import { getMemoryPlatformAdapter, getWorkspacePlatformAdapter } from "./platforms/index.js";
 import { readJsonPayload } from "./runtime/stdin.js";
 async function main(argv) {
@@ -77,6 +77,15 @@ function parseArgs(argv) {
         return { command: "workspaces", platform: platformArg, event: eventArg };
     }
     return null;
+}
+function isPlatform(value) {
+    return value !== undefined && platforms.includes(value);
+}
+function isHookEvent(value) {
+    return value !== undefined && hookEvents.includes(value);
+}
+function isWorkspaceHookEvent(value) {
+    return value !== undefined && workspaceHookEvents.includes(value);
 }
 function flagValue(argv, flag) {
     const flagIndex = argv.indexOf(flag);

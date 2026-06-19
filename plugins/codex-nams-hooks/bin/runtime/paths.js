@@ -1,61 +1,38 @@
 import path from "node:path";
 import { sha256 } from "./hashing.js";
-export class RuntimeEnvironment {
-    values;
-    static from(input = process.env) {
-        if (input instanceof RuntimeEnvironment) {
-            return input;
-        }
-        return new RuntimeEnvironment(input ?? process.env);
-    }
-    static fromProcess() {
-        return new RuntimeEnvironment(process.env);
-    }
-    constructor(values) {
-        this.values = values;
-    }
-    value(name) {
-        return firstNonBlank(this.values[name]);
-    }
-    homeDirectory() {
-        return this.value("HOME") ?? this.value("USERPROFILE");
-    }
-    namsHome() {
-        const home = this.homeDirectory();
-        return home === undefined ? undefined : path.join(home, ".nams");
-    }
-    requireNamsHome() {
-        const namsHome = this.namsHome();
-        if (namsHome === undefined) {
-            throw new Error("Unable to resolve NAMS home directory from HOME or USERPROFILE");
-        }
-        return namsHome;
-    }
-    globalConfigPath() {
-        const namsHome = this.namsHome();
-        return namsHome === undefined ? undefined : path.join(namsHome, "config.json");
-    }
-    projectConfigPath(projectDirectory) {
-        return path.join(projectDirectory, ".nams", "config.json");
-    }
-    sessionStateDirectory(platform) {
-        return path.join(this.requireNamsHome(), "state", platform);
-    }
-    sessionStatePath(platform, sessionKey, createdAt) {
-        return path.join(this.sessionStateDirectory(platform), `session-${formatStateTimestamp(createdAt)}--${sha256(sessionKey)}.json`);
-    }
-    platformLogDirectory(platform) {
-        return path.join(this.requireNamsHome(), "logs", platform);
-    }
+import { firstString } from "./util.js";
+export function envValue(env, name) {
+    return firstString(env[name]);
 }
-export function sessionStatePath(platform, sessionKey, createdAt, environment = process.env) {
-    return RuntimeEnvironment.from(environment).sessionStatePath(platform, sessionKey, createdAt);
+export function homeDirectory(env = process.env) {
+    return envValue(env, "HOME") ?? envValue(env, "USERPROFILE");
 }
-export function sessionStateDirectory(platform, environment = process.env) {
-    return RuntimeEnvironment.from(environment).sessionStateDirectory(platform);
+export function namsHome(env = process.env) {
+    const home = homeDirectory(env);
+    return home === undefined ? undefined : path.join(home, ".nams");
 }
-function firstNonBlank(...values) {
-    return values.find((value) => typeof value === "string" && value.trim() !== "");
+export function requireNamsHome(env = process.env) {
+    const home = namsHome(env);
+    if (home === undefined) {
+        throw new Error("Unable to resolve NAMS home directory from HOME or USERPROFILE");
+    }
+    return home;
+}
+export function globalConfigPath(env = process.env) {
+    const home = namsHome(env);
+    return home === undefined ? undefined : path.join(home, "config.json");
+}
+export function projectConfigPath(projectDirectory) {
+    return path.join(projectDirectory, ".nams", "config.json");
+}
+export function sessionStateDirectory(platform, env = process.env) {
+    return path.join(requireNamsHome(env), "state", platform);
+}
+export function sessionStatePath(platform, sessionKey, createdAt, env = process.env) {
+    return path.join(sessionStateDirectory(platform, env), `session-${formatStateTimestamp(createdAt)}--${sha256(sessionKey)}.json`);
+}
+export function platformLogDirectory(platform, env = process.env) {
+    return path.join(requireNamsHome(env), "logs", platform);
 }
 function formatStateTimestamp(value) {
     const parsed = new Date(value);

@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { ensurePrivateFileMode } from "./permissions.js";
-import { RuntimeEnvironment } from "./paths.js";
+import { envValue, globalConfigPath, projectConfigPath } from "./paths.js";
+import { isPlainObject, nonBlankString } from "./util.js";
 export function configDiagnosticPayload(result) {
     if (result.ok) {
         return {
@@ -55,27 +56,27 @@ export async function loadNamsConfig(projectDirectory, discoverConfig) {
     };
 }
 export async function loadNamsConnectionConfig(projectDirectory, discoverConfig) {
-    const runtimeEnvironment = RuntimeEnvironment.fromProcess();
+    const env = process.env;
     const accumulated = {};
     const sources = {
         apiKey: "missing",
         workspaceId: "missing",
         baseUrl: "missing",
     };
-    const globalResult = await readGlobalJsonConfig(runtimeEnvironment);
+    const globalResult = await readGlobalJsonConfig(env);
     if (!globalResult.ok) {
         return invalidJsonResult(globalResult.source);
     }
     applyJsonConfig(accumulated, sources, globalResult.config, "global:~/.nams/config.json");
-    const projectResult = await readJsonConfig(runtimeEnvironment.projectConfigPath(projectDirectory), "project:.nams/config.json");
+    const projectResult = await readJsonConfig(projectConfigPath(projectDirectory), "project:.nams/config.json");
     if (!projectResult.ok) {
         return invalidJsonResult(projectResult.source, sources);
     }
     applyJsonConfig(accumulated, sources, projectResult.config, "project:.nams/config.json");
     if (discoverConfig !== undefined) {
-        applyDiscoveredConfig(accumulated, sources, await discoverConfig(runtimeEnvironment));
+        applyDiscoveredConfig(accumulated, sources, await discoverConfig(env));
     }
-    applyEnvironmentOverrides(accumulated, sources, runtimeEnvironment);
+    applyEnvironmentOverrides(accumulated, sources, env);
     if (accumulated.apiKey === undefined) {
         return {
             ok: false,
@@ -137,26 +138,19 @@ async function readJsonConfig(path, source) {
         },
     };
 }
-async function readGlobalJsonConfig(runtimeEnvironment) {
-    const configPath = runtimeEnvironment.globalConfigPath();
+async function readGlobalJsonConfig(env) {
+    const configPath = globalConfigPath(env);
     if (configPath === undefined) {
         return { ok: true, config: {} };
     }
     return readJsonConfig(configPath, "global:~/.nams/config.json");
 }
-function invalidJsonResult(errorSource, sources = defaultSources()) {
+function invalidJsonResult(errorSource, sources = { apiKey: "missing", workspaceId: "missing", baseUrl: "missing" }) {
     return {
         ok: false,
         reason: "invalid-json",
         errorSource,
         sources,
-    };
-}
-function defaultSources() {
-    return {
-        apiKey: "missing",
-        workspaceId: "missing",
-        baseUrl: "missing",
     };
 }
 function applyJsonConfig(accumulated, sources, config, source) {
@@ -173,52 +167,29 @@ function applyJsonConfig(accumulated, sources, config, source) {
         sources.baseUrl = source;
     }
 }
+const CONFIG_FIELDS = [
+    { key: "apiKey", env: "NAMS_API_KEY" },
+    { key: "workspaceId", env: "NAMS_WORKSPACE_ID" },
+    { key: "baseUrl", env: "NAMS_BASE_URL" },
+];
 function applyDiscoveredConfig(accumulated, sources, config) {
-    const discoveredApiKey = config.apiKey;
-    if (discoveredApiKey !== undefined) {
-        const apiKey = nonBlankString(discoveredApiKey.value);
-        if (apiKey !== undefined) {
-            accumulated.apiKey = apiKey;
-            sources.apiKey = discoveredApiKey.source;
-        }
-    }
-    const discoveredWorkspaceId = config.workspaceId;
-    if (discoveredWorkspaceId !== undefined) {
-        const workspaceId = nonBlankString(discoveredWorkspaceId.value);
-        if (workspaceId !== undefined) {
-            accumulated.workspaceId = workspaceId;
-            sources.workspaceId = discoveredWorkspaceId.source;
-        }
-    }
-    const discoveredBaseUrl = config.baseUrl;
-    if (discoveredBaseUrl !== undefined) {
-        const baseUrl = nonBlankString(discoveredBaseUrl.value);
-        if (baseUrl !== undefined) {
-            accumulated.baseUrl = baseUrl;
-            sources.baseUrl = discoveredBaseUrl.source;
-        }
+    for (const { key } of CONFIG_FIELDS) {
+        const discovered = config[key];
+        if (discovered === undefined)
+            continue;
+        const value = nonBlankString(discovered.value);
+        if (value === undefined)
+            continue;
+        accumulated[key] = value;
+        sources[key] = discovered.source;
     }
 }
-function applyEnvironmentOverrides(accumulated, sources, runtimeEnvironment) {
-    const apiKey = runtimeEnvironment.value("NAMS_API_KEY");
-    if (apiKey !== undefined) {
-        accumulated.apiKey = apiKey;
-        sources.apiKey = "env:NAMS_API_KEY";
+function applyEnvironmentOverrides(accumulated, sources, env) {
+    for (const { key, env: envVar } of CONFIG_FIELDS) {
+        const value = envValue(env, envVar);
+        if (value === undefined)
+            continue;
+        accumulated[key] = value;
+        sources[key] = `env:${envVar}`;
     }
-    const workspaceId = runtimeEnvironment.value("NAMS_WORKSPACE_ID");
-    if (workspaceId !== undefined) {
-        accumulated.workspaceId = workspaceId;
-        sources.workspaceId = "env:NAMS_WORKSPACE_ID";
-    }
-    const baseUrl = runtimeEnvironment.value("NAMS_BASE_URL");
-    if (baseUrl !== undefined) {
-        accumulated.baseUrl = baseUrl;
-        sources.baseUrl = "env:NAMS_BASE_URL";
-    }
-}
-function isPlainObject(value) {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-function nonBlankString(value) {
-    return typeof value === "string" && value.trim() !== "" ? value : undefined;
 }

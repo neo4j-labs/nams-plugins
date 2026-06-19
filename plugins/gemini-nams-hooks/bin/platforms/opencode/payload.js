@@ -1,3 +1,4 @@
+import { firstRecord, firstString } from "../../runtime/util.js";
 export function parseOpenCodePayload(payload, processCwd) {
     const input = firstRecord(payload.input);
     const event = firstRecord(payload.event);
@@ -71,24 +72,4 @@ function firstArray(...values) {
         }
     }
     return undefined;
-}
-function firstRecord(...values) {
-    for (const value of values) {
-        if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-            return value;
-        }
-    }
-    return undefined;
-}
-function firstString(...values) {
-    for (const value of values) {
-        const stringValue = optionalString(value);
-        if (stringValue !== undefined) {
-            return stringValue;
-        }
-    }
-    return undefined;
-}
-function optionalString(value) {
-    return typeof value === "string" && value.trim() !== "" ? value : undefined;
 }

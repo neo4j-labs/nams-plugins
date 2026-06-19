@@ -2,7 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { sha256 } from "./hashing.js";
 import { writePrivateFile } from "./permissions.js";
-import { RuntimeEnvironment } from "./paths.js";
+import { sessionStateDirectory, sessionStatePath as sessionStatePathFn } from "./paths.js";
 export function resolveSessionKey(input) {
     if (input.sessionId !== undefined && input.sessionId.trim() !== "") {
         return input.sessionId;
@@ -10,7 +10,7 @@ export function resolveSessionKey(input) {
     return `cwd-${sha256(input.projectDirectory)}`;
 }
 export async function loadSessionState(platform, sessionKey) {
-    const statePath = await findSessionStatePath(RuntimeEnvironment.fromProcess(), platform, sessionKey);
+    const statePath = await findSessionStatePath(process.env, platform, sessionKey);
     if (statePath === undefined) {
         return null;
     }
@@ -30,7 +30,7 @@ export async function loadSessionState(platform, sessionKey) {
     }
 }
 export async function saveSessionState(platform, sessionKey, state) {
-    const statePath = RuntimeEnvironment.fromProcess().sessionStatePath(platform, sessionKey, state.createdAt);
+    const statePath = sessionStatePathFn(platform, sessionKey, state.createdAt);
     await writePrivateFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
 }
 export function createInitialSessionState(input, now = new Date()) {
@@ -48,8 +48,8 @@ export function createInitialSessionState(input, now = new Date()) {
         reasoningStepIdsByHash: {},
     };
 }
-async function findSessionStatePath(environment, platform, sessionKey) {
-    const stateDirectory = environment.sessionStateDirectory(platform);
+async function findSessionStatePath(env, platform, sessionKey) {
+    const stateDirectory = sessionStateDirectory(platform, env);
     const suffix = `--${sha256(sessionKey)}.json`;
     let filenames;
     try {

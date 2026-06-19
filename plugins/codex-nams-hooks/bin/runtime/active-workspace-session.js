@@ -1,13 +1,14 @@
 import { mkdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
-import { RuntimeEnvironment } from "./paths.js";
+import { setTimeout as delay } from "node:timers/promises";
+import { sessionStateDirectory } from "./paths.js";
 import { ensurePrivateDirectory, writePrivateFile } from "./permissions.js";
 export const ACTIVE_WORKSPACE_SESSION_TTL_MS = 60_000;
 export const ACTIVE_WORKSPACE_SESSION_WINNER_GAP_MS = 15_000;
 const ACTIVE_WORKSPACE_SESSION_LOCK_RETRY_DELAY_MS = 10;
 const ACTIVE_WORKSPACE_SESSION_LOCK_MAX_WAIT_MS = 5_000;
 export function activeWorkspaceSessionsPath(platform, environment = process.env) {
-    return path.join(RuntimeEnvironment.from(environment).sessionStateDirectory(platform), "active-workspace-sessions.json");
+    return path.join(sessionStateDirectory(platform, environment), "active-workspace-sessions.json");
 }
 export async function recordActiveWorkspaceSession(input) {
     const sessionId = input.sessionId?.trim() ?? "";
@@ -136,9 +137,6 @@ function isMarkerObject(value) {
 }
 async function writeMarker(markerPath, marker) {
     await writePrivateFile(markerPath, `${JSON.stringify(marker, null, 2)}\n`);
-}
-async function delay(durationMs) {
-    await new Promise((resolve) => setTimeout(resolve, durationMs));
 }
 function isErrorCode(error, code) {
     return error instanceof Error && "code" in error && error.code === code;

@@ -1,31 +1,25 @@
+import { pickStringFields } from "../payload.js";
 export function parseClaudePayload(payload, processCwd) {
-    const sessionId = payload.session_id;
-    const projectDirectory = payload.cwd ?? processCwd;
-    const transcriptPath = payload.transcript_path;
-    const source = payload.source;
-    const prompt = payload.prompt;
-    const toolUseId = payload.tool_use_id;
-    const toolName = payload.tool_name;
+    const strings = pickStringFields(payload, {
+        sessionId: "session_id",
+        transcriptPath: "transcript_path",
+        source: "source",
+        prompt: "prompt",
+        toolUseId: "tool_use_id",
+        toolName: "tool_name",
+        lastAssistantMessage: "last_assistant_message",
+    });
+    const projectDirectory = pickStringFields(payload, { cwd: "cwd" }).cwd ?? processCwd;
     const toolInput = payload.tool_input;
     const toolResponse = payload.tool_response;
     const durationMs = toNumber(payload.duration_ms);
-    const lastAssistantMessage = payload.last_assistant_message;
     return {
-        ...(!isBlankOrEmpty(sessionId) ? { sessionId } : {}),
-        projectDirectory: !isBlankOrEmpty(projectDirectory) ? projectDirectory : processCwd,
-        ...(!isBlankOrEmpty(transcriptPath) ? { transcriptPath } : {}),
-        ...(!isBlankOrEmpty(source) ? { source } : {}),
-        ...(!isBlankOrEmpty(prompt) ? { prompt } : {}),
-        ...(!isBlankOrEmpty(toolUseId) ? { toolUseId } : {}),
-        ...(!isBlankOrEmpty(toolName) ? { toolName } : {}),
+        ...strings,
+        projectDirectory,
         ...(toolInput !== undefined ? { toolInput } : {}),
         ...(toolResponse !== undefined ? { toolResponse } : {}),
         ...(durationMs !== undefined ? { durationMs } : {}),
-        ...(!isBlankOrEmpty(lastAssistantMessage) ? { lastAssistantMessage } : {}),
     };
-}
-function isBlankOrEmpty(value) {
-    return value === undefined || value.trim() === "";
 }
 function toNumber(value) {
     if (typeof value === "number" && Number.isFinite(value)) {

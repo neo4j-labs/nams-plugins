@@ -2,9 +2,9 @@ import path from "node:path";
 import { configDiagnosticPayload } from "./config.js";
 import { sha256 } from "./hashing.js";
 import { appendPrivateFile } from "./permissions.js";
-import { RuntimeEnvironment } from "./paths.js";
+import { platformLogDirectory } from "./paths.js";
 export async function appendPlatformLog(entry) {
-    const logDir = RuntimeEnvironment.fromProcess().platformLogDirectory(entry.platform);
+    const logDir = platformLogDirectory(entry.platform);
     const logPath = path.join(logDir, logFileName(entry));
     const logEntry = {
         timestamp: new Date().toISOString(),
@@ -31,14 +31,6 @@ export async function appendNamsRequestLog(invocation, state, payload) {
         sessionKey: state.sessionKey,
     });
 }
-export const workspaceDiagnosticMessages = {
-    loadedFromConfig: "NAMS workspace loaded from config",
-    loadedFromSessionState: "NAMS workspace loaded from session state",
-    autoSelected: "NAMS workspace auto-selected",
-    selectionRequired: "NAMS workspace selection required",
-    listEmpty: "NAMS workspace list empty",
-    requestFailed: "NAMS workspace request failed",
-};
 export async function appendWorkspaceDiagnostic(invocation, state, payload) {
     await appendPlatformDiagnosticLog(invocation, state, payload);
 }

@@ -1,25 +1,25 @@
-import { ClaudeAdapter } from "./claude/index.js";
-import { ClaudeWorkspaceAdapter } from "./claude/workspaces.js";
-import { CodexAdapter } from "./codex/index.js";
-import { CodexWorkspaceAdapter } from "./codex/workspaces.js";
-import { GeminiAdapter } from "./gemini/index.js";
-import { GeminiWorkspaceAdapter } from "./gemini/workspaces.js";
-import { OpenCodeAdapter } from "./opencode/index.js";
-import { OpenCodeWorkspaceAdapter } from "./opencode/workspaces.js";
+import { claudeMemoryAdapter } from "./claude/index.js";
+import { claudeWorkspaceAdapter } from "./claude/workspaces.js";
+import { codexMemoryAdapter } from "./codex/index.js";
+import { codexWorkspaceAdapter } from "./codex/workspaces.js";
+import { geminiMemoryAdapter } from "./gemini/index.js";
+import { geminiWorkspaceAdapter } from "./gemini/workspaces.js";
+import { opencodeMemoryAdapter } from "./opencode/index.js";
+import { opencodeWorkspaceAdapter } from "./opencode/workspaces.js";
 const memoryAdapters = {
-    gemini: new GeminiAdapter(),
-    claude: new ClaudeAdapter(),
-    codex: new CodexAdapter(),
-    opencode: new OpenCodeAdapter(),
+    gemini: geminiMemoryAdapter,
+    claude: claudeMemoryAdapter,
+    codex: codexMemoryAdapter,
+    opencode: opencodeMemoryAdapter,
 };
 export function getMemoryPlatformAdapter(platform) {
     return memoryAdapters[platform];
 }
 const workspaceAdapters = {
-    gemini: new GeminiWorkspaceAdapter(),
-    claude: new ClaudeWorkspaceAdapter(),
-    codex: new CodexWorkspaceAdapter(),
-    opencode: new OpenCodeWorkspaceAdapter(),
+    gemini: geminiWorkspaceAdapter,
+    claude: claudeWorkspaceAdapter,
+    codex: codexWorkspaceAdapter,
+    opencode: opencodeWorkspaceAdapter,
 };
 export function getWorkspacePlatformAdapter(platform) {
     return workspaceAdapters[platform];

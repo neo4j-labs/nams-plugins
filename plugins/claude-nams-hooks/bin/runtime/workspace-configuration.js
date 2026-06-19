@@ -2,6 +2,7 @@ import { lstat, readdir } from "node:fs/promises";
 import path from "node:path";
 import { NamsWorkspaceClient } from "../generated/nams-client.js";
 import { configDiagnosticPayload, loadNamsConnectionConfig } from "./config.js";
+import { nonBlankString } from "./util.js";
 import { assertNamsJsonConfigInputsSafe, writeNamsJsonConfig, } from "./config-writer.js";
 import { sha256 } from "./hashing.js";
 import { sessionStateDirectory } from "./paths.js";
@@ -164,8 +165,8 @@ function parseConfigureInput(rawPayload) {
     if (scope !== "project" && scope !== "user" && scope !== "session") {
         return undefined;
     }
-    const workspace = optionalString(rawPayload.workspace);
-    const sessionId = optionalString(rawPayload.sessionId);
+    const workspace = nonBlankString(rawPayload.workspace);
+    const sessionId = nonBlankString(rawPayload.sessionId);
     return {
         scope,
         ...(workspace !== undefined ? { workspace } : {}),
@@ -225,9 +226,6 @@ function workspaceChoices(workspaces) {
         const status = workspace.status?.trim() || "unknown-status";
         return `- ${name} (${role}, ${status}) - ${workspace.id}`;
     });
-}
-function optionalString(value) {
-    return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
 }
 function configureOutput(exitCode, message) {
     return {
