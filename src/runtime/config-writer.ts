@@ -37,8 +37,8 @@ export async function assertNamsJsonConfigPathSafe(
   input: Pick<WriteNamsJsonConfigInput, "scope" | "projectDirectory">,
 ): Promise<WriteNamsJsonConfigResult> {
   const configPath = configPathForScope(input.scope, input.projectDirectory);
-  await rejectSymlink(path.dirname(configPath));
-  await rejectUnsafeConfigFile(configPath);
+  await rejectUnsafePath(path.dirname(configPath), "directory");
+  await rejectUnsafePath(configPath, "file");
   return { path: configPath };
 }
 
@@ -52,34 +52,21 @@ export async function assertNamsJsonConfigInputsSafe(
   }
 }
 
-async function rejectSymlink(configPath: string): Promise<void> {
+async function rejectUnsafePath(target: string, kind: "directory" | "file"): Promise<void> {
+  let stats;
   try {
-    const file = await lstat(configPath);
-    if (file.isSymbolicLink()) {
-      throw new Error("NAMS config path must not be a symbolic link");
-    }
+    stats = await lstat(target);
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
       return;
     }
     throw error;
   }
-}
-
-async function rejectUnsafeConfigFile(configPath: string): Promise<void> {
-  try {
-    const file = await lstat(configPath);
-    if (file.isSymbolicLink()) {
-      throw new Error("NAMS config path must not be a symbolic link");
-    }
-    if (!file.isFile() || file.nlink > 1) {
-      throw new Error("NAMS config path is unsafe; existing config must be a regular file without hard links");
-    }
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      return;
-    }
-    throw error;
+  if (stats.isSymbolicLink()) {
+    throw new Error("NAMS config path must not be a symbolic link");
+  }
+  if (kind === "file" && (!stats.isFile() || stats.nlink > 1)) {
+    throw new Error("NAMS config path is unsafe; existing config must be a regular file without hard links");
   }
 }
 
