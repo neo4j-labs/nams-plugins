@@ -75,6 +75,11 @@ class CodexCli {
             return this;
         }
 
+        Builder json() {
+            arguments.add("--json");
+            return this;
+        }
+
         Builder prompt(String prompt) {
             this.prompt = prompt;
             return this;
