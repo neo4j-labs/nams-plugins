@@ -46,14 +46,3 @@ export interface WorkspacePlatformAdapter {
   customCommand?(invocation: WorkspaceHookInvocation<"CustomCommand">): Promise<HookResult>;
 }
 
-export function isPlatform(value: string | undefined): value is Platform {
-  return value !== undefined && platforms.includes(value as Platform);
-}
-
-export function isHookEvent(value: string | undefined): value is HookEvent {
-  return value !== undefined && hookEvents.includes(value as HookEvent);
-}
-
-export function isWorkspaceHookEvent(value: string | undefined): value is WorkspaceHookEvent {
-  return value !== undefined && workspaceHookEvents.includes(value as WorkspaceHookEvent);
-}

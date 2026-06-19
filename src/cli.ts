@@ -2,9 +2,9 @@
 
 import process from "node:process";
 import {
-  isHookEvent,
-  isPlatform,
-  isWorkspaceHookEvent,
+  hookEvents,
+  platforms,
+  workspaceHookEvents,
   type HookEvent,
   type HookInvocation,
   type HookResult,
@@ -108,6 +108,18 @@ function parseArgs(argv: string[]): CliArgs | null {
     return { command: "workspaces", platform: platformArg, event: eventArg };
   }
   return null;
+}
+
+function isPlatform(value: string | undefined): value is Platform {
+  return value !== undefined && platforms.includes(value as Platform);
+}
+
+function isHookEvent(value: string | undefined): value is HookEvent {
+  return value !== undefined && hookEvents.includes(value as HookEvent);
+}
+
+function isWorkspaceHookEvent(value: string | undefined): value is WorkspaceHookEvent {
+  return value !== undefined && workspaceHookEvents.includes(value as WorkspaceHookEvent);
 }
 
 function flagValue(argv: string[], flag: string): string | undefined | null {
