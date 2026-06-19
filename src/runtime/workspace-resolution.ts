@@ -10,7 +10,6 @@ import {
   appendNamsRequestLog,
   appendPlatformDiagnosticLog,
   appendWorkspaceDiagnostic,
-  workspaceDiagnosticMessages,
 } from "./logging.js";
 import { namsProvenanceHeaders } from "./provenance.js";
 import type { SessionState } from "./session-state.js";
@@ -62,7 +61,7 @@ export async function resolveWorkspaceForMemory(input: ResolveWorkspaceInput): P
   const sessionWorkspace = input.state.workspace;
   if (sessionWorkspace?.source === "session-selection") {
     await appendWorkspaceDiagnostic(input.invocation, input.state, {
-      message: workspaceDiagnosticMessages.loadedFromSessionState,
+      message: "NAMS workspace loaded from session state",
       workspace: {
         id: sessionWorkspace.id,
         source: sessionWorkspace.source,
@@ -81,7 +80,7 @@ export async function resolveWorkspaceForMemory(input: ResolveWorkspaceInput): P
       selectedAt: new Date().toISOString(),
     };
     await appendWorkspaceDiagnostic(input.invocation, input.state, {
-      message: workspaceDiagnosticMessages.loadedFromConfig,
+      message: "NAMS workspace loaded from config",
       configSources: connectionResult.sources,
     });
     return {
@@ -92,7 +91,7 @@ export async function resolveWorkspaceForMemory(input: ResolveWorkspaceInput): P
 
   if (input.state.workspace !== undefined) {
     await appendWorkspaceDiagnostic(input.invocation, input.state, {
-      message: workspaceDiagnosticMessages.loadedFromSessionState,
+      message: "NAMS workspace loaded from session state",
       workspace: {
         id: input.state.workspace.id,
         source: input.state.workspace.source,
@@ -117,14 +116,14 @@ export async function resolveWorkspaceForMemory(input: ResolveWorkspaceInput): P
     workspaces = validWorkspaces(response.workspaces);
   } catch {
     await appendWorkspaceDiagnostic(input.invocation, input.state, {
-      message: workspaceDiagnosticMessages.requestFailed,
+      message: "NAMS workspace request failed",
     });
     return { status: "skip-memory", reason: "unavailable" };
   }
 
   if (workspaces.length === 0) {
     await appendWorkspaceDiagnostic(input.invocation, input.state, {
-      message: workspaceDiagnosticMessages.listEmpty,
+      message: "NAMS workspace list empty",
     });
     return { status: "skip-memory", reason: "unavailable" };
   }
@@ -137,7 +136,7 @@ export async function resolveWorkspaceForMemory(input: ResolveWorkspaceInput): P
       selectedAt: new Date().toISOString(),
     };
     await appendWorkspaceDiagnostic(input.invocation, input.state, {
-      message: workspaceDiagnosticMessages.autoSelected,
+      message: "NAMS workspace auto-selected",
       workspace: publicWorkspace(workspace),
     });
     return {
@@ -147,7 +146,7 @@ export async function resolveWorkspaceForMemory(input: ResolveWorkspaceInput): P
   }
 
   await appendWorkspaceDiagnostic(input.invocation, input.state, {
-    message: workspaceDiagnosticMessages.selectionRequired,
+    message: "NAMS workspace selection required",
     workspaces: workspaces.map(publicWorkspace),
   });
 
