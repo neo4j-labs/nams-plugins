@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-final class ProjectFixture implements AutoCloseable {
+public class ProjectFixture implements AutoCloseable {
     private final Path hostRoot;
     private final Path hostHome;
     private final Path hostProject;
@@ -15,7 +15,7 @@ final class ProjectFixture implements AutoCloseable {
         this.hostProject = hostProject;
     }
 
-    static ProjectFixture create(String platform) {
+    public static ProjectFixture create(String platform) {
         try {
             Path root = Files.createTempDirectory("nams-live-" + platform + "-");
             Path home = Files.createDirectories(root.resolve("home"));
@@ -27,19 +27,19 @@ final class ProjectFixture implements AutoCloseable {
         }
     }
 
-    Path hostHome() {
+    public Path hostHome() {
         return hostHome;
     }
 
-    Path hostProject() {
+    public Path hostProject() {
         return hostProject;
     }
 
-    String containerHome() {
+    public String containerHome() {
         return "/workspace/home";
     }
 
-    String containerProject() {
+    public String containerProject() {
         return "/workspace/project";
     }
 

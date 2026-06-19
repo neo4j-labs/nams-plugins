@@ -1,4 +1,4 @@
-package com.neo4jlabs.nams;
+package com.neo4jlabs.nams.codex;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -9,7 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 
-final class CodexSessionState {
+class CodexSessionState {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final String conversationId;

@@ -1,4 +1,6 @@
-package com.neo4jlabs.nams;
+package com.neo4jlabs.nams.codex;
+
+import static com.neo4jlabs.nams.ContainerExecResultAssert.assertThat;
 
 import java.nio.file.Path;
 import java.util.Map;
@@ -8,11 +10,16 @@ import org.testcontainers.containers.Container;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.images.builder.ImageFromDockerfile;
 
-final class CodexLiveContainer implements AutoCloseable {
-    private final GenericContainer<?> container;
+import com.neo4jlabs.nams.LiveTestPaths;
+import com.neo4jlabs.nams.ProjectFixture;
 
-    private CodexLiveContainer(GenericContainer<?> container) {
+class CodexLiveContainer implements AutoCloseable {
+    private final GenericContainer<?> container;
+    private final String projectDirectory;
+
+    private CodexLiveContainer(GenericContainer<?> container, String projectDirectory) {
         this.container = container;
+        this.projectDirectory = projectDirectory;
     }
 
     static CodexLiveContainer start(ProjectFixture fixture, Map<String, String> environment) {
@@ -30,7 +37,7 @@ final class CodexLiveContainer implements AutoCloseable {
             .withEnv("HOME", fixture.containerHome())
             .withWorkingDirectory(fixture.containerProject());
         container.start();
-        return new CodexLiveContainer(container);
+        return new CodexLiveContainer(container, fixture.containerProject());
     }
 
     Container.ExecResult exec(String... command) throws Exception {
@@ -39,6 +46,35 @@ final class CodexLiveContainer implements AutoCloseable {
 
     Container.ExecResult shell(String command) throws Exception {
         return exec("bash", "-lc", command);
+    }
+
+    void assertNamsInstalled() throws Exception {
+        assertThat(shell("mkdir -p /tmp/nams-hooks-pack"
+            + " && cd /tmp/nams-hooks-pack"
+            + " && npm pack /nams-hooks/dist >/tmp/nams-hooks-pack/package.txt"
+            + " && npm install -g \"/tmp/nams-hooks-pack/$(cat /tmp/nams-hooks-pack/package.txt)\""
+            + " && command -v nams-hooks"))
+            .isSuccessful();
+    }
+
+    void assertCodexConfigLinked() throws Exception {
+        assertThat(shell("ln -s /nams-hooks/dist-local/codex/.codex " + projectDirectory + "/.codex"
+            + " && test -L " + projectDirectory + "/.codex"
+            + " && test -d " + projectDirectory + "/.codex"))
+            .isSuccessful();
+    }
+
+    void assertCodexLoggedIn() throws Exception {
+        assertThat(shell("printenv OPENAI_API_KEY | codex login --with-api-key"))
+            .isSuccessful();
+        assertThat(exec("codex", "login", "status"))
+            .isSuccessful();
+    }
+
+    void assertNamsHooksPreflight() throws Exception {
+        assertThat(shell("printf '{\"session_id\":\"preflight\",\"cwd\":\"" + projectDirectory
+            + "\"}\\n' | nams-hooks run codex --event SessionStart"))
+            .isSuccessful();
     }
 
     @Override

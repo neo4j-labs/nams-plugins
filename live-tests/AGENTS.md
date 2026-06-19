@@ -87,6 +87,8 @@ NAMS assertions.
 
 ## Verification
 
+Never skip test!!
+
 Useful commands from the repo root:
 
 ```bash
