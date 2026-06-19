@@ -275,20 +275,15 @@ async function readGlobalJsonConfig(env: NodeJS.ProcessEnv): Promise<JsonConfigR
   return readJsonConfig(configPath, "global:~/.nams/config.json");
 }
 
-function invalidJsonResult(errorSource: JsonConfigSource, sources: NamsConfigSources = defaultSources()): NamsConnectionConfigLoadResult {
+function invalidJsonResult(
+  errorSource: JsonConfigSource,
+  sources: NamsConfigSources = { apiKey: "missing", workspaceId: "missing", baseUrl: "missing" },
+): NamsConnectionConfigLoadResult {
   return {
     ok: false,
     reason: "invalid-json",
     errorSource,
     sources,
-  };
-}
-
-function defaultSources(): NamsConfigSources {
-  return {
-    apiKey: "missing",
-    workspaceId: "missing",
-    baseUrl: "missing",
   };
 }
 
