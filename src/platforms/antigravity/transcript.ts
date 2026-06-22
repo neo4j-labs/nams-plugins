@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { open } from "node:fs/promises";
 
 export interface AntigravityUserTranscriptEntry {
   kind: "user";
@@ -6,26 +6,53 @@ export interface AntigravityUserTranscriptEntry {
   content: string;
 }
 
+const transcriptTailByteLimit = 64 * 1024;
+const transcriptTailLineLimit = 200;
+
 export async function readLatestAntigravityUserPrompt(transcriptPath: string): Promise<string | undefined> {
-  let content: string;
+  let lines: string[];
   try {
-    content = await readFile(transcriptPath, "utf8");
+    lines = await readBoundedTranscriptTailLines(transcriptPath);
   } catch {
     return undefined;
   }
 
-  let latestPrompt: string | undefined;
-  for (const line of content.split(/\r?\n/)) {
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index];
     if (line.trim() === "") {
       continue;
     }
 
     const entry = toUserEntry(parseJsonLine(line));
     if (entry !== undefined) {
-      latestPrompt = entry.content;
+      return entry.content;
     }
   }
-  return latestPrompt;
+  return undefined;
+}
+
+async function readBoundedTranscriptTailLines(transcriptPath: string): Promise<string[]> {
+  const file = await open(transcriptPath, "r");
+  try {
+    const stats = await file.stat();
+    if (stats.size === 0) {
+      return [];
+    }
+
+    const bytesToRead = Math.min(stats.size, transcriptTailByteLimit);
+    const position = stats.size - bytesToRead;
+    const buffer = Buffer.alloc(bytesToRead);
+    const { bytesRead } = await file.read(buffer, 0, bytesToRead, position);
+    let tailText = buffer.subarray(0, bytesRead).toString("utf8");
+    if (position > 0) {
+      const firstCompleteLineStart = tailText.indexOf("\n");
+      tailText = firstCompleteLineStart === -1 ? "" : tailText.slice(firstCompleteLineStart + 1);
+    }
+
+    return tailText.split(/\r?\n/).slice(-transcriptTailLineLimit);
+  } finally {
+    await file.close();
+  }
 }
 
 function parseJsonLine(line: string): unknown {

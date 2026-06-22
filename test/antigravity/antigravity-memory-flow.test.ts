@@ -245,6 +245,40 @@ test("Antigravity BeforeAgent ignores hidden reasoning-shaped user records and c
   }
 });
 
+test("Antigravity BeforeAgent ignores old prompts outside the bounded transcript tail", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
+  try {
+    const oldPrompt = "This old prompt must stay outside the bounded tail.";
+    const transcriptPath = await writeTranscript(projectDir, [
+      { id: "old-user-1", role: "user", text: oldPrompt, status: "completed" },
+      ...Array.from({ length: 260 }, (_, index) => ({
+        id: `tail-noise-${index}`,
+        role: "assistant",
+        content: `Recent non-user transcript noise ${index}.`,
+      })),
+    ]);
+    const nams = createNamsFetchMock().all({ error: "unexpected NAMS call" }, 500);
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+
+    const result = await antigravityMemoryAdapter.beforeAgent({
+      platform: "antigravity",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: antigravityPayload(projectDir, "session-1", transcriptPath),
+    });
+
+    assert.deepEqual(result.stdout, {});
+    assert.equal(nams.calls().length, 0);
+    assert.equal((await loadSessionState("antigravity", "session-1"))!.conversationId, undefined);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("Antigravity BeforeAgent with no transcript path or clean prompt saves state and does not call NAMS", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
   try {
