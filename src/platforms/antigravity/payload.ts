@@ -54,7 +54,7 @@ function stringArray(value: unknown): string[] {
 }
 
 function numberValue(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  return typeof value === "number" && Number.isInteger(value) ? value : undefined;
 }
 
 function booleanValue(value: unknown): boolean | undefined {
