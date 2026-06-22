@@ -1,0 +1,18 @@
+{
+  "name": "nams-hooks",
+  "version": "__PACKAGE_VERSION__",
+  "displayName": "NAMS Hooks",
+  "description": "Persistent Neo4j Agent Memory Service hooks for Antigravity.",
+  "author": {
+    "name": "Neo4j Labs"
+  },
+  "repository": "https://github.com/neo4j-labs/nams-plugins",
+  "license": "__PACKAGE_LICENSE__",
+  "keywords": [
+    "memory",
+    "context",
+    "persistence",
+    "neo4j",
+    "nams"
+  ]
+}

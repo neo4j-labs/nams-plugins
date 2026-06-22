@@ -25,7 +25,7 @@ const forbiddenNpmArtifactPatterns = [
   /^dist-local(\/|$)/,
   /^(dist\/)?(plugins|commands|hooks)(\/|$)/,
   /(^|\/)(\.agents|\.claude-plugin|\.codex-plugin|\.opencode|\.claude|\.codex|\.gemini)(\/|$)/,
-  /^(dist\/)?(claude|codex|gemini|opencode)(\/|$)/,
+  /^(dist\/)?(antigravity|claude|codex|gemini|opencode)(\/|$)/,
   /^(dist\/)?gemini-extension\.json$/,
   /(^|\/)settings\.local\.json$/,
   /(^|\/)nams-hooks\.js$/,
@@ -64,6 +64,7 @@ async function verifyNpmDist(rootPackageJson) {
 }
 
 async function verifyMarketplaceDist() {
+  await verifyAntigravityMarketplaceFiles();
   await verifyGeminiMarketplaceFiles();
   await verifyClaudeMarketplaceFiles();
   await verifyCodexMarketplaceFiles();
@@ -80,6 +81,7 @@ async function verifyMarketplaceDist() {
 }
 
 async function verifyLocalDist() {
+  await verifyLocalAntigravityFiles();
   await verifyLocalCommandJson(path.join(localDistDir, "claude", ".claude", "settings.local.json"), "claude");
   await verifyLocalClaudeWorkspaceCommand(path.join(localDistDir, "claude", ".claude", "commands", "nams", "workspace.md"));
   await verifyLocalCommandJson(path.join(localDistDir, "codex", ".codex", "hooks.json"), "codex");
@@ -104,6 +106,53 @@ async function verifyLocalDist() {
   const unresolved = await filesWithPattern(localDistDir, /__PACKAGE_VERSION__|__PACKAGE_LICENSE__|__NAMS_HOOKS_COMMAND__/);
   if (unresolved.length > 0) {
     throw new Error(`dist-local contains unresolved template placeholders: ${unresolved.join(", ")}`);
+  }
+}
+
+async function verifyAntigravityMarketplaceFiles() {
+  const manifestPath = path.join(marketplaceDistDir, "antigravity", "plugins", "nams-hooks", "plugin.json");
+  const hooksPath = path.join(marketplaceDistDir, "antigravity", "plugins", "nams-hooks", "hooks.json");
+  const cliPath = path.join(marketplaceDistDir, "antigravity", "plugins", "nams-hooks", "bin", "cli.js");
+
+  await access(manifestPath);
+  await access(hooksPath);
+  await assertExecutable(cliPath);
+
+  const packageJson = JSON.parse(await readFile(rootPackagePath, "utf8"));
+  const plugin = JSON.parse(await readFile(manifestPath, "utf8"));
+  const hooks = JSON.parse(await readFile(hooksPath, "utf8"));
+
+  if (plugin.name !== "nams-hooks" || plugin.version !== packageJson.version) {
+    throw new Error("Antigravity plugin manifest must name nams-hooks and match package.json version.");
+  }
+  if (plugin.repository !== "https://github.com/neo4j-labs/nams-plugins") {
+    throw new Error("Antigravity plugin manifest repository must point to neo4j-labs/nams-plugins.");
+  }
+  if (plugin.license !== packageJson.license) {
+    throw new Error("Antigravity plugin manifest license must match package.json.");
+  }
+  if (Object.hasOwn(plugin, "userConfig") || Object.hasOwn(plugin, "authentication") || Object.hasOwn(plugin, "hooks")) {
+    throw new Error("Antigravity plugin manifest must not define NAMS credential prompts or inline hooks.");
+  }
+
+  assertAntigravityHookEventSet(hooks);
+  assertAntigravityHookCommand(hooks, "PreInvocation", "BeforeAgent", {
+    expectedCommand: 'node "$HOME/.gemini/antigravity-cli/plugins/nams-hooks/bin/cli.js" run antigravity --event BeforeAgent',
+  });
+  assertAntigravityHookCommand(hooks, "PostInvocation", "AfterAgent", {
+    expectedCommand: 'node "$HOME/.gemini/antigravity-cli/plugins/nams-hooks/bin/cli.js" run antigravity --event AfterAgent',
+  });
+  assertAntigravityHookCommand(hooks, "PostToolUse", "AfterTool", {
+    matcher: "*",
+    expectedCommand: 'node "$HOME/.gemini/antigravity-cli/plugins/nams-hooks/bin/cli.js" run antigravity --event AfterTool',
+  });
+
+  const commands = JSON.stringify(hooks);
+  if (/(^|[^/])nams-hooks run antigravity --event/.test(commands)) {
+    throw new Error("Antigravity marketplace hooks must not call a global nams-hooks executable.");
+  }
+  if (/SessionStart|Stop/.test(commands)) {
+    throw new Error("Antigravity marketplace hooks must not emit SessionStart or Stop.");
   }
 }
 
@@ -276,14 +325,25 @@ async function verifyOpenCodeMarketplaceFiles() {
 }
 
 async function verifyMarketplacePluginPackageMetadata() {
-  for (const platform of ["claude", "codex", "gemini", "opencode"]) {
-    const pluginRoot = path.join(marketplaceDistDir, "plugins", `${platform}-nams-hooks`);
+  const rootPackageJson = JSON.parse(await readFile(rootPackagePath, "utf8"));
+  const pluginPackages = [
+    ["antigravity", path.join("antigravity", "plugins", "nams-hooks")],
+    ["claude", path.join("plugins", "claude-nams-hooks")],
+    ["codex", path.join("plugins", "codex-nams-hooks")],
+    ["gemini", path.join("plugins", "gemini-nams-hooks")],
+    ["opencode", path.join("plugins", "opencode-nams-hooks")],
+  ];
+  for (const [platform, pluginRelativeRoot] of pluginPackages) {
+    const pluginRoot = path.join(marketplaceDistDir, pluginRelativeRoot);
     const packageJson = JSON.parse(await readFile(path.join(pluginRoot, "package.json"), "utf8"));
     if (packageJson.type !== "module") {
-      throw new Error(`dist-marketplace/plugins/${platform}-nams-hooks/package.json must set type to module.`);
+      throw new Error(`dist-marketplace/${pluginRelativeRoot}/package.json must set type to module.`);
     }
     if (packageJson.bin?.["nams-hooks"] !== "./bin/cli.js") {
-      throw new Error(`dist-marketplace/plugins/${platform}-nams-hooks/package.json must expose bin.nams-hooks at ./bin/cli.js.`);
+      throw new Error(`dist-marketplace/${pluginRelativeRoot}/package.json must expose bin.nams-hooks at ./bin/cli.js.`);
+    }
+    if (packageJson.version !== rootPackageJson.version || packageJson.license !== rootPackageJson.license) {
+      throw new Error(`dist-marketplace/${pluginRelativeRoot}/package.json version and license must match package.json.`);
     }
   }
 }
@@ -358,6 +418,44 @@ async function verifyLocalGeminiWorkspaceCommand(filePath) {
   }
   if (/\$\{extensionPath\}|bin\/cli\.js|workspaces configure/.test(source)) {
     throw new Error("Gemini local workspace command must not use bundled runtime paths or workspaces configure.");
+  }
+}
+
+async function verifyLocalAntigravityFiles() {
+  const manifestPath = path.join(localDistDir, "antigravity", ".agents", "plugins", "nams-hooks", "plugin.json");
+  const hooksPath = path.join(localDistDir, "antigravity", ".agents", "plugins", "nams-hooks", "hooks.json");
+
+  await access(manifestPath);
+  await access(hooksPath);
+
+  const plugin = JSON.parse(await readFile(manifestPath, "utf8"));
+  const hooks = JSON.parse(await readFile(hooksPath, "utf8"));
+
+  if (plugin.name !== "nams-hooks") {
+    throw new Error("Antigravity local plugin manifest must name nams-hooks.");
+  }
+  if (Object.hasOwn(plugin, "userConfig") || Object.hasOwn(plugin, "authentication") || Object.hasOwn(plugin, "hooks")) {
+    throw new Error("Antigravity local plugin manifest must not define NAMS credential prompts or inline hooks.");
+  }
+
+  assertAntigravityHookEventSet(hooks);
+  assertAntigravityHookCommand(hooks, "PreInvocation", "BeforeAgent", {
+    expectedCommand: "nams-hooks run antigravity --event BeforeAgent",
+  });
+  assertAntigravityHookCommand(hooks, "PostInvocation", "AfterAgent", {
+    expectedCommand: "nams-hooks run antigravity --event AfterAgent",
+  });
+  assertAntigravityHookCommand(hooks, "PostToolUse", "AfterTool", {
+    matcher: "*",
+    expectedCommand: "nams-hooks run antigravity --event AfterTool",
+  });
+
+  const commands = JSON.stringify(hooks);
+  if (/bin\/cli\.js|antigravity-cli|\$HOME/.test(commands)) {
+    throw new Error("Antigravity local hooks must not reference bundled runtime paths.");
+  }
+  if (/SessionStart|Stop/.test(commands)) {
+    throw new Error("Antigravity local hooks must not emit SessionStart or Stop.");
   }
 }
 
@@ -450,6 +548,51 @@ async function verifyLocalCommandJson(filePath, platform) {
   if (/bin\/cli\.js|\$\{PLUGIN_ROOT\}|\$\{CLAUDE_PLUGIN_ROOT\}|\$\{extensionPath\}/.test(commands)) {
     throw new Error(`${path.relative(root, filePath)} must not reference bundled runtime paths.`);
   }
+}
+
+function assertAntigravityHookEventSet(hooks) {
+  const serialized = JSON.stringify(hooks);
+  for (const expectedEvent of ["PreInvocation", "PostInvocation", "PostToolUse"]) {
+    if (!serialized.includes(expectedEvent)) {
+      throw new Error(`Antigravity hooks must define ${expectedEvent}.`);
+    }
+  }
+  for (const omittedEvent of ["SessionStart", "Stop"]) {
+    if (serialized.includes(omittedEvent)) {
+      throw new Error(`Antigravity hooks must not define ${omittedEvent}.`);
+    }
+  }
+}
+
+function assertAntigravityHookCommand(hooks, nativeEvent, namsEvent, options) {
+  const found = antigravityHookFor(hooks, nativeEvent);
+  if (found.matcher !== options.matcher) {
+    throw new Error(`Antigravity ${nativeEvent} hook matcher must be ${options.matcher ?? "omitted"}.`);
+  }
+  if (found.type !== "command" || found.command !== options.expectedCommand || found.timeout !== 30) {
+    throw new Error(`Antigravity ${nativeEvent} hook must invoke ${options.expectedCommand}.`);
+  }
+  if (!found.command.endsWith(`--event ${namsEvent}`)) {
+    throw new Error(`Antigravity ${nativeEvent} hook must route to --event ${namsEvent}.`);
+  }
+}
+
+function antigravityHookFor(hooks, nativeEvent) {
+  for (const nativeEvents of Object.values(hooks)) {
+    const groups = nativeEvents?.[nativeEvent];
+    if (!Array.isArray(groups) || groups.length !== 1) {
+      continue;
+    }
+    const group = groups[0];
+    const handler = group.hooks?.[0] ?? group;
+    return {
+      matcher: group.matcher,
+      type: handler.type,
+      command: handler.command,
+      timeout: handler.timeout,
+    };
+  }
+  throw new Error(`Antigravity hooks must define ${nativeEvent}.`);
 }
 
 function assertClaudePluginUserConfig(plugin) {

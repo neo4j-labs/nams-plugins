@@ -5,6 +5,9 @@ import { buildProjectionTarget, root } from "./build-dist-common.mjs";
 
 const outputRoot = path.join(root, "dist-marketplace");
 const projections = [
+  { kind: "template", platform: "antigravity", from: "templates/marketplace/antigravity/plugins/nams-hooks", to: "antigravity/plugins/nams-hooks", renderPackage: true },
+  { kind: "packageJson", platform: "antigravity", to: "antigravity/plugins/nams-hooks/package.json" },
+  { kind: "runtime", platform: "antigravity", to: "antigravity/plugins/nams-hooks/bin" },
   { kind: "template", platform: "gemini", from: "templates/marketplace/gemini/gemini-extension.json", to: "gemini-extension.json", renderPackage: false },
   { kind: "template", platform: "gemini", from: "templates/marketplace/gemini/hooks", to: "hooks", renderPackage: false },
   { kind: "template", platform: "gemini", from: "templates/marketplace/gemini/commands", to: "commands", renderPackage: false },
