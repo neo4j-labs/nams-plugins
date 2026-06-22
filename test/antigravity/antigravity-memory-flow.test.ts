@@ -1,0 +1,284 @@
+import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { test } from "node:test";
+import { fileURLToPath } from "node:url";
+
+import { antigravityMemoryAdapter } from "../../src/platforms/antigravity/index.js";
+import { loadSessionState } from "../../src/runtime/session-state.js";
+import { createNamsFetchMock } from "../support/nams-fetch-mock.js";
+import { readSingleSessionLog as readRuntimeSingleSessionLog } from "../support/runtime-home.js";
+
+type TestEnvOverrides = Record<string, string | undefined>;
+interface TestEnv extends TestEnvOverrides {
+  HOME: string;
+  USERPROFILE: string;
+}
+
+const fixtureDirectory = path.dirname(fileURLToPath(import.meta.url));
+
+function testEnv(projectDir: string, overrides: TestEnvOverrides = {}): TestEnv {
+  const env = { HOME: path.join(projectDir, "home"), USERPROFILE: path.join(projectDir, "home"), ...overrides };
+  for (const key of [
+    "HOME",
+    "USERPROFILE",
+    "NAMS_API_KEY",
+    "NAMS_WORKSPACE_ID",
+    "NAMS_BASE_URL",
+  ]) {
+    delete process.env[key];
+  }
+  Object.assign(process.env, env);
+  return env;
+}
+
+async function copyBeforeAgentTranscript(projectDir: string): Promise<string> {
+  const transcriptPath = path.join(projectDir, "transcript-before-agent.jsonl");
+  const fixturePath = path.join(fixtureDirectory, "fixtures", "transcript-before-agent.jsonl");
+  await writeFile(transcriptPath, await readFile(fixturePath, "utf8"), "utf8");
+  return transcriptPath;
+}
+
+async function writeTranscript(projectDir: string, lines: Array<Record<string, unknown>>): Promise<string> {
+  const transcriptPath = path.join(projectDir, "transcript.jsonl");
+  await writeFile(transcriptPath, `${lines.map((line) => JSON.stringify(line)).join("\n")}\n`, "utf8");
+  return transcriptPath;
+}
+
+async function readSingleSessionLog(homeParentDir: string): Promise<{
+  logPath: string;
+  lines: Array<Record<string, any>>;
+  log: string;
+}> {
+  const { logPath, lines } = await readRuntimeSingleSessionLog(path.join(homeParentDir, "home"), "antigravity");
+  return { logPath, lines, log: await readFile(logPath, "utf8") };
+}
+
+function antigravityPayload(
+  projectDir: string,
+  sessionId: string,
+  transcriptPath?: string,
+): Record<string, unknown> {
+  return {
+    conversationId: sessionId,
+    workspacePaths: [projectDir],
+    ...(transcriptPath !== undefined ? { transcriptPath } : {}),
+  };
+}
+
+function injectedMessage(result: { stdout: Record<string, any> }): string {
+  return injectSteps(result)[0].ephemeralMessage;
+}
+
+function injectSteps(result: { stdout: Record<string, unknown> }): Array<{ ephemeralMessage: string }> {
+  return result.stdout.injectSteps as Array<{ ephemeralMessage: string }>;
+}
+
+test("initializes Antigravity session state on synthetic SessionStart without creating a conversation", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
+  try {
+    testEnv(projectDir);
+
+    const result = await antigravityMemoryAdapter.startSession({
+      platform: "antigravity",
+      event: "SessionStart",
+      processCwd: projectDir,
+      rawPayload: antigravityPayload(projectDir, "session-1"),
+    });
+
+    assert.deepEqual(result.stdout, {});
+    const state = (await loadSessionState("antigravity", "session-1"))!;
+    assert.notEqual(state, null);
+    assert.equal(state.sessionKey, "session-1");
+    assert.equal(state.conversationId, undefined);
+
+    const { lines } = await readSingleSessionLog(projectDir);
+    assert.equal(lines[0].kind, "hook.event");
+    assert.equal(lines[0].harness, "antigravity");
+    assert.equal(lines[0].event, "SessionStart");
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Antigravity BeforeAgent uses transcript user prompt for memory flow and injects recalled context", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
+  try {
+    const transcriptPrompt = "Please remember that I prefer fixture-driven tests.";
+    const transcriptPath = await copyBeforeAgentTranscript(projectDir);
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context({ observations: [{ content: "User prefers fixture-driven tests." }] })
+      .searchEntities({
+        entities: [{ name: "Fixture-driven tests", description: "User prefers fixture-driven tests." }],
+      })
+      .message();
+    testEnv(projectDir, {
+      NAMS_API_KEY: "secret-api-key",
+      NAMS_WORKSPACE_ID: "workspace-1",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+
+    const result = await antigravityMemoryAdapter.beforeAgent({
+      platform: "antigravity",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        ...antigravityPayload(projectDir, "session-1", transcriptPath),
+        prompt: "raw payload prompt must be ignored",
+      },
+    });
+
+    assert.deepEqual(Object.keys(result.stdout), ["injectSteps"]);
+    assert.deepEqual(injectSteps(result).map((step) => Object.keys(step)), [
+      ["ephemeralMessage"],
+    ]);
+    assert.match(injectedMessage(result), /User prefers fixture-driven tests\./);
+    assert.equal(Object.hasOwn(result.stdout, "hookSpecificOutput"), false);
+    assert.deepEqual(nams.requestBody("createConversation"), {
+      metadata: {
+        harness: "antigravity",
+        projectDirectory: projectDir,
+      },
+    });
+    assert.deepEqual(nams.requestBody("searchEntities"), {
+      query: transcriptPrompt,
+      limit: 5,
+    });
+    assert.deepEqual(nams.requestBody("addMessage"), {
+      role: "user",
+      content: transcriptPrompt,
+    });
+
+    const { lines, log } = await readSingleSessionLog(projectDir);
+    assert.equal(lines[0].kind, "hook.event");
+    const requestEntries = lines.filter((entry) => entry.kind === "nams.request");
+    assert.deepEqual(
+      requestEntries.map((entry) => entry.payload.operation),
+      ["createConversation", "getConversationContext", "searchEntities", "addMessage"],
+    );
+    assert.deepEqual(requestEntries[0].payload.request.body, {
+      metadata: {
+        harness: "antigravity",
+        projectDirectory: projectDir,
+      },
+    });
+    assert.deepEqual(requestEntries[2].payload.request.body, {
+      query: transcriptPrompt,
+      limit: 5,
+    });
+    assert.deepEqual(requestEntries[3].payload.request.body, {
+      role: "user",
+      content: transcriptPrompt,
+    });
+    assert.doesNotMatch(log, /Authorization|Bearer|secret-api-key/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Antigravity BeforeAgent stores a duplicate transcript-derived user message only once", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
+  try {
+    const transcriptPath = await copyBeforeAgentTranscript(projectDir);
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+    const invocation = {
+      platform: "antigravity" as const,
+      event: "BeforeAgent" as const,
+      processCwd: projectDir,
+      rawPayload: antigravityPayload(projectDir, "session-1", transcriptPath),
+    };
+
+    await antigravityMemoryAdapter.beforeAgent(invocation);
+    await antigravityMemoryAdapter.beforeAgent(invocation);
+
+    assert.equal(nams.calls("createConversation").length, 1);
+    assert.equal(nams.calls("getConversationContext").length, 1);
+    assert.equal(nams.calls("searchEntities").length, 1);
+    assert.equal(nams.calls("addMessage").length, 1);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Antigravity BeforeAgent with no transcript path or clean prompt saves state and does not call NAMS", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
+  try {
+    const nams = createNamsFetchMock().all({ error: "unexpected NAMS call" }, 500);
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+
+    const noTranscriptResult = await antigravityMemoryAdapter.beforeAgent({
+      platform: "antigravity",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: {
+        ...antigravityPayload(projectDir, "session-1"),
+        prompt: "raw payload prompt must not be used",
+      },
+    });
+    const transcriptWithoutPrompt = await writeTranscript(projectDir, [
+      { id: "assistant-1", role: "assistant", content: "No user message here." },
+      { id: "draft-1", role: "user", content: "unfinished", status: "in_progress" },
+      { id: "reasoning-1", type: "reasoning", text: "hidden reasoning is not a prompt" },
+    ]);
+    const noPromptResult = await antigravityMemoryAdapter.beforeAgent({
+      platform: "antigravity",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: antigravityPayload(projectDir, "session-2", transcriptWithoutPrompt),
+    });
+
+    assert.deepEqual(noTranscriptResult.stdout, {});
+    assert.deepEqual(noPromptResult.stdout, {});
+    assert.equal(nams.calls().length, 0);
+    assert.equal((await loadSessionState("antigravity", "session-1"))!.conversationId, undefined);
+    assert.equal((await loadSessionState("antigravity", "session-2"))!.conversationId, undefined);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Antigravity BeforeAgent returns workspace selection notices through injectSteps", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
+  try {
+    const transcriptPath = await writeTranscript(projectDir, [
+      { id: "user-content-1", type: "user", content: [{ text: "Remember the selected workspace." }] },
+    ]);
+    const nams = createNamsFetchMock().workspaces({
+      workspaces: [
+        { id: "workspace-1", name: "Default", role: "owner", status: "active" },
+        { id: "workspace-2", name: "Secondary", role: "owner", status: "active" },
+      ],
+    });
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+
+    const result = await antigravityMemoryAdapter.beforeAgent({
+      platform: "antigravity",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: antigravityPayload(projectDir, "session-1", transcriptPath),
+    });
+
+    assert.match(injectedMessage(result), /NAMS memory is inactive/);
+    assert.match(injectedMessage(result), /workspace-1/);
+    assert.match(injectedMessage(result), /workspace-2/);
+    assert.equal(Object.hasOwn(result.stdout, "hookSpecificOutput"), false);
+    assert.equal(nams.calls("listMyWorkspaces").length, 1);
+    assert.equal(nams.calls("createConversation").length, 0);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
