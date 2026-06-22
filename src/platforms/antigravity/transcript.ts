@@ -6,6 +6,16 @@ export interface AntigravityUserTranscriptEntry {
   content: string;
 }
 
+export interface AntigravityAssistantTranscriptEntry {
+  kind: "assistant";
+  id?: string;
+  content: string;
+}
+
+export type AntigravityTranscriptEntry =
+  | AntigravityUserTranscriptEntry
+  | AntigravityAssistantTranscriptEntry;
+
 const transcriptTailByteLimit = 64 * 1024;
 const transcriptTailLineLimit = 200;
 
@@ -29,6 +39,17 @@ export async function readLatestAntigravityUserPrompt(transcriptPath: string): P
     }
   }
   return undefined;
+}
+
+export async function readAntigravityTranscript(transcriptPath: string): Promise<AntigravityTranscriptEntry[]> {
+  const lines = await readBoundedTranscriptTailLines(transcriptPath);
+  return lines.flatMap((line) => {
+    if (line.trim() === "") {
+      return [];
+    }
+    const entry = toTranscriptEntry(parseJsonLine(line));
+    return entry === undefined ? [] : [entry];
+  });
 }
 
 async function readBoundedTranscriptTailLines(transcriptPath: string): Promise<string[]> {
@@ -63,6 +84,10 @@ function parseJsonLine(line: string): unknown {
   }
 }
 
+function toTranscriptEntry(raw: unknown): AntigravityTranscriptEntry | undefined {
+  return toUserEntry(raw) ?? toAssistantEntry(raw);
+}
+
 function toUserEntry(raw: unknown): AntigravityUserTranscriptEntry | undefined {
   if (!isRecord(raw) || isHiddenReasoningLike(raw) || !isUserEntry(raw) || !isCompletedEntry(raw)) {
     return undefined;
@@ -80,8 +105,29 @@ function toUserEntry(raw: unknown): AntigravityUserTranscriptEntry | undefined {
   };
 }
 
+function toAssistantEntry(raw: unknown): AntigravityAssistantTranscriptEntry | undefined {
+  if (!isRecord(raw) || isHiddenReasoningLike(raw) || !isAssistantEntry(raw) || !isCompletedEntry(raw)) {
+    return undefined;
+  }
+
+  const content = extractText(raw).trim();
+  if (content === "") {
+    return undefined;
+  }
+
+  return {
+    kind: "assistant",
+    ...(typeof raw.id === "string" && raw.id.trim() !== "" ? { id: raw.id } : {}),
+    content,
+  };
+}
+
 function isUserEntry(raw: Record<string, unknown>): boolean {
   return raw.role === "user" || raw.type === "user";
+}
+
+function isAssistantEntry(raw: Record<string, unknown>): boolean {
+  return raw.role === "assistant" || raw.type === "assistant";
 }
 
 function isCompletedEntry(raw: Record<string, unknown>): boolean {
@@ -136,6 +182,9 @@ function isHiddenReasoningValue(value: unknown): boolean {
     value === "reasoning" ||
     value === "thought" ||
     value === "thinking" ||
+    value === "internal" ||
+    value === "internal_trace" ||
+    value === "trace" ||
     value === "summary" ||
     value === "conversation_summary" ||
     value === "compacted_summary"

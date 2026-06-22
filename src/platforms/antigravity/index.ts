@@ -7,19 +7,27 @@ import {
 import {
   combineMemoryContexts,
   createNamsMemoryService,
+  type NamsMemoryService,
 } from "../../runtime/memory-service.js";
 import {
   createInitialSessionState,
   loadSessionState,
   saveSessionState,
+  type SessionState,
 } from "../../runtime/session-state.js";
 import {
+  loadEffectiveNamsConfigForMemory,
   resolveWorkspaceForMemory,
   type WorkspaceResolutionResult,
 } from "../../runtime/workspace-resolution.js";
+import { hasSeenAssistantMessage, markAssistantMessageSeen } from "../dedupe.js";
 import { formatWorkspaceSelectionNotice } from "../workspace-selection.js";
 import { parseAntigravityPayload } from "./payload.js";
-import { readLatestAntigravityUserPrompt } from "./transcript.js";
+import {
+  readAntigravityTranscript,
+  readLatestAntigravityUserPrompt,
+  type AntigravityTranscriptEntry,
+} from "./transcript.js";
 
 async function startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
   return logOnly(invocation);
@@ -107,7 +115,62 @@ async function beforeAgent(invocation: HookInvocation<"BeforeAgent">): Promise<H
 }
 
 async function afterAgent(invocation: HookInvocation<"AfterAgent">): Promise<HookResult> {
-  return logOnly(invocation);
+  const payloadInfo = parseAntigravityPayload(invocation.rawPayload, invocation.processCwd);
+  const initialState = createInitialSessionState({
+    platform: invocation.platform,
+    projectDirectory: payloadInfo.projectDirectory,
+    sessionId: payloadInfo.sessionId,
+  });
+  const state =
+    (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
+    initialState;
+
+  await appendRawPlatformLog(invocation, state);
+  state.seenAssistantMessageHashes ??= [];
+  state.seenTranscriptEntryIds ??= [];
+
+  if (state.conversationId === undefined) {
+    await saveSessionState(invocation.platform, state.sessionKey, state);
+    return allowOutput();
+  }
+  const conversationId = state.conversationId;
+
+  if (payloadInfo.transcriptPath === undefined) {
+    await saveSessionState(invocation.platform, state.sessionKey, state);
+    return allowOutput();
+  }
+
+  let entries: AntigravityTranscriptEntry[];
+  try {
+    entries = await readAntigravityTranscript(payloadInfo.transcriptPath);
+  } catch {
+    await appendNamsFailureDiagnostic(invocation, state);
+    await saveSessionState(invocation.platform, state.sessionKey, state);
+    return allowOutput();
+  }
+
+  if (!entries.some((entry) => entry.kind === "assistant")) {
+    await saveSessionState(invocation.platform, state.sessionKey, state);
+    return allowOutput();
+  }
+
+  const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
+  if (config === undefined) {
+    await saveSessionState(invocation.platform, state.sessionKey, state);
+    return allowOutput();
+  }
+
+  try {
+    const memory = createNamsMemoryService(config, invocation, state);
+    await storeAssistantMessagesFromTranscript(invocation.platform, conversationId, state, memory, entries);
+  } catch {
+    await appendNamsFailureDiagnostic(invocation, state);
+    await saveSessionState(invocation.platform, state.sessionKey, state);
+    return allowOutput();
+  }
+
+  await saveSessionState(invocation.platform, state.sessionKey, state);
+  return allowOutput();
 }
 
 async function afterTool(invocation: HookInvocation<"AfterTool">): Promise<HookResult> {
@@ -157,4 +220,37 @@ function workspaceResultOutput(
     return allowOutput(formatWorkspaceSelectionNotice("antigravity", result.workspaces, sessionId));
   }
   return allowOutput();
+}
+
+async function storeAssistantMessagesFromTranscript(
+  platform: string,
+  conversationId: string,
+  state: Pick<
+    SessionState,
+    "lastAssistantMessageHash" | "seenAssistantMessageHashes" | "seenTranscriptEntryIds" | "sessionKey"
+  >,
+  memory: NamsMemoryService,
+  entries: AntigravityTranscriptEntry[],
+): Promise<void> {
+  for (const entry of entries) {
+    if (entry.kind !== "assistant") {
+      continue;
+    }
+    if (entry.id !== undefined && state.seenTranscriptEntryIds.includes(entry.id)) {
+      continue;
+    }
+
+    const content = entry.content.trim();
+    if (content !== "") {
+      const responseHash = sha256([platform, state.sessionKey, "assistant", content].join("\n"));
+      if (!hasSeenAssistantMessage(state, responseHash)) {
+        await memory.storeAssistantMessage(conversationId, content);
+      }
+      markAssistantMessageSeen(state, [responseHash]);
+    }
+
+    if (entry.id !== undefined && !state.seenTranscriptEntryIds.includes(entry.id)) {
+      state.seenTranscriptEntryIds.push(entry.id);
+    }
+  }
 }

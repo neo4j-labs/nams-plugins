@@ -408,3 +408,188 @@ test("Antigravity BeforeAgent returns sanitized workspace selection notices thro
     await rm(projectDir, { recursive: true, force: true });
   }
 });
+
+test("Antigravity AfterAgent stores completed assistant text from transcript after a conversation exists", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
+  try {
+    const assistantResponse = "I'll keep the Antigravity assistant response.";
+    const transcriptPath = await writeTranscript(projectDir, [
+      { id: "user-content-1", role: "user", content: "Remember the assistant response.", status: "completed" },
+      { id: "assistant-content-1", role: "assistant", content: assistantResponse, status: "completed" },
+    ]);
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+
+    await antigravityMemoryAdapter.beforeAgent({
+      platform: "antigravity",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: antigravityPayload(projectDir, "session-1", transcriptPath),
+    });
+    const result = await antigravityMemoryAdapter.afterAgent({
+      platform: "antigravity",
+      event: "AfterAgent",
+      processCwd: projectDir,
+      rawPayload: antigravityPayload(projectDir, "session-1", transcriptPath),
+    });
+
+    assert.deepEqual(result.stdout, {});
+    const assistantMessages = nams.requestBodies("addMessage").filter((body) => body.role === "assistant");
+    assert.deepEqual(assistantMessages, [{ role: "assistant", content: assistantResponse }]);
+    assert.equal((await loadSessionState("antigravity", "session-1"))!.seenTranscriptEntryIds.includes("assistant-content-1"), true);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Antigravity AfterAgent does not write when assistant transcript response is missing or blank", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
+  try {
+    const transcriptPath = await writeTranscript(projectDir, [
+      { id: "user-content-1", role: "user", content: "Create a conversation first.", status: "completed" },
+      { id: "assistant-blank", role: "assistant", content: "   ", status: "completed" },
+      { id: "assistant-draft", role: "assistant", content: "Draft response must not persist.", status: "in_progress" },
+    ]);
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+
+    await antigravityMemoryAdapter.beforeAgent({
+      platform: "antigravity",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: antigravityPayload(projectDir, "session-1", transcriptPath),
+    });
+    const result = await antigravityMemoryAdapter.afterAgent({
+      platform: "antigravity",
+      event: "AfterAgent",
+      processCwd: projectDir,
+      rawPayload: antigravityPayload(projectDir, "session-1", transcriptPath),
+    });
+
+    assert.deepEqual(result.stdout, {});
+    assert.deepEqual(nams.requestBodies("addMessage").filter((body) => body.role === "assistant"), []);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Antigravity AfterAgent suppresses duplicate assistant transcript entries across replayed reads", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
+  try {
+    const transcriptPath = await writeTranscript(projectDir, [
+      { id: "user-content-1", role: "user", content: "Create a conversation for replay testing.", status: "completed" },
+      { id: "assistant-content-1", role: "assistant", content: "Only the first replayed content stores.", status: "completed" },
+    ]);
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+    const afterInvocation = {
+      platform: "antigravity" as const,
+      event: "AfterAgent" as const,
+      processCwd: projectDir,
+      rawPayload: antigravityPayload(projectDir, "session-1", transcriptPath),
+    };
+
+    await antigravityMemoryAdapter.beforeAgent({
+      platform: "antigravity",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: antigravityPayload(projectDir, "session-1", transcriptPath),
+    });
+    await antigravityMemoryAdapter.afterAgent(afterInvocation);
+    await writeTranscript(projectDir, [
+      { id: "user-content-1", role: "user", content: "Create a conversation for replay testing.", status: "completed" },
+      { id: "assistant-content-1", role: "assistant", content: "Mutated replay content must not store.", status: "completed" },
+    ]);
+    await antigravityMemoryAdapter.afterAgent(afterInvocation);
+
+    const assistantMessages = nams.requestBodies("addMessage").filter((body) => body.role === "assistant");
+    assert.deepEqual(assistantMessages, [
+      { role: "assistant", content: "Only the first replayed content stores." },
+    ]);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Antigravity AfterAgent filters hidden reasoning text from assistant transcript content", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
+  try {
+    const transcriptPath = await writeTranscript(projectDir, [
+      { id: "user-content-1", role: "user", content: "Create a conversation for filtering.", status: "completed" },
+      { id: "assistant-reasoning-1", role: "assistant", type: "reasoning", content: "hidden chain text", status: "completed" },
+      {
+        id: "assistant-content-1",
+        role: "assistant",
+        content: [
+          { type: "thought", text: "hidden thought text" },
+          { text: "Visible assistant answer." },
+        ],
+        status: "completed",
+      },
+    ]);
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+
+    await antigravityMemoryAdapter.beforeAgent({
+      platform: "antigravity",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: antigravityPayload(projectDir, "session-1", transcriptPath),
+    });
+    await antigravityMemoryAdapter.afterAgent({
+      platform: "antigravity",
+      event: "AfterAgent",
+      processCwd: projectDir,
+      rawPayload: antigravityPayload(projectDir, "session-1", transcriptPath),
+    });
+
+    const assistantMessages = nams.requestBodies("addMessage").filter((body) => body.role === "assistant");
+    assert.deepEqual(assistantMessages, [{ role: "assistant", content: "Visible assistant answer." }]);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Antigravity AfterAgent with no conversation returns empty stdout and does not call NAMS", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
+  try {
+    const transcriptPath = await writeTranscript(projectDir, [
+      { id: "assistant-content-1", role: "assistant", content: "No conversation exists.", status: "completed" },
+    ]);
+    const nams = createNamsFetchMock().all({ error: "unexpected NAMS call" }, 500);
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+
+    const result = await antigravityMemoryAdapter.afterAgent({
+      platform: "antigravity",
+      event: "AfterAgent",
+      processCwd: projectDir,
+      rawPayload: antigravityPayload(projectDir, "session-1", transcriptPath),
+    });
+
+    assert.deepEqual(result.stdout, {});
+    assert.equal(nams.calls().length, 0);
+    assert.equal((await loadSessionState("antigravity", "session-1"))!.conversationId, undefined);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
