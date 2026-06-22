@@ -242,7 +242,7 @@ async function storeAssistantMessagesFromTranscript(
 
     const content = entry.content.trim();
     if (content !== "") {
-      const responseHash = sha256([platform, state.sessionKey, "assistant", content].join("\n"));
+      const responseHash = assistantTranscriptDedupeHash(platform, state.sessionKey, entry, content);
       if (!hasSeenAssistantMessage(state, responseHash)) {
         await memory.storeAssistantMessage(conversationId, content);
       }
@@ -253,4 +253,16 @@ async function storeAssistantMessagesFromTranscript(
       state.seenTranscriptEntryIds.push(entry.id);
     }
   }
+}
+
+function assistantTranscriptDedupeHash(
+  platform: string,
+  sessionKey: string,
+  entry: Extract<AntigravityTranscriptEntry, { kind: "assistant" }>,
+  content: string,
+): string {
+  if (entry.id !== undefined) {
+    return sha256([platform, sessionKey, "assistant", "transcript-entry", entry.id].join("\n"));
+  }
+  return sha256([platform, sessionKey, "assistant", content].join("\n"));
 }

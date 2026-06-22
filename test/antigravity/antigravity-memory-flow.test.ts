@@ -523,6 +523,51 @@ test("Antigravity AfterAgent suppresses duplicate assistant transcript entries a
   }
 });
 
+test("Antigravity AfterAgent stores identical assistant text from distinct transcript entry ids", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
+  try {
+    const repeatedResponse = "Repeated assistant response.";
+    const transcriptPath = await writeTranscript(projectDir, [
+      { id: "user-content-1", role: "user", content: "Create a conversation for repeated assistant text.", status: "completed" },
+      { id: "assistant-content-1", role: "assistant", content: repeatedResponse, status: "completed" },
+    ]);
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+    const afterInvocation = {
+      platform: "antigravity" as const,
+      event: "AfterAgent" as const,
+      processCwd: projectDir,
+      rawPayload: antigravityPayload(projectDir, "session-1", transcriptPath),
+    };
+
+    await antigravityMemoryAdapter.beforeAgent({
+      platform: "antigravity",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: antigravityPayload(projectDir, "session-1", transcriptPath),
+    });
+    await antigravityMemoryAdapter.afterAgent(afterInvocation);
+    await writeTranscript(projectDir, [
+      { id: "user-content-1", role: "user", content: "Create a conversation for repeated assistant text.", status: "completed" },
+      { id: "assistant-content-1", role: "assistant", content: repeatedResponse, status: "completed" },
+      { id: "assistant-content-2", role: "assistant", content: repeatedResponse, status: "completed" },
+    ]);
+    await antigravityMemoryAdapter.afterAgent(afterInvocation);
+
+    const assistantMessages = nams.requestBodies("addMessage").filter((body) => body.role === "assistant");
+    assert.deepEqual(assistantMessages, [
+      { role: "assistant", content: repeatedResponse },
+      { role: "assistant", content: repeatedResponse },
+    ]);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("Antigravity AfterAgent filters hidden reasoning text from assistant transcript content", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
   try {
