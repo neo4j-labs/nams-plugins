@@ -156,7 +156,7 @@ For Antigravity, use this concrete native mapping:
 - Modify: `test/architecture.test.ts`
 - Modify: `test/cli-session-start.test.ts`
 
-- [ ] **Step 1: Add failing CLI routing coverage**
+- [x] **Step 1: Add failing CLI routing coverage**
 
 In `test/cli-session-start.test.ts`, extend the session-start harness list. This covers the required adapter method and manual route, even though generated Antigravity templates will not emit `SessionStart` until a native startup hook exists:
 
@@ -192,7 +192,7 @@ for (const event of ["BeforeAgent", "AfterAgent", "AfterTool"] as const) {
 }
 ```
 
-- [ ] **Step 2: Verify the gateway test is red**
+- [x] **Step 2: Verify the gateway test is red**
 
 Run:
 
@@ -202,7 +202,7 @@ npm run build && node --import=tsx --test test/cli-session-start.test.ts
 
 Expected: FAIL because `antigravity` is not yet accepted by `isPlatform()`.
 
-- [ ] **Step 3: Add Antigravity to shared platform types**
+- [x] **Step 3: Add Antigravity to shared platform types**
 
 Modify `src/interfaces.ts`:
 
@@ -217,7 +217,7 @@ Do not add native Antigravity hook event names to `hookEvents`. The shared event
 export const hookEvents = ["SessionStart", "BeforeAgent", "AfterAgent", "AfterTool"] as const;
 ```
 
-- [ ] **Step 4: Create the payload parser skeleton**
+- [x] **Step 4: Create the payload parser skeleton**
 
 Create `src/platforms/antigravity/payload.ts`:
 
@@ -282,7 +282,7 @@ function numberValue(value: unknown): number | undefined {
 
 Keep native event-name fields out of this parser except as raw logged payload data. Do not add prompt, assistant response, or complete tool fields here until transcript fixtures prove the exact source and shape.
 
-- [ ] **Step 5: Create a log-only memory adapter stub**
+- [x] **Step 5: Create a log-only memory adapter stub**
 
 Create `src/platforms/antigravity/index.ts`:
 
@@ -338,7 +338,7 @@ function allowOutput(): HookResult {
 
 This stub proves the gateway, state, and logging contract before any NAMS writes are added. Antigravity stdout is event-specific; the no-op output for `PreInvocation`, `PostInvocation`, and `PostToolUse` is `{}`.
 
-- [ ] **Step 6: Create the workspace adapter skeleton**
+- [x] **Step 6: Create the workspace adapter skeleton**
 
 Create `src/platforms/antigravity/workspaces.ts`:
 
@@ -353,7 +353,7 @@ export const antigravityWorkspaceAdapter: WorkspacePlatformAdapter = {
 
 Replace this with a `makeWorkspaceAdapter()` implementation later if Antigravity supports a native `nams:workspace` command surface. The current official docs expose skills as slash commands but do not document arbitrary custom command files equivalent to Claude or Codex.
 
-- [ ] **Step 7: Register the platform statically**
+- [x] **Step 7: Register the platform statically**
 
 Modify `src/platforms/index.ts`:
 
@@ -384,7 +384,7 @@ const workspaceAdapters: Record<Platform, WorkspacePlatformAdapter> = {
 
 Update the hardcoded usage strings in `src/cli.ts` so all three usage lines include `antigravity` in the platform list.
 
-- [ ] **Step 8: Update architecture tests**
+- [x] **Step 8: Update architecture tests**
 
 In `test/architecture.test.ts`, include `antigravity` in every platform list and add its concrete adapter paths to `importsConcreteAdapter()`:
 
@@ -409,7 +409,7 @@ Expected boundaries:
 - Shared runtime modules do not import Antigravity modules.
 - Only `src/platforms/index.ts` imports the concrete Antigravity adapters.
 
-- [ ] **Step 9: Verify the stub is green**
+- [x] **Step 9: Verify the stub is green**
 
 Run:
 
@@ -435,7 +435,7 @@ git commit -m "feat: add antigravity platform gateway" -m "Co-authored-by: Codex
 - Modify: `src/platforms/antigravity/payload.ts`
 - Create: `test/antigravity/antigravity-payload.test.ts`
 
-- [ ] **Step 1: Write parser tests from real hook fixtures**
+- [x] **Step 1: Write parser tests from real hook fixtures**
 
 Create fixture-style tests that cover the documented Antigravity common payload shape:
 
@@ -502,7 +502,7 @@ test("extracts Antigravity PostToolUse status metadata without inventing tool de
 
 Add separate tests for `PostInvocation` fields, `Stop` fields if supported later, invalid `workspacePaths`, blank strings, and numeric fields that are present but not integers.
 
-- [ ] **Step 2: Verify parser tests are red or incomplete**
+- [x] **Step 2: Verify parser tests are red or incomplete**
 
 Run:
 
@@ -512,11 +512,11 @@ npm run build && node --import=tsx --test test/antigravity/antigravity-payload.t
 
 Expected: FAIL if the parser still uses snake_case placeholder fields or accepts undocumented tool details.
 
-- [ ] **Step 3: Implement the exact parser**
+- [x] **Step 3: Implement the exact parser**
 
 Update `parseAntigravityPayload()` to use the documented camelCase fields. Keep return values typed and narrow. Do not parse or trust native event-name fields for routing. Do not extract prompt, assistant response, tool input, or tool output from raw hook payloads; those belong in transcript parsing once fixtures prove the transcript shape.
 
-- [ ] **Step 4: Verify parser behavior**
+- [x] **Step 4: Verify parser behavior**
 
 Run:
 
@@ -544,7 +544,7 @@ git commit -m "test: cover antigravity payload parsing" -m "Co-authored-by: Code
 - Create: `test/antigravity/fixtures/transcript-before-agent.jsonl`
 - Create or modify: `src/platforms/antigravity/transcript.ts`
 
-- [ ] **Step 1: Write the first-prompt memory-flow test**
+- [x] **Step 1: Write the first-prompt memory-flow test**
 
 Use `createNamsFetchMock()`, temp HOME fixtures, and a temp Antigravity transcript file. Seed the transcript fixture with one completed user message in the documented local transcript shape discovered during manual intake. Assert:
 
@@ -567,7 +567,7 @@ assert.deepEqual(nams.requestBody("createConversation"), {
 });
 ```
 
-- [ ] **Step 2: Verify the memory-flow test is red**
+- [x] **Step 2: Verify the memory-flow test is red**
 
 Run:
 
@@ -577,7 +577,7 @@ npm run build && node --import=tsx --test test/antigravity/antigravity-memory-fl
 
 Expected: FAIL because `beforeAgent()` is still log-only.
 
-- [ ] **Step 3: Implement the minimal BeforeAgent flow**
+- [x] **Step 3: Implement the minimal BeforeAgent flow**
 
 In `src/platforms/antigravity/index.ts`, follow the existing platform pattern:
 
@@ -612,11 +612,11 @@ function allowOutput(additionalContext?: string): HookResult {
 
 Do not use `hookSpecificOutput.additionalContext` for Antigravity; that is a Gemini/Claude/Codex-style convention, not the documented Antigravity `PreInvocation` contract.
 
-- [ ] **Step 4: Add duplicate user-message coverage**
+- [x] **Step 4: Add duplicate user-message coverage**
 
 In `test/antigravity/antigravity-memory-flow.test.ts`, call `beforeAgent()` twice with the same transcript-derived user message and assert `nams.calls("addMessage").length === 1`.
 
-- [ ] **Step 5: Verify BeforeAgent behavior**
+- [x] **Step 5: Verify BeforeAgent behavior**
 
 Run:
 
@@ -645,7 +645,7 @@ git commit -m "feat: add antigravity before-agent memory flow" -m "Co-authored-b
 - Modify: `test/cli-workspaces.test.ts`
 - Modify: Antigravity templates when they exist
 
-- [ ] **Step 1: Choose the native workspace command hook**
+- [x] **Step 1: Choose the native workspace command hook**
 
 Workspace readiness for memory is already handled inside `beforeAgent()` through `resolveWorkspaceForMemory()`. Use `workspaces.ts` for:
 
@@ -660,7 +660,7 @@ Choose the matching `WorkspaceHookEvent`:
 
 Keep `WorkspacePlatformAdapter.beforeAgent` unused unless Antigravity has a documented pre-memory workspace hook that does not overlap with memory `BeforeAgent`. The current Antigravity docs mention skills becoming slash commands, but they do not document a safe arbitrary command file equivalent to Claude/Codex custom commands. Do not implement `CustomCommand` for Antigravity until a local version proves that deterministic command surface.
 
-- [ ] **Step 2: Write workspace selection tests**
+- [x] **Step 2: Write workspace selection tests**
 
 In `test/antigravity/antigravity-memory-flow.test.ts`, assert:
 
@@ -676,7 +676,7 @@ If Antigravity supports an active-session workspace command, also add `test/anti
 - Missing active session fails closed with the platform-specific usage text.
 - Project and user config files are not created in the repository root.
 
-- [ ] **Step 3: Record active session markers when selection is required**
+- [x] **Step 3: Record active session markers when selection is required**
 
 If the workspace command needs to find the active session later, call `recordActiveWorkspaceSession()` from the memory adapter when workspace selection is required and when the platform receives an explicit workspace-command prompt. Follow the Codex and Gemini pattern:
 
@@ -692,13 +692,13 @@ await recordActiveWorkspaceSession({
 
 Wrap this marker write in `try/catch` so memory hooks never fail because the command marker could not be written.
 
-- [ ] **Step 4: Implement the workspace command adapter only when supported**
+- [x] **Step 4: Implement the workspace command adapter only when supported**
 
 Current official Antigravity docs do not document a deterministic custom-command hook equivalent to Claude/Codex custom commands. For the first Antigravity implementation, keep `antigravityWorkspaceAdapter` as install-configure only and do not add `CustomCommand`, `UserPromptExpansion`, or `CommandExecuteBefore` handling.
 
 If manual validation later proves a deterministic workspace command surface exists, add a short design amendment before implementing it. That amendment must record the native payload fields, stdout contract, and generated template command shape before code is added.
 
-- [ ] **Step 5: Verify workspace behavior**
+- [x] **Step 5: Verify workspace behavior**
 
 Run:
 
@@ -727,7 +727,7 @@ git commit -m "feat: support antigravity workspace selection" -m "Co-authored-by
 - Modify: `test/antigravity/antigravity-memory-flow.test.ts`
 - Create or modify: `test/antigravity/antigravity-transcript.test.ts`
 
-- [ ] **Step 1: Write assistant persistence tests**
+- [x] **Step 1: Write assistant persistence tests**
 
 Cover the cleanest response source first:
 
@@ -738,7 +738,7 @@ Cover the cleanest response source first:
 - No hidden reasoning or internal trace text is stored as assistant content.
 - No write for `Stop` unless a separate test fixture proves `PostInvocation` misses final assistant text and the adapter can return the required Stop stdout contract.
 
-- [ ] **Step 2: Verify assistant tests are red**
+- [x] **Step 2: Verify assistant tests are red**
 
 Run:
 
@@ -748,7 +748,7 @@ npm run build && node --import=tsx --test test/antigravity/antigravity-memory-fl
 
 Expected: FAIL until `afterAgent()` stores assistant messages.
 
-- [ ] **Step 3: Implement assistant capture**
+- [x] **Step 3: Implement assistant capture**
 
 In `afterAgent()`:
 
@@ -763,7 +763,7 @@ In `afterAgent()`:
 - Save state before return.
 - Return `{ stdout: {} }` for the `PostInvocation` mapping. Do not route native `Stop` to this method unless the implementation also returns Stop-compatible stdout, such as `{ decision: "" }`.
 
-- [ ] **Step 4: Verify assistant behavior**
+- [x] **Step 4: Verify assistant behavior**
 
 Run:
 
@@ -790,7 +790,7 @@ git commit -m "feat: persist antigravity assistant responses" -m "Co-authored-by
 - Modify: `src/platforms/antigravity/payload.ts`
 - Modify: `test/antigravity/antigravity-memory-flow.test.ts`
 
-- [ ] **Step 1: Write tool metadata tests**
+- [x] **Step 1: Write tool metadata tests**
 
 Assert:
 
@@ -801,7 +801,7 @@ Assert:
 - Replayed tool events do not create duplicate tool calls.
 - `PostToolUse` with only `stepIdx` and `error` logs raw payload and returns `{}` but does not invent tool metadata.
 
-- [ ] **Step 2: Verify tool tests are red**
+- [x] **Step 2: Verify tool tests are red**
 
 Run:
 
@@ -811,7 +811,7 @@ npm run build && node --import=tsx --test test/antigravity/antigravity-memory-fl
 
 Expected: FAIL until `afterTool()` records tool metadata.
 
-- [ ] **Step 3: Implement tool parsing and dedupe**
+- [x] **Step 3: Implement tool parsing and dedupe**
 
 Use the real Antigravity transcript tool-call id when available. If no stable id exists, derive a fallback hash from:
 
@@ -835,7 +835,7 @@ Do not store hidden chain-of-thought. Do not scrape tool output from unsupported
 
 The documented `PostToolUse` stdin payload does not include tool name, arguments, or output by itself. Prefer a transcript parser keyed by `stepIdx`; if the transcript cannot recover a clean completed tool call, skip the NAMS tool write and keep only the raw local platform log.
 
-- [ ] **Step 4: Verify tool behavior**
+- [x] **Step 4: Verify tool behavior**
 
 Run:
 
@@ -867,7 +867,7 @@ git commit -m "feat: record antigravity tool metadata" -m "Co-authored-by: Codex
 - Modify: `scripts/build-dist-common.mjs` only when a new projection kind is required.
 - Modify: `scripts/check-dist.mjs`
 
-- [ ] **Step 1: Choose the installation model**
+- [x] **Step 1: Choose the installation model**
 
 Use the least surprising native model:
 
@@ -884,7 +884,7 @@ Keep the output tree responsibilities separate:
 
 Do not add templates until the native hook command shape, command working directory, and plugin install path are known from local validation.
 
-- [ ] **Step 2: Write template tests first**
+- [x] **Step 2: Write template tests first**
 
 Assert:
 
@@ -915,7 +915,7 @@ Example local command expectation:
 assert.equal(command, "nams-hooks run antigravity --event BeforeAgent");
 ```
 
-- [ ] **Step 3: Create source templates**
+- [x] **Step 3: Create source templates**
 
 Create only the native files Antigravity needs in the matching source tree:
 
@@ -1001,7 +1001,7 @@ The marketplace `hooks.json` should use the same native events but point command
 }
 ```
 
-- [ ] **Step 4: Wire distribution generation**
+- [x] **Step 4: Wire distribution generation**
 
 Update only the projection script for the output tree Antigravity uses:
 
@@ -1010,7 +1010,7 @@ Update only the projection script for the output tree Antigravity uses:
 - Leave `scripts/build-dist-npm.mjs` alone unless the npm package runtime shape itself changes.
 - Update `scripts/build-dist-common.mjs` only when Antigravity needs a reusable projection kind that existing `template`, `runtime`, `packageJson`, or platform shim projections cannot express.
 
-- [ ] **Step 5: Add release checks**
+- [x] **Step 5: Add release checks**
 
 Update `scripts/check-dist.mjs` to verify:
 
@@ -1024,7 +1024,7 @@ Update `scripts/check-dist.mjs` to verify:
 - OpenAPI artifacts are absent.
 - npm dry-run package output includes only the npm runtime package files and documentation, not generated marketplace or local project artifacts.
 
-- [ ] **Step 6: Verify templates and package output**
+- [x] **Step 6: Verify templates and package output**
 
 Run:
 
@@ -1059,7 +1059,7 @@ Omit template or script paths that do not exist or did not change.
 - Modify: `docs/superpowers/specs/2026-05-10-nams-hooks-design.md`
 - Create: `docs/superpowers/specs/2026-06-09-antigravity-platform-design.md` only when platform behavior needs a dedicated design record
 
-- [ ] **Step 1: Document support level**
+- [x] **Step 1: Document support level**
 
 In README or INSTALL, state:
 
@@ -1069,7 +1069,7 @@ In README or INSTALL, state:
 - Supported lifecycle events.
 - Best-effort assistant and tool capture limitations.
 
-- [ ] **Step 2: Amend the source-of-truth design**
+- [x] **Step 2: Amend the source-of-truth design**
 
 Update `docs/superpowers/specs/2026-05-10-nams-hooks-design.md` when Antigravity becomes officially supported. Add a platform note with:
 
@@ -1079,11 +1079,11 @@ Update `docs/superpowers/specs/2026-05-10-nams-hooks-design.md` when Antigravity
 - Context injection strategy.
 - Known unsupported hooks or best-effort capture areas.
 
-- [ ] **Step 3: Add a dedicated platform design only for new decisions**
+- [x] **Step 3: Add a dedicated platform design only for new decisions**
 
 Create a new spec when Antigravity introduces a new distribution model, blocking behavior, workspace selection interaction, or payload source that does not fit existing adapter patterns. Keep routine adapter implementation details in this plan and tests.
 
-- [ ] **Step 4: Verify docs mention only supported behavior**
+- [x] **Step 4: Verify docs mention only supported behavior**
 
 Run:
 
@@ -1108,7 +1108,7 @@ git commit -m "docs: document antigravity platform support" -m "Co-authored-by: 
 
 - No source files unless verification exposes a defect.
 
-- [ ] **Step 1: Run targeted platform tests**
+- [x] **Step 1: Run targeted platform tests**
 
 Run:
 
@@ -1118,7 +1118,7 @@ npm run build && node --import=tsx --test test/antigravity/*.test.ts test/antigr
 
 Expected: PASS.
 
-- [ ] **Step 2: Run repository verification**
+- [x] **Step 2: Run repository verification**
 
 Run:
 
@@ -1133,7 +1133,7 @@ Expected:
 - Test typecheck passes.
 - Full test suite passes.
 
-- [ ] **Step 3: Run package verification when templates changed**
+- [x] **Step 3: Run package verification when templates changed**
 
 Run:
 
@@ -1152,7 +1152,7 @@ Expected:
 - No OpenAPI files are packaged into runtime or generated distribution artifacts.
 - No runtime dependencies are added.
 
-- [ ] **Step 4: Inspect dependency policy**
+- [x] **Step 4: Inspect dependency policy**
 
 Run:
 
@@ -1172,7 +1172,7 @@ Commit only fixes that were required by verification.
 
 - No source files unless manual validation exposes a defect.
 
-- [ ] **Step 1: Build local distribution artifacts**
+- [x] **Step 1: Build local distribution artifacts**
 
 Run:
 
@@ -1186,7 +1186,7 @@ Expected:
 - `dist-marketplace/` contains Antigravity plugin artifacts when Antigravity uses a self-contained install path.
 - `dist-local/` contains Antigravity project-local config when Antigravity uses a local fallback path.
 
-- [ ] **Step 2: Link or install into a throwaway project**
+- [x] **Step 2: Link or install into a throwaway project**
 
 Use the Antigravity-native local install command for the chosen output tree:
 
@@ -1204,6 +1204,10 @@ Start or resume Antigravity and confirm:
 - The first memory hook creates state under `~/.nams/state/antigravity/`.
 - No generated Antigravity `hooks.json` entry calls `nams-hooks run antigravity --event SessionStart`.
 
+Status: pending live Antigravity CLI or IDE hook execution. Generated templates
+and distribution checks verify that no Antigravity `hooks.json` entry emits
+`SessionStart`.
+
 - [ ] **Step 4: Validate first user prompt**
 
 Send one prompt and confirm:
@@ -1214,6 +1218,10 @@ Send one prompt and confirm:
 - Context is injected only through the platform's safe context channel.
 - The agent can continue if NAMS is unavailable.
 
+Status: pending live Antigravity CLI or IDE hook execution. Mocked adapter tests
+cover the transcript-derived prompt, memory recall, duplicate suppression, and
+`injectSteps[].ephemeralMessage` stdout contract.
+
 - [ ] **Step 5: Validate assistant and tool capture**
 
 Run one assistant response and one tool call. Confirm:
@@ -1223,9 +1231,18 @@ Run one assistant response and one tool call. Confirm:
 - Exposed tool output is stored only when the harness provides it cleanly.
 - Replaying the same native event does not duplicate NAMS writes.
 
-- [ ] **Step 6: Capture validation notes**
+Status: pending live Antigravity CLI or IDE hook execution. Mocked adapter tests
+cover best-effort transcript assistant capture, tool metadata capture,
+sanitization, malformed transcript handling, and duplicate suppression.
+
+- [x] **Step 6: Capture validation notes**
 
 Add manual validation notes to the PR description or a design amendment. Include native Antigravity version, OS, install method, supported event list, and known gaps.
+
+Validation notes captured in this plan and the design/docs: `agy` 1.0.8 on macOS
+validated `plugin validate` and `plugin install` with a disposable HOME. The
+self-contained plugin installs under `$HOME/.gemini/config/plugins/nams-hooks/`
+and the installed bundled CLI runs. Live hook memory behavior remains pending.
 
 ---
 
@@ -1238,7 +1255,7 @@ Add manual validation notes to the PR description or a design amendment. Include
 - Create: `live-tests/docker/antigravity/Dockerfile` only when Antigravity can run in a reviewable container image.
 - Create: `live-tests/src/test/java/com/neo4jlabs/nams/antigravity/` only when adding Antigravity live scenarios.
 
-- [ ] **Step 1: Decide whether live validation belongs in this platform PR**
+- [x] **Step 1: Decide whether live validation belongs in this platform PR**
 
 Do not add live tests automatically. Add them only when:
 
@@ -1259,6 +1276,9 @@ npm run dist
 
 The live test must install the generated npm package from `dist/`, link or copy generated local config from `dist-local/antigravity/`, and use a disposable project plus disposable HOME inside the container.
 
+Status: not in scope for this PR because a non-interactive Linux Docker
+Antigravity scenario has not been established.
+
 - [ ] **Step 3: Add the smallest useful live scenario**
 
 Mirror the current Codex live-test style:
@@ -1269,6 +1289,8 @@ Mirror the current Codex live-test style:
 - Link the generated Antigravity local project config from `dist-local/`.
 - Run one prompt that should trigger native `PreInvocation` and route to NAMS `BeforeAgent`.
 - Assert local state/log creation and the NAMS conversation/message created by the hook runtime.
+
+Status: not in scope for this PR.
 
 - [ ] **Step 4: Run live validation manually**
 
@@ -1281,6 +1303,8 @@ mvn test -Dtest=AntigravityNamsLiveTest
 ```
 
 Expected: PASS when Docker, platform credentials, and NAMS credentials are configured. Live tests call real external services, may spend API credits, and remain outside `npm run check`.
+
+Status: not run; no `AntigravityNamsLiveTest` was added.
 
 Commit:
 
