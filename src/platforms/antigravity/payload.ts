@@ -1,7 +1,7 @@
 import { firstString } from "../../runtime/util.js";
 
 export interface AntigravityPayloadInfo {
-  conversationId?: string;
+  sessionId?: string;
   workspacePaths: string[];
   transcriptPath?: string;
   artifactDirectoryPath?: string;
@@ -20,7 +20,7 @@ export function parseAntigravityPayload(
   processCwd: string,
 ): AntigravityPayloadInfo {
   const workspacePaths = stringArray(payload.workspacePaths);
-  const conversationId = firstString(payload.conversationId);
+  const sessionId = firstString(payload.conversationId);
   const transcriptPath = firstString(payload.transcriptPath);
   const artifactDirectoryPath = firstString(payload.artifactDirectoryPath);
   const invocationNum = numberValue(payload.invocationNum);
@@ -31,7 +31,7 @@ export function parseAntigravityPayload(
   const fullyIdle = booleanValue(payload.fullyIdle);
 
   return {
-    ...(conversationId !== undefined ? { conversationId } : {}),
+    ...(sessionId !== undefined ? { sessionId } : {}),
     workspacePaths,
     ...(transcriptPath !== undefined ? { transcriptPath } : {}),
     ...(artifactDirectoryPath !== undefined ? { artifactDirectoryPath } : {}),

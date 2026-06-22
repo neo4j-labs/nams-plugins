@@ -233,6 +233,9 @@ for (const event of ["BeforeAgent", "AfterAgent", "AfterTool"]) {
     try {
       const payload = {
         conversationId: `antigravity-${event}`,
+        event: "WrongEventNameMustNotMatter",
+        hook_event_name: "AnotherWrongEventNameMustNotMatter",
+        hookEventName: "YetAnotherWrongEventNameMustNotMatter",
         workspacePaths: [projectDir],
         transcriptPath: path.join(projectDir, "transcript.jsonl"),
         artifactDirectoryPath: projectDir,

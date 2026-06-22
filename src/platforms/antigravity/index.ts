@@ -24,7 +24,7 @@ async function logOnly(invocation: HookInvocation): Promise<HookResult> {
   const initialState = createInitialSessionState({
     platform: invocation.platform,
     projectDirectory: payloadInfo.projectDirectory,
-    sessionId: payloadInfo.conversationId,
+    sessionId: payloadInfo.sessionId,
   });
   const state =
     (await loadSessionState(invocation.platform, initialState.sessionKey)) ??

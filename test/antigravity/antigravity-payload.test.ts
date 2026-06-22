@@ -18,7 +18,7 @@ test("maps documented Antigravity common payload fields", () => {
     processCwd,
   );
 
-  assert.equal(info.conversationId, "conversation-123");
+  assert.equal(info.sessionId, "conversation-123");
   assert.equal(info.projectDirectory, "/workspace/one");
   assert.deepEqual(info.workspacePaths, ["/workspace/one", "/workspace/two"]);
   assert.equal(info.transcriptPath, "/tmp/transcript.jsonl");
@@ -113,8 +113,8 @@ test("does not expose undocumented native event, prompt, assistant, or tool fiel
   );
 
   assert.deepEqual(Object.keys(info).sort(), [
-    "conversationId",
     "projectDirectory",
+    "sessionId",
     "workspacePaths",
   ]);
 });
