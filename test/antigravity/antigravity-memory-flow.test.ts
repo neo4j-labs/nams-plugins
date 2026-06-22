@@ -185,6 +185,53 @@ test("Antigravity BeforeAgent uses transcript user prompt for memory flow and in
   }
 });
 
+test("Antigravity BeforeAgent auto-selects a single workspace and writes memory", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
+  try {
+    const transcriptPrompt = "Remember the auto-selected Antigravity workspace.";
+    const transcriptPath = await writeTranscript(projectDir, [
+      { id: "user-content-1", role: "user", content: transcriptPrompt, status: "completed" },
+    ]);
+    const nams = createNamsFetchMock()
+      .workspaces({
+        workspaces: [{ id: "workspace-auto", name: "Engineering", role: "owner", status: "active" }],
+      })
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message();
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+
+    const result = await antigravityMemoryAdapter.beforeAgent({
+      platform: "antigravity",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: antigravityPayload(projectDir, "session-1", transcriptPath),
+    });
+
+    assert.deepEqual(result.stdout, {});
+    assert.equal(nams.calls("listMyWorkspaces").length, 1);
+    assert.equal(nams.calls("createConversation").length, 1);
+    assert.equal(nams.calls("addMessage").length, 1);
+    assert.deepEqual(nams.requestBody("addMessage"), {
+      role: "user",
+      content: transcriptPrompt,
+    });
+
+    const state = (await loadSessionState("antigravity", "session-1"))!;
+    assert.equal(state.workspace?.id, "workspace-auto");
+    assert.equal(state.workspace?.source, "runtime-single-workspace");
+    assert.equal(typeof state.workspace?.selectedAt, "string");
+    assert.doesNotThrow(() => new Date(String(state.workspace?.selectedAt)).toISOString());
+    assert.equal(state.conversationId, "conversation-1");
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("Antigravity BeforeAgent stores a duplicate transcript-derived user message only once", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
   try {
@@ -320,7 +367,7 @@ test("Antigravity BeforeAgent with no transcript path or clean prompt saves stat
   }
 });
 
-test("Antigravity BeforeAgent returns workspace selection notices through injectSteps", async () => {
+test("Antigravity BeforeAgent returns sanitized workspace selection notices through injectSteps without writing memory", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
   try {
     const transcriptPath = await writeTranscript(projectDir, [
@@ -333,7 +380,7 @@ test("Antigravity BeforeAgent returns workspace selection notices through inject
       ],
     });
     testEnv(projectDir, {
-      NAMS_API_KEY: "key",
+      NAMS_API_KEY: "secret-api-key",
       NAMS_BASE_URL: "https://memory.example.test",
     });
 
@@ -344,12 +391,19 @@ test("Antigravity BeforeAgent returns workspace selection notices through inject
       rawPayload: antigravityPayload(projectDir, "session-1", transcriptPath),
     });
 
-    assert.match(injectedMessage(result), /NAMS memory is inactive/);
-    assert.match(injectedMessage(result), /workspace-1/);
-    assert.match(injectedMessage(result), /workspace-2/);
+    const message = injectedMessage(result);
+    assert.match(message, /NAMS memory is inactive/);
+    assert.match(message, /No memory messages were stored/);
+    assert.match(message, /nams-hooks workspaces configure antigravity --scope session --session-id session-1 --workspace <workspace-id-or-name>/);
+    assert.match(message, /workspace-1/);
+    assert.match(message, /workspace-2/);
+    assert.doesNotMatch(message, /secret-api-key|Authorization|Bearer/);
     assert.equal(Object.hasOwn(result.stdout, "hookSpecificOutput"), false);
     assert.equal(nams.calls("listMyWorkspaces").length, 1);
     assert.equal(nams.calls("createConversation").length, 0);
+    assert.equal(nams.calls("addMessage").length, 0);
+    assert.equal((await loadSessionState("antigravity", "session-1"))!.conversationId, undefined);
+    assert.equal((await loadSessionState("antigravity", "session-1"))!.workspace, undefined);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
