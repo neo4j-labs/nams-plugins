@@ -2,6 +2,7 @@ import type { HookInvocation, HookResult, MemoryPlatformAdapter } from "../../in
 import { sha256 } from "../../runtime/hashing.js";
 import {
   appendNamsFailureDiagnostic,
+  appendPlatformDiagnosticLog,
   appendRawPlatformLog,
 } from "../../runtime/logging.js";
 import {
@@ -211,8 +212,13 @@ async function afterTool(invocation: HookInvocation<"AfterTool">): Promise<HookR
   let toolCall: AntigravityToolTranscriptEntry | undefined;
   try {
     toolCall = await readLatestAntigravityToolCall(payloadInfo.transcriptPath, payloadInfo.stepIdx);
-  } catch {
-    await appendNamsFailureDiagnostic(invocation, state);
+  } catch (error) {
+    await appendPlatformDiagnosticLog(invocation, state, {
+      message:
+        error instanceof SyntaxError
+          ? "Antigravity transcript JSON malformed"
+          : "Antigravity transcript read failed",
+    });
     await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
   }

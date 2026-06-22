@@ -812,7 +812,7 @@ test("Antigravity AfterTool logs a diagnostic when transcript reading fails", as
     assert.equal(nams.calls("addToolCall").length, 0);
     const { lines } = await readSingleSessionLog(projectDir);
     const diagnostics = lines.filter(
-      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS request failed",
+      (entry) => entry.kind === "diagnostic" && entry.payload.message === "Antigravity transcript read failed",
     );
     assert.equal(diagnostics.length, 1);
   } finally {
@@ -853,7 +853,7 @@ test("Antigravity AfterTool logs a diagnostic when tool transcript JSON is malfo
     assert.equal(nams.calls("addToolCall").length, 0);
     const { lines } = await readSingleSessionLog(projectDir);
     const diagnostics = lines.filter(
-      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS request failed",
+      (entry) => entry.kind === "diagnostic" && entry.payload.message === "Antigravity transcript JSON malformed",
     );
     assert.equal(diagnostics.length, 1);
   } finally {
@@ -964,6 +964,143 @@ test("Antigravity AfterTool records completed transcript tool metadata", async (
     assert.match(toolBody.input, /"command":"npm test"/);
     assert.match(toolBody.input, /"keep":"metadata"/);
     assert.doesNotMatch(toolBody.input, /must be sanitized|"output"|"responseBody"/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Antigravity AfterTool sanitizes hidden reasoning-shaped tool input fields and parts", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
+  try {
+    const transcriptPath = await writeTranscript(projectDir, [
+      { id: "user-content-1", role: "user", content: "Create a conversation for sanitized tool input.", status: "completed" },
+      {
+        id: "tool-call-1",
+        kind: "toolCall",
+        name: "shell",
+        input: {
+          command: "pwd",
+          reasoning: "hidden chain text",
+          nested: {
+            keep: "visible nested metadata",
+            thought: "hidden nested thought",
+            parts: [
+              { type: "thought", text: "hidden part text" },
+              { text: "visible part text" },
+            ],
+          },
+          content: [
+            { kind: "internal_trace", text: "hidden internal trace" },
+            { text: "visible content part" },
+          ],
+        },
+        output: "project directory",
+        status: "completed",
+        stepIdx: 6,
+      },
+    ]);
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message()
+      .reasoningStep({ id: "step-tool-1" })
+      .toolCall();
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+
+    await antigravityMemoryAdapter.beforeAgent({
+      platform: "antigravity",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: antigravityPayload(projectDir, "session-1", transcriptPath),
+    });
+    await antigravityMemoryAdapter.afterTool({
+      platform: "antigravity",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: { ...antigravityPayload(projectDir, "session-1", transcriptPath), stepIdx: 6 },
+    });
+
+    const toolBody = nams.requestBody("addToolCall");
+    assert.match(toolBody.input, /"command":"pwd"/);
+    assert.match(toolBody.input, /visible nested metadata/);
+    assert.match(toolBody.input, /visible part text/);
+    assert.match(toolBody.input, /visible content part/);
+    assert.doesNotMatch(
+      toolBody.input,
+      /hidden chain text|hidden nested thought|hidden part text|hidden internal trace|"reasoning"|"thought"|"internal_trace"/,
+    );
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Antigravity AfterTool records valid tool metadata despite later malformed non-tool transcript lines", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
+  try {
+    const transcriptPath = path.join(projectDir, "transcript.jsonl");
+    await writeFile(
+      transcriptPath,
+      [
+        JSON.stringify({ id: "user-content-1", role: "user", content: "Create a conversation for malformed tail lines.", status: "completed" }),
+        JSON.stringify({
+          id: "tool-call-1",
+          kind: "toolCall",
+          name: "shell",
+          input: { command: "pwd" },
+          output: "project directory",
+          status: "completed",
+          stepIdx: 12,
+        }),
+        "{\"role\":\"assistant\",\"content\":\"unfinished assistant line\"",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message()
+      .reasoningStep({ id: "step-tool-1" })
+      .toolCall();
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+
+    await antigravityMemoryAdapter.beforeAgent({
+      platform: "antigravity",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: antigravityPayload(projectDir, "session-1", transcriptPath),
+    });
+    const result = await antigravityMemoryAdapter.afterTool({
+      platform: "antigravity",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: { ...antigravityPayload(projectDir, "session-1", transcriptPath), stepIdx: 12 },
+    });
+
+    assert.deepEqual(result.stdout, {});
+    assert.equal(nams.calls("addReasoningStep").length, 1);
+    assert.equal(nams.calls("addToolCall").length, 1);
+    assert.equal(nams.requestBody("addToolCall").toolName, "shell");
+    const { lines } = await readSingleSessionLog(projectDir);
+    assert.equal(
+      lines.some(
+        (entry) =>
+          entry.kind === "diagnostic" &&
+          (entry.payload.message === "Antigravity transcript read failed" ||
+            entry.payload.message === "Antigravity transcript JSON malformed"),
+      ),
+      false,
+    );
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }

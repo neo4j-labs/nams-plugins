@@ -31,6 +31,17 @@ export type AntigravityTranscriptEntry =
 
 const transcriptTailByteLimit = 64 * 1024;
 const transcriptTailLineLimit = 200;
+const hiddenReasoningTokens = new Set([
+  "reasoning",
+  "thought",
+  "thinking",
+  "internal",
+  "internaltrace",
+  "trace",
+  "summary",
+  "conversationsummary",
+  "compactedsummary",
+]);
 
 export async function readLatestAntigravityUserPrompt(transcriptPath: string): Promise<string | undefined> {
   let lines: string[];
@@ -76,7 +87,17 @@ export async function readLatestAntigravityToolCall(
       continue;
     }
 
-    const entry = toToolEntry(parseJsonLineStrict(line));
+    let parsed: unknown;
+    try {
+      parsed = parseJsonLineStrict(line);
+    } catch (error) {
+      if (isToolMetadataLine(line)) {
+        throw error;
+      }
+      continue;
+    }
+
+    const entry = toToolEntry(parsed);
     if (entry === undefined) {
       continue;
     }
@@ -183,7 +204,7 @@ function toToolEntry(raw: unknown): AntigravityToolTranscriptEntry | undefined {
     kind: "toolCall",
     ...(id !== undefined ? { id } : {}),
     name,
-    input: firstDefined(raw.input, raw.args, raw.arguments, raw.toolInput, raw.tool_input) ?? {},
+    input: sanitizeToolInput(firstDefined(raw.input, raw.args, raw.arguments, raw.toolInput, raw.tool_input)) ?? {},
     ...(output !== undefined ? { output } : {}),
     ...(status !== undefined ? { status } : {}),
     ...(durationMs !== undefined ? { durationMs } : {}),
@@ -277,6 +298,35 @@ function safeOutputText(value: unknown): string | undefined {
   return text === "" ? undefined : text;
 }
 
+function sanitizeToolInput(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => sanitizeToolInput(entry))
+      .filter((entry) => entry !== undefined);
+  }
+
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  if (isHiddenReasoningLike(value)) {
+    return undefined;
+  }
+
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, nestedValue] of Object.entries(value)) {
+    if (isHiddenReasoningValue(key)) {
+      continue;
+    }
+
+    const sanitizedValue = sanitizeToolInput(nestedValue);
+    if (sanitizedValue !== undefined) {
+      sanitized[key] = sanitizedValue;
+    }
+  }
+  return sanitized;
+}
+
 function isHiddenReasoningLike(raw: Record<string, unknown>): boolean {
   return (
     isHiddenReasoningValue(raw.type) ||
@@ -286,17 +336,11 @@ function isHiddenReasoningLike(raw: Record<string, unknown>): boolean {
 }
 
 function isHiddenReasoningValue(value: unknown): boolean {
-  return (
-    value === "reasoning" ||
-    value === "thought" ||
-    value === "thinking" ||
-    value === "internal" ||
-    value === "internal_trace" ||
-    value === "trace" ||
-    value === "summary" ||
-    value === "conversation_summary" ||
-    value === "compacted_summary"
-  );
+  return typeof value === "string" && hiddenReasoningTokens.has(normalizeHiddenReasoningToken(value));
+}
+
+function normalizeHiddenReasoningToken(value: string): string {
+  return value.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
 }
 
 function firstDefined(...values: unknown[]): unknown {
@@ -319,6 +363,12 @@ function numberValue(...values: unknown[]): number | undefined {
     }
   }
   return undefined;
+}
+
+function isToolMetadataLine(line: string): boolean {
+  return /"?(kind|type|role|name|toolName|tool_name|tool|input|args|arguments|toolInput|tool_input|stepIdx|step_idx)"?\s*:/.test(
+    line,
+  ) && /tool|toolCall|tool_call|toolName|tool_name|toolInput|tool_input|stepIdx|step_idx/.test(line);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
