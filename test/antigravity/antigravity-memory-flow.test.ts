@@ -638,3 +638,313 @@ test("Antigravity AfterAgent with no conversation returns empty stdout and does 
     await rm(projectDir, { recursive: true, force: true });
   }
 });
+
+test("Antigravity AfterTool with no conversation returns empty stdout and does not call NAMS", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
+  try {
+    const transcriptPath = await writeTranscript(projectDir, [
+      {
+        id: "tool-call-1",
+        kind: "toolCall",
+        name: "shell",
+        input: { command: "pwd" },
+        output: "project directory",
+        status: "completed",
+        stepIdx: 3,
+      },
+    ]);
+    const nams = createNamsFetchMock().all({ error: "unexpected NAMS call" }, 500);
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+
+    const result = await antigravityMemoryAdapter.afterTool({
+      platform: "antigravity",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: { ...antigravityPayload(projectDir, "session-1", transcriptPath), stepIdx: 3 },
+    });
+
+    assert.deepEqual(result.stdout, {});
+    assert.equal(nams.calls().length, 0);
+    assert.equal((await loadSessionState("antigravity", "session-1"))!.conversationId, undefined);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Antigravity AfterTool without transcript tool metadata saves state and does not call NAMS", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
+  try {
+    const transcriptPath = await writeTranscript(projectDir, [
+      { id: "user-content-1", role: "user", content: "Create a conversation first.", status: "completed" },
+    ]);
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+
+    await antigravityMemoryAdapter.beforeAgent({
+      platform: "antigravity",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: antigravityPayload(projectDir, "session-1", transcriptPath),
+    });
+    const callsBeforeAfterTool = nams.calls().length;
+    const result = await antigravityMemoryAdapter.afterTool({
+      platform: "antigravity",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: { ...antigravityPayload(projectDir, "session-1", transcriptPath), stepIdx: 9 },
+    });
+    const missingNameTranscriptPath = await writeTranscript(projectDir, [
+      { id: "user-content-1", role: "user", content: "Create a conversation first.", status: "completed" },
+      {
+        id: "tool-call-without-name",
+        kind: "toolCall",
+        input: { command: "pwd" },
+        output: "project directory",
+        status: "completed",
+        stepIdx: 10,
+      },
+    ]);
+    const missingToolNameResult = await antigravityMemoryAdapter.afterTool({
+      platform: "antigravity",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: { ...antigravityPayload(projectDir, "session-1", missingNameTranscriptPath), stepIdx: 10 },
+    });
+
+    assert.deepEqual(result.stdout, {});
+    assert.deepEqual(missingToolNameResult.stdout, {});
+    assert.equal(nams.calls().length, callsBeforeAfterTool);
+    assert.equal((await loadSessionState("antigravity", "session-1"))!.conversationId, "conversation-1");
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Antigravity PostToolUse with only stepIdx and error logs raw payload without inventing tool metadata", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
+  try {
+    const transcriptPath = await writeTranscript(projectDir, [
+      { id: "user-content-1", role: "user", content: "Create a conversation first.", status: "completed" },
+    ]);
+    const error = { message: "tool failed" };
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+
+    await antigravityMemoryAdapter.beforeAgent({
+      platform: "antigravity",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: antigravityPayload(projectDir, "session-1", transcriptPath),
+    });
+    const callsBeforeAfterTool = nams.calls().length;
+    const result = await antigravityMemoryAdapter.afterTool({
+      platform: "antigravity",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: { ...antigravityPayload(projectDir, "session-1"), stepIdx: 7, error },
+    });
+
+    assert.deepEqual(result.stdout, {});
+    assert.equal(nams.calls().length, callsBeforeAfterTool);
+    const { lines, log } = await readSingleSessionLog(projectDir);
+    const afterToolLog = lines.find((entry) => entry.event === "AfterTool");
+    assert.equal(afterToolLog?.payload.stepIdx, 7);
+    assert.deepEqual(afterToolLog?.payload.error, error);
+    assert.match(log, /"error":\{"message":"tool failed"\}/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Antigravity AfterTool records completed transcript tool metadata", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
+  try {
+    const transcriptPath = await writeTranscript(projectDir, [
+      { id: "user-content-1", role: "user", content: "Create a conversation for tool metadata.", status: "completed" },
+      {
+        id: "tool-call-1",
+        kind: "toolCall",
+        name: "shell",
+        input: {
+          command: "npm test",
+          keep: "metadata",
+          output: "must be sanitized",
+          responseBody: "must also be sanitized",
+        },
+        output: "Tests passed",
+        status: "completed",
+        durationMs: 37,
+        stepIdx: 4,
+      },
+    ]);
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message()
+      .reasoningStep({ id: "step-tool-1" })
+      .toolCall();
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+
+    await antigravityMemoryAdapter.beforeAgent({
+      platform: "antigravity",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: antigravityPayload(projectDir, "session-1", transcriptPath),
+    });
+    const result = await antigravityMemoryAdapter.afterTool({
+      platform: "antigravity",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: { ...antigravityPayload(projectDir, "session-1", transcriptPath), stepIdx: 4 },
+    });
+
+    assert.deepEqual(result.stdout, {});
+    assert.deepEqual(nams.requestBody("addReasoningStep"), {
+      conversationId: "conversation-1",
+      reasoning: "Antigravity ran shell with the provided tool input.",
+      actionTaken: "Ran shell",
+      result: "Antigravity exposed post-tool output.",
+    });
+    const toolBody = nams.requestBody("addToolCall");
+    assert.equal(toolBody.toolName, "shell");
+    assert.equal(toolBody.stepId, "step-tool-1");
+    assert.equal(toolBody.status, "completed");
+    assert.equal(toolBody.durationMs, 37);
+    assert.equal(toolBody.output, "Tests passed");
+    assert.match(toolBody.input, /"command":"npm test"/);
+    assert.match(toolBody.input, /"keep":"metadata"/);
+    assert.doesNotMatch(toolBody.input, /must be sanitized|"output"|"responseBody"/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Antigravity AfterTool replay does not duplicate transcript tool calls", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
+  try {
+    const transcriptPath = await writeTranscript(projectDir, [
+      { id: "user-content-1", role: "user", content: "Create a conversation for replayed tools.", status: "completed" },
+      {
+        id: "tool-call-1",
+        kind: "toolCall",
+        name: "shell",
+        input: { command: "pwd" },
+        output: "project directory",
+        status: "completed",
+        stepIdx: 2,
+      },
+    ]);
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message()
+      .reasoningStep({ id: "step-tool-1" })
+      .toolCall();
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+    const invocation = {
+      platform: "antigravity" as const,
+      event: "AfterTool" as const,
+      processCwd: projectDir,
+      rawPayload: { ...antigravityPayload(projectDir, "session-1", transcriptPath), stepIdx: 2 },
+    };
+
+    await antigravityMemoryAdapter.beforeAgent({
+      platform: "antigravity",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: antigravityPayload(projectDir, "session-1", transcriptPath),
+    });
+    await antigravityMemoryAdapter.afterTool(invocation);
+    await antigravityMemoryAdapter.afterTool(invocation);
+
+    assert.equal(nams.calls("addReasoningStep").length, 1);
+    assert.equal(nams.calls("addToolCall").length, 1);
+    assert.equal((await loadSessionState("antigravity", "session-1"))!.seenToolCallIds.length, 1);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Antigravity AfterTool does not store hidden reasoning as tool output or reasoning", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
+  try {
+    const transcriptPath = await writeTranscript(projectDir, [
+      { id: "user-content-1", role: "user", content: "Create a conversation for safe tool output.", status: "completed" },
+      {
+        id: "internal-tool-trace",
+        kind: "internal_trace",
+        name: "shell",
+        input: { command: "cat secrets.txt" },
+        output: "hidden chain text",
+        status: "completed",
+        stepIdx: 5,
+      },
+      {
+        id: "tool-call-1",
+        kind: "toolCall",
+        name: "shell",
+        input: { command: "pwd" },
+        output: [{ type: "thought", text: "hidden thought text" }],
+        status: "completed",
+        stepIdx: 5,
+      },
+    ]);
+    const nams = createNamsFetchMock()
+      .createConversation()
+      .context()
+      .searchEntities()
+      .message()
+      .reasoningStep({ id: "step-tool-1" })
+      .toolCall();
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+
+    await antigravityMemoryAdapter.beforeAgent({
+      platform: "antigravity",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: antigravityPayload(projectDir, "session-1", transcriptPath),
+    });
+    await antigravityMemoryAdapter.afterTool({
+      platform: "antigravity",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: { ...antigravityPayload(projectDir, "session-1", transcriptPath), stepIdx: 5 },
+    });
+
+    const reasoningBody = nams.requestBody("addReasoningStep");
+    assert.equal(reasoningBody.reasoning, "Antigravity ran shell with the provided tool input.");
+    assert.doesNotMatch(JSON.stringify(reasoningBody), /hidden chain text|hidden thought text/);
+    const toolBody = nams.requestBody("addToolCall");
+    assert.equal(toolBody.toolName, "shell");
+    assert.equal(toolBody.output, "");
+    assert.doesNotMatch(JSON.stringify(toolBody), /hidden chain text|hidden thought text|cat secrets/);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});

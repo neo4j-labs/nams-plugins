@@ -12,9 +12,22 @@ export interface AntigravityAssistantTranscriptEntry {
   content: string;
 }
 
+export interface AntigravityToolTranscriptEntry {
+  kind: "toolCall";
+  id?: string;
+  name: string;
+  input: unknown;
+  output?: string;
+  status?: string;
+  durationMs?: number;
+  stepIdx?: number;
+  timestamp?: string;
+}
+
 export type AntigravityTranscriptEntry =
   | AntigravityUserTranscriptEntry
-  | AntigravityAssistantTranscriptEntry;
+  | AntigravityAssistantTranscriptEntry
+  | AntigravityToolTranscriptEntry;
 
 const transcriptTailByteLimit = 64 * 1024;
 const transcriptTailLineLimit = 200;
@@ -52,6 +65,24 @@ export async function readAntigravityTranscript(transcriptPath: string): Promise
   });
 }
 
+export async function readLatestAntigravityToolCall(
+  transcriptPath: string,
+  stepIdx?: number,
+): Promise<AntigravityToolTranscriptEntry | undefined> {
+  const entries = await readAntigravityTranscript(transcriptPath);
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (entry.kind !== "toolCall") {
+      continue;
+    }
+    if (stepIdx !== undefined && entry.stepIdx !== stepIdx) {
+      continue;
+    }
+    return entry;
+  }
+  return undefined;
+}
+
 async function readBoundedTranscriptTailLines(transcriptPath: string): Promise<string[]> {
   const file = await open(transcriptPath, "r");
   try {
@@ -85,7 +116,7 @@ function parseJsonLine(line: string): unknown {
 }
 
 function toTranscriptEntry(raw: unknown): AntigravityTranscriptEntry | undefined {
-  return toUserEntry(raw) ?? toAssistantEntry(raw);
+  return toUserEntry(raw) ?? toAssistantEntry(raw) ?? toToolEntry(raw);
 }
 
 function toUserEntry(raw: unknown): AntigravityUserTranscriptEntry | undefined {
@@ -122,6 +153,35 @@ function toAssistantEntry(raw: unknown): AntigravityAssistantTranscriptEntry | u
   };
 }
 
+function toToolEntry(raw: unknown): AntigravityToolTranscriptEntry | undefined {
+  if (!isRecord(raw) || isHiddenReasoningLike(raw) || !isToolEntry(raw) || !isCompletedToolEntry(raw)) {
+    return undefined;
+  }
+
+  const name = firstText(raw.name, raw.toolName, raw.tool_name, raw.tool);
+  if (name === undefined) {
+    return undefined;
+  }
+
+  const output = safeOutputText(raw.output) ?? safeOutputText(raw.result);
+  const id = firstText(raw.id, raw.toolCallId, raw.tool_call_id, raw.callId, raw.call_id);
+  const status = firstText(raw.status);
+  const durationMs = numberValue(raw.durationMs, raw.duration_ms, raw.elapsedMs, raw.elapsed_ms);
+  const stepIdx = numberValue(raw.stepIdx, raw.step_idx);
+  const timestamp = firstText(raw.timestamp, raw.createdAt, raw.created_at);
+  return {
+    kind: "toolCall",
+    ...(id !== undefined ? { id } : {}),
+    name,
+    input: firstDefined(raw.input, raw.args, raw.arguments, raw.toolInput, raw.tool_input) ?? {},
+    ...(output !== undefined ? { output } : {}),
+    ...(status !== undefined ? { status } : {}),
+    ...(durationMs !== undefined ? { durationMs } : {}),
+    ...(stepIdx !== undefined ? { stepIdx } : {}),
+    ...(timestamp !== undefined ? { timestamp } : {}),
+  };
+}
+
 function isUserEntry(raw: Record<string, unknown>): boolean {
   return raw.role === "user" || raw.type === "user";
 }
@@ -130,12 +190,37 @@ function isAssistantEntry(raw: Record<string, unknown>): boolean {
   return raw.role === "assistant" || raw.type === "assistant";
 }
 
+function isToolEntry(raw: Record<string, unknown>): boolean {
+  return (
+    raw.kind === "toolCall" ||
+    raw.kind === "tool_call" ||
+    raw.kind === "tool" ||
+    raw.type === "toolCall" ||
+    raw.type === "tool_call" ||
+    raw.type === "tool" ||
+    raw.role === "tool"
+  );
+}
+
 function isCompletedEntry(raw: Record<string, unknown>): boolean {
   return (
     raw.status === undefined ||
     raw.status === "completed" ||
     raw.status === "complete" ||
     raw.status === "finished"
+  );
+}
+
+function isCompletedToolEntry(raw: Record<string, unknown>): boolean {
+  return (
+    raw.status === undefined ||
+    raw.status === "completed" ||
+    raw.status === "complete" ||
+    raw.status === "finished" ||
+    raw.status === "success" ||
+    raw.status === "succeeded" ||
+    raw.status === "failed" ||
+    raw.status === "error"
   );
 }
 
@@ -169,6 +254,19 @@ function textFromValue(value: unknown): string {
     .join("\n");
 }
 
+function safeOutputText(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const text = textFromValue(value).trim();
+  return text === "" ? undefined : text;
+}
+
 function isHiddenReasoningLike(raw: Record<string, unknown>): boolean {
   return (
     isHiddenReasoningValue(raw.type) ||
@@ -189,6 +287,28 @@ function isHiddenReasoningValue(value: unknown): boolean {
     value === "conversation_summary" ||
     value === "compacted_summary"
   );
+}
+
+function firstDefined(...values: unknown[]): unknown {
+  return values.find((value) => value !== undefined);
+}
+
+function firstText(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim() !== "") {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function numberValue(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+  }
+  return undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
