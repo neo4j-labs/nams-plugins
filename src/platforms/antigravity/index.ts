@@ -203,10 +203,16 @@ async function afterTool(invocation: HookInvocation<"AfterTool">): Promise<HookR
     return allowOutput();
   }
 
+  if (payloadInfo.stepIdx === undefined) {
+    await saveSessionState(invocation.platform, state.sessionKey, state);
+    return allowOutput();
+  }
+
   let toolCall: AntigravityToolTranscriptEntry | undefined;
   try {
     toolCall = await readLatestAntigravityToolCall(payloadInfo.transcriptPath, payloadInfo.stepIdx);
   } catch {
+    await appendNamsFailureDiagnostic(invocation, state);
     await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
   }
