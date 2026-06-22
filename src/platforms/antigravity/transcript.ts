@@ -37,7 +37,7 @@ function parseJsonLine(line: string): unknown {
 }
 
 function toUserEntry(raw: unknown): AntigravityUserTranscriptEntry | undefined {
-  if (!isRecord(raw) || !isUserEntry(raw) || !isCompletedEntry(raw)) {
+  if (!isRecord(raw) || isHiddenReasoningLike(raw) || !isUserEntry(raw) || !isCompletedEntry(raw)) {
     return undefined;
   }
 
@@ -87,13 +87,32 @@ function textFromValue(value: unknown): string {
 
   return value
     .map((part) => {
-      if (!isRecord(part)) {
+      if (!isRecord(part) || isHiddenReasoningLike(part)) {
         return "";
       }
       return typeof part.text === "string" ? part.text : "";
     })
     .filter((text) => text !== "")
     .join("\n");
+}
+
+function isHiddenReasoningLike(raw: Record<string, unknown>): boolean {
+  return (
+    isHiddenReasoningValue(raw.type) ||
+    isHiddenReasoningValue(raw.role) ||
+    isHiddenReasoningValue(raw.kind)
+  );
+}
+
+function isHiddenReasoningValue(value: unknown): boolean {
+  return (
+    value === "reasoning" ||
+    value === "thought" ||
+    value === "thinking" ||
+    value === "summary" ||
+    value === "conversation_summary" ||
+    value === "compacted_summary"
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

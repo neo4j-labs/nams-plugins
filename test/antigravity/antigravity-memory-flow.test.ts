@@ -40,6 +40,13 @@ async function copyBeforeAgentTranscript(projectDir: string): Promise<string> {
   return transcriptPath;
 }
 
+async function copyHiddenReasoningTranscript(projectDir: string): Promise<string> {
+  const transcriptPath = path.join(projectDir, "transcript-hidden-reasoning-user.jsonl");
+  const fixturePath = path.join(fixtureDirectory, "fixtures", "transcript-hidden-reasoning-user.jsonl");
+  await writeFile(transcriptPath, await readFile(fixturePath, "utf8"), "utf8");
+  return transcriptPath;
+}
+
 async function writeTranscript(projectDir: string, lines: Array<Record<string, unknown>>): Promise<string> {
   const transcriptPath = path.join(projectDir, "transcript.jsonl");
   await writeFile(transcriptPath, `${lines.map((line) => JSON.stringify(line)).join("\n")}\n`, "utf8");
@@ -202,6 +209,37 @@ test("Antigravity BeforeAgent stores a duplicate transcript-derived user message
     assert.equal(nams.calls("getConversationContext").length, 1);
     assert.equal(nams.calls("searchEntities").length, 1);
     assert.equal(nams.calls("addMessage").length, 1);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Antigravity BeforeAgent ignores hidden reasoning-shaped user records and content parts", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
+  try {
+    const transcriptPath = await copyHiddenReasoningTranscript(projectDir);
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+
+    await antigravityMemoryAdapter.beforeAgent({
+      platform: "antigravity",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: antigravityPayload(projectDir, "session-1", transcriptPath),
+    });
+
+    assert.deepEqual(nams.requestBody("searchEntities"), {
+      query: "Visible user prompt.",
+      limit: 5,
+    });
+    assert.deepEqual(nams.requestBody("addMessage"), {
+      role: "user",
+      content: "Visible user prompt.",
+    });
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
