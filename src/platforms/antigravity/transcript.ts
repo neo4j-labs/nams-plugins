@@ -366,9 +366,11 @@ function numberValue(...values: unknown[]): number | undefined {
 }
 
 function isToolMetadataLine(line: string): boolean {
-  return /"?(kind|type|role|name|toolName|tool_name|tool|input|args|arguments|toolInput|tool_input|stepIdx|step_idx)"?\s*:/.test(
-    line,
-  ) && /tool|toolCall|tool_call|toolName|tool_name|toolInput|tool_input|stepIdx|step_idx/.test(line);
+  return (
+    /"(kind|type|role)"\s*:\s*"(tool|toolCall|tool_call)/.test(line) ||
+    /"(toolName|tool_name|tool|toolInput|tool_input|toolCallId|tool_call_id|stepIdx|step_idx)"\s*:/.test(line) ||
+    (/"name"\s*:/.test(line) && /"(input|args|arguments)"\s*:/.test(line))
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

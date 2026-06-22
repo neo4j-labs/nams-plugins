@@ -1039,7 +1039,7 @@ test("Antigravity AfterTool sanitizes hidden reasoning-shaped tool input fields 
   }
 });
 
-test("Antigravity AfterTool records valid tool metadata despite later malformed non-tool transcript lines", async () => {
+test("Antigravity AfterTool records valid tool metadata despite later malformed non-tool transcript lines mentioning tools", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
   try {
     const transcriptPath = path.join(projectDir, "transcript.jsonl");
@@ -1056,7 +1056,8 @@ test("Antigravity AfterTool records valid tool metadata despite later malformed 
           status: "completed",
           stepIdx: 12,
         }),
-        "{\"role\":\"assistant\",\"content\":\"unfinished assistant line\"",
+        "{\"role\":\"user\",\"content\":\"unfinished user asks about tool output\"",
+        "{\"role\":\"assistant\",\"content\":\"unfinished assistant mentions tool output\"",
         "",
       ].join("\n"),
       "utf8",
