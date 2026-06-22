@@ -69,15 +69,21 @@ export async function readLatestAntigravityToolCall(
   transcriptPath: string,
   stepIdx?: number,
 ): Promise<AntigravityToolTranscriptEntry | undefined> {
-  const entries = await readAntigravityTranscript(transcriptPath);
-  for (let index = entries.length - 1; index >= 0; index -= 1) {
-    const entry = entries[index];
-    if (entry.kind !== "toolCall") {
+  const lines = await readBoundedTranscriptTailLines(transcriptPath);
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+    if (line.trim() === "") {
+      continue;
+    }
+
+    const entry = toToolEntry(parseJsonLineStrict(line));
+    if (entry === undefined) {
       continue;
     }
     if (stepIdx !== undefined && entry.stepIdx !== stepIdx) {
       continue;
     }
+
     return entry;
   }
   return undefined;
@@ -113,6 +119,10 @@ function parseJsonLine(line: string): unknown {
   } catch {
     return undefined;
   }
+}
+
+function parseJsonLineStrict(line: string): unknown {
+  return JSON.parse(line) as unknown;
 }
 
 function toTranscriptEntry(raw: unknown): AntigravityTranscriptEntry | undefined {

@@ -820,6 +820,47 @@ test("Antigravity AfterTool logs a diagnostic when transcript reading fails", as
   }
 });
 
+test("Antigravity AfterTool logs a diagnostic when tool transcript JSON is malformed", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
+  try {
+    const transcriptPath = await writeTranscript(projectDir, [
+      { id: "user-content-1", role: "user", content: "Create a conversation before malformed transcript.", status: "completed" },
+    ]);
+    const malformedTranscriptPath = path.join(projectDir, "malformed-transcript.jsonl");
+    await writeFile(malformedTranscriptPath, "{\"kind\":\"toolCall\",\"name\":\"shell\",\n", "utf8");
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+
+    await antigravityMemoryAdapter.beforeAgent({
+      platform: "antigravity",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: antigravityPayload(projectDir, "session-1", transcriptPath),
+    });
+    const result = await antigravityMemoryAdapter.afterTool({
+      platform: "antigravity",
+      event: "AfterTool",
+      processCwd: projectDir,
+      rawPayload: { ...antigravityPayload(projectDir, "session-1", malformedTranscriptPath), stepIdx: 3 },
+    });
+
+    assert.deepEqual(result.stdout, {});
+    assert.equal(nams.calls("addReasoningStep").length, 0);
+    assert.equal(nams.calls("addToolCall").length, 0);
+    const { lines } = await readSingleSessionLog(projectDir);
+    const diagnostics = lines.filter(
+      (entry) => entry.kind === "diagnostic" && entry.payload.message === "NAMS request failed",
+    );
+    assert.equal(diagnostics.length, 1);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("Antigravity PostToolUse with only stepIdx and error logs raw payload without inventing tool metadata", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
   try {
