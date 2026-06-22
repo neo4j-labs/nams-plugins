@@ -79,7 +79,7 @@ For the Antigravity worked example, use these platform-intake answers unless man
   - `PostToolUse` returns `{}`.
   - `Stop` returns `{ "decision": "" }` to allow normal stop, or `{ "decision": "continue", "reason": "..." }` only when intentionally forcing another loop.
   - `PreToolUse` returns `{ "decision": "allow" }`, `{ "decision": "deny" }`, `{ "decision": "ask" }`, or `{ "decision": "force_ask" }`; do not use this for v1 memory capture unless a separate pre-tool cache design is added.
-- Install model: prefer a plugin bundle containing `plugin.json` and `hooks.json`. For workspace-local install use `.agents/plugins/nams-hooks/`. For Antigravity CLI global install, support the plugin shape staged under `~/.gemini/antigravity-cli/plugins/<plugin_name>/` and installed with `agy plugin install`.
+- Install model: prefer a plugin bundle containing `plugin.json` and `hooks.json`. For workspace-local install use `.agents/plugins/nams-hooks/`. Manual validation with `agy` 1.0.8 showed `agy plugin install dist-marketplace/antigravity/plugins/nams-hooks` installs the plugin under `$HOME/.gemini/config/plugins/nams-hooks/`.
 - Unsupported lifecycle events: native session start/resume is not documented. Initialize state lazily on the first hook and keep `SessionStart` out of generated templates.
 
 ## File Structure
@@ -872,14 +872,14 @@ git commit -m "feat: record antigravity tool metadata" -m "Co-authored-by: Codex
 Use the least surprising native model:
 
 - Project-local Antigravity plugin if the user wants repository-scoped setup. The plugin root should be `.agents/plugins/nams-hooks/` and should contain `plugin.json` plus `hooks.json`.
-- Antigravity CLI global plugin if the user wants machine-wide setup. The plugin root is staged under `~/.gemini/antigravity-cli/plugins/<plugin_name>/` after `agy plugin install`.
-- Antigravity IDE or Antigravity 2.0 global plugin only after manual validation proves the active product reads `~/.gemini/config/plugins/<plugin_name>/` for the target surface.
+- Antigravity CLI global plugin if the user wants machine-wide setup. Manual validation with `agy` 1.0.8 showed `agy plugin install` places the plugin under `$HOME/.gemini/config/plugins/<plugin_name>/`.
+- Antigravity IDE or Antigravity 2.0 global plugin only after manual validation proves the active product reads the same installed plugin for the target surface.
 - Global CLI fallback only when no self-contained platform install exists.
 
 Keep the output tree responsibilities separate:
 
 - `dist/` is the npm-installable package artifact only. It should contain the compiled runtime under `bin/` and `package.json`, not platform marketplace metadata, project-local config, source templates, or OpenAPI artifacts.
-- `dist-marketplace/` is the self-contained Antigravity plugin output. Hook commands in this tree must call bundled runtime files through a validated Antigravity plugin path, such as `node "$HOME/.gemini/antigravity-cli/plugins/nams-hooks/bin/cli.js" ...` for the CLI global plugin.
+- `dist-marketplace/` is the self-contained Antigravity plugin output. Hook commands in this tree must call bundled runtime files through the validated Antigravity plugin path, such as `node "$HOME/.gemini/config/plugins/nams-hooks/bin/cli.js" ...`.
 - `dist-local/` is symlinkable or copyable project config. Hook commands in this tree intentionally call an installed `nams-hooks` executable and must not include compiled runtime files or marketplace roots.
 
 Do not add templates until the native hook command shape, command working directory, and plugin install path are known from local validation.
@@ -903,7 +903,7 @@ Example marketplace command expectation for an Antigravity CLI global plugin:
 ```ts
 assert.equal(
   command,
-  'node "$HOME/.gemini/antigravity-cli/plugins/nams-hooks/bin/cli.js" run antigravity --event BeforeAgent',
+  'node "$HOME/.gemini/config/plugins/nams-hooks/bin/cli.js" run antigravity --event BeforeAgent',
 );
 ```
 
@@ -970,7 +970,7 @@ The marketplace `hooks.json` should use the same native events but point command
     "PreInvocation": [
       {
         "type": "command",
-        "command": "node \"$HOME/.gemini/antigravity-cli/plugins/nams-hooks/bin/cli.js\" run antigravity --event BeforeAgent",
+        "command": "node \"$HOME/.gemini/config/plugins/nams-hooks/bin/cli.js\" run antigravity --event BeforeAgent",
         "timeout": 30
       }
     ]
@@ -979,7 +979,7 @@ The marketplace `hooks.json` should use the same native events but point command
     "PostInvocation": [
       {
         "type": "command",
-        "command": "node \"$HOME/.gemini/antigravity-cli/plugins/nams-hooks/bin/cli.js\" run antigravity --event AfterAgent",
+        "command": "node \"$HOME/.gemini/config/plugins/nams-hooks/bin/cli.js\" run antigravity --event AfterAgent",
         "timeout": 30
       }
     ]
@@ -991,7 +991,7 @@ The marketplace `hooks.json` should use the same native events but point command
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$HOME/.gemini/antigravity-cli/plugins/nams-hooks/bin/cli.js\" run antigravity --event AfterTool",
+            "command": "node \"$HOME/.gemini/config/plugins/nams-hooks/bin/cli.js\" run antigravity --event AfterTool",
             "timeout": 30
           }
         ]
@@ -1190,7 +1190,7 @@ Expected:
 
 Use the Antigravity-native local install command for the chosen output tree:
 
-- For marketplace plugin validation, install or link the generated artifact from `dist-marketplace/`.
+- For marketplace plugin validation, run `agy plugin validate dist-marketplace/antigravity/plugins/nams-hooks`, then `agy plugin install dist-marketplace/antigravity/plugins/nams-hooks` with a disposable HOME. With `agy` 1.0.8, the install target is `$HOME/.gemini/config/plugins/nams-hooks/`.
 - For project-local validation, install the npm artifact with `npm install -g ./dist`, then symlink or copy the project-shaped config from `dist-local/antigravity/` into the throwaway project.
 
 Keep all test config under the throwaway project or temp HOME. Do not write `.nams/` artifacts into the repository root.

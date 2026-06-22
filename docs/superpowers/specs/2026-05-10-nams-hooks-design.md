@@ -6,7 +6,7 @@ Repository: nams-plugins
 
 ## Summary
 
-`nams-hooks` is a standalone Node.js integration layer that connects local agent harness hooks to the Neo4j Agent Memory Service (NAMS) REST API. Its hook runtime and generated release artifacts have zero runtime npm dependencies and use Node.js built-ins only, while the source repository may use dev-only build, generation, and test tooling. The first iteration supports macOS for Codex, Claude Code, Gemini CLI, OpenCode, and generated Antigravity artifacts. Gemini uses extension distribution. Claude Code can use a generated Claude plugin marketplace artifact, with project-level settings as a fallback path. Codex can use a generated repo marketplace plugin artifact, with project-level hooks as a fallback path. OpenCode can use a generated self-contained marketplace artifact, with a `dist-local/` project plugin as a fallback path. Antigravity can use a generated project-local `.agents/plugins/nams-hooks/` plugin or a self-contained Antigravity CLI plugin under `dist-marketplace/antigravity/plugins/nams-hooks/`; live validation against a local Antigravity CLI or IDE install is pending. Runtime configuration, state, and logs live under user-level `~/.nams/`, with optional project overrides in `.nams/config.json`.
+`nams-hooks` is a standalone Node.js integration layer that connects local agent harness hooks to the Neo4j Agent Memory Service (NAMS) REST API. Its hook runtime and generated release artifacts have zero runtime npm dependencies and use Node.js built-ins only, while the source repository may use dev-only build, generation, and test tooling. The first iteration supports macOS for Codex, Claude Code, Gemini CLI, OpenCode, and generated Antigravity artifacts. Gemini uses extension distribution. Claude Code can use a generated Claude plugin marketplace artifact, with project-level settings as a fallback path. Codex can use a generated repo marketplace plugin artifact, with project-level hooks as a fallback path. OpenCode can use a generated self-contained marketplace artifact, with a `dist-local/` project plugin as a fallback path. Antigravity can use a generated project-local `.agents/plugins/nams-hooks/` plugin or a self-contained plugin under `dist-marketplace/antigravity/plugins/nams-hooks/`; `agy` 1.0.8 validation confirmed that `agy plugin install` places the plugin under `$HOME/.gemini/config/plugins/nams-hooks/`, while live hook memory behavior is still pending validation. Runtime configuration, state, and logs live under user-level `~/.nams/`, with optional project overrides in `.nams/config.json`.
 
 As of the umbrella rename, repository, npm package, and marketplace identity use
 `nams-plugins`; the hooks plugin and CLI executable remain `nams-hooks`.
@@ -355,10 +355,10 @@ Codex users can add the generated release tree as a repo marketplace and install
 codex plugin marketplace add neo4j-labs/nams-plugins@latest
 ```
 
-OpenCode marketplace distribution is self-contained under `dist-marketplace/plugins/opencode-nams-hooks/`, with `nams-hooks.js` and bundled `bin/cli.js`. Antigravity CLI plugin distribution is self-contained under `dist-marketplace/antigravity/plugins/nams-hooks/`, with `plugin.json`, `hooks.json`, `package.json`, and bundled `bin/cli.js`. Antigravity marketplace hook commands use the Antigravity CLI plugin install path:
+OpenCode marketplace distribution is self-contained under `dist-marketplace/plugins/opencode-nams-hooks/`, with `nams-hooks.js` and bundled `bin/cli.js`. Antigravity plugin distribution is self-contained under `dist-marketplace/antigravity/plugins/nams-hooks/`, with `plugin.json`, `hooks.json`, `package.json`, and bundled `bin/cli.js`. Antigravity marketplace hook commands use the install path validated by `agy plugin install`:
 
 ```bash
-node "$HOME/.gemini/antigravity-cli/plugins/nams-hooks/bin/cli.js" run antigravity --event BeforeAgent
+node "$HOME/.gemini/config/plugins/nams-hooks/bin/cli.js" run antigravity --event BeforeAgent
 ```
 
 Antigravity local/project configuration is generated under `dist-local/antigravity/.agents/plugins/nams-hooks/` and calls an installed `nams-hooks` executable. Local fallback/project configurations also live under `dist-local/codex/.codex/`, `dist-local/claude/.claude/`, `dist-local/gemini/.gemini/`, and `dist-local/opencode/.opencode/`; those local artifacts call an installed `nams-hooks` executable.
@@ -608,10 +608,10 @@ OpenCode:
 
 Antigravity:
 
-- Generated Antigravity artifacts are in the v1 macOS support scope, but live validation against a local Antigravity CLI or IDE install is pending.
+- Generated Antigravity artifacts are in the v1 macOS support scope. `agy` 1.0.8 validates and installs the self-contained plugin under `$HOME/.gemini/config/plugins/nams-hooks/`; live hook memory behavior against Antigravity is still pending validation.
 - Use `dist-local/antigravity/.agents/plugins/nams-hooks/` for project-local installs that call an installed `nams-hooks` executable.
-- Use `dist-marketplace/antigravity/plugins/nams-hooks/` for the self-contained Antigravity CLI plugin with bundled `bin/cli.js`.
-- Marketplace hook commands use `node "$HOME/.gemini/antigravity-cli/plugins/nams-hooks/bin/cli.js" run antigravity --event <event>`.
+- Use `dist-marketplace/antigravity/plugins/nams-hooks/` for the self-contained Antigravity plugin with bundled `bin/cli.js`.
+- Marketplace hook commands use `node "$HOME/.gemini/config/plugins/nams-hooks/bin/cli.js" run antigravity --event <event>`.
 - Native hook mapping is `PreInvocation` to NAMS `BeforeAgent`, `PostInvocation` to NAMS `AfterAgent`, and `PostToolUse` with matcher `*` to NAMS `AfterTool`.
 - Generated templates do not emit `SessionStart`, because Antigravity does not document a startup or resume hook, and do not emit `Stop` by default. State initializes lazily on the first memory hook.
 - `BeforeAgent` reads the latest user prompt from `transcriptPath`, stores it once, recalls memory, and injects context through `injectSteps[].ephemeralMessage` only.
@@ -668,9 +668,10 @@ Installer errors are stricter. The installer should refuse unsafe overwrites and
 current project by default where that installer path is supported. Antigravity
 v1 installation is represented by generated
 `dist-local/antigravity/.agents/plugins/nams-hooks/` and
-`dist-marketplace/antigravity/plugins/nams-hooks/` artifacts; no additional
-native Antigravity installer command is documented here until live validation
-proves one.
+`dist-marketplace/antigravity/plugins/nams-hooks/` artifacts. Validate and
+install the marketplace plugin with `agy plugin validate` and
+`agy plugin install`; `agy` 1.0.8 installs it under
+`$HOME/.gemini/config/plugins/nams-hooks/`.
 
 The installer:
 
@@ -770,7 +771,7 @@ Manual validation:
 - Gemini session identity may require fallback keys if the hook payload lacks a stable session ID.
 - Assistant response capture may be best-effort for some harness versions.
 - Prompt/context injection may be visible in some harness UIs even when intended as model context.
-- Antigravity generated support still needs manual validation against a live local Antigravity CLI or IDE install.
+- Antigravity generated support has validated plugin validation and install path resolution with `agy` 1.0.8, but live hook memory behavior still needs validation against a local Antigravity CLI or IDE install.
 - NAMS REST API shape may drift from the pinned OpenAPI copy. The build-time fetch and contract-test workflow should make drift explicit before release.
 - GitHub install from `latest` means any accidental unreleased commit to `latest` becomes installable immediately; branch protections should require release automation.
 

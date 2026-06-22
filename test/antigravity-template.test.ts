@@ -8,7 +8,7 @@ const marketplaceManifestPath = "templates/marketplace/antigravity/plugins/nams-
 const marketplaceHooksPath = "templates/marketplace/antigravity/plugins/nams-hooks/hooks.json";
 const localProjectionScriptPath = "scripts/build-dist-local.mjs";
 const marketplaceProjectionScriptPath = "scripts/build-dist-marketplace.mjs";
-const bundledCli = "$HOME/.gemini/antigravity-cli/plugins/nams-hooks/bin/cli.js";
+const bundledCli = "$HOME/.gemini/config/plugins/nams-hooks/bin/cli.js";
 
 test("Antigravity local plugin manifest uses project-local plugin metadata only", async () => {
   const manifest = JSON.parse(await readFile(localManifestPath, "utf8"));
@@ -59,7 +59,7 @@ test("Antigravity local hook template maps native events to installed nams-hooks
 
   const serialized = JSON.stringify(template);
   assert.doesNotMatch(serialized, /SessionStart|Stop/);
-  assert.doesNotMatch(serialized, /bin\/cli\.js|antigravity-cli|\$HOME/);
+  assert.doesNotMatch(serialized, /bin\/cli\.js|\$HOME/);
   assert.doesNotMatch(serialized, /NAMS_API_KEY|NAMS_BASE_URL|memory\.neo4jlabs\.com/);
 });
 

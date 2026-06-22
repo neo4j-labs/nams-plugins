@@ -3,7 +3,7 @@
     "PreInvocation": [
       {
         "type": "command",
-        "command": "node \"$HOME/.gemini/antigravity-cli/plugins/nams-hooks/bin/cli.js\" run antigravity --event BeforeAgent",
+        "command": "node \"$HOME/.gemini/config/plugins/nams-hooks/bin/cli.js\" run antigravity --event BeforeAgent",
         "timeout": 30
       }
     ]
@@ -12,7 +12,7 @@
     "PostInvocation": [
       {
         "type": "command",
-        "command": "node \"$HOME/.gemini/antigravity-cli/plugins/nams-hooks/bin/cli.js\" run antigravity --event AfterAgent",
+        "command": "node \"$HOME/.gemini/config/plugins/nams-hooks/bin/cli.js\" run antigravity --event AfterAgent",
         "timeout": 30
       }
     ]
@@ -24,7 +24,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$HOME/.gemini/antigravity-cli/plugins/nams-hooks/bin/cli.js\" run antigravity --event AfterTool",
+            "command": "node \"$HOME/.gemini/config/plugins/nams-hooks/bin/cli.js\" run antigravity --event AfterTool",
             "timeout": 30
           }
         ]

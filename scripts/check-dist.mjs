@@ -137,14 +137,14 @@ async function verifyAntigravityMarketplaceFiles() {
 
   assertAntigravityHookEventSet(hooks);
   assertAntigravityHookCommand(hooks, "PreInvocation", "BeforeAgent", {
-    expectedCommand: 'node "$HOME/.gemini/antigravity-cli/plugins/nams-hooks/bin/cli.js" run antigravity --event BeforeAgent',
+    expectedCommand: 'node "$HOME/.gemini/config/plugins/nams-hooks/bin/cli.js" run antigravity --event BeforeAgent',
   });
   assertAntigravityHookCommand(hooks, "PostInvocation", "AfterAgent", {
-    expectedCommand: 'node "$HOME/.gemini/antigravity-cli/plugins/nams-hooks/bin/cli.js" run antigravity --event AfterAgent',
+    expectedCommand: 'node "$HOME/.gemini/config/plugins/nams-hooks/bin/cli.js" run antigravity --event AfterAgent',
   });
   assertAntigravityHookCommand(hooks, "PostToolUse", "AfterTool", {
     matcher: "*",
-    expectedCommand: 'node "$HOME/.gemini/antigravity-cli/plugins/nams-hooks/bin/cli.js" run antigravity --event AfterTool',
+    expectedCommand: 'node "$HOME/.gemini/config/plugins/nams-hooks/bin/cli.js" run antigravity --event AfterTool',
   });
 
   const commands = JSON.stringify(hooks);
@@ -451,7 +451,7 @@ async function verifyLocalAntigravityFiles() {
   });
 
   const commands = JSON.stringify(hooks);
-  if (/bin\/cli\.js|antigravity-cli|\$HOME/.test(commands)) {
+  if (/bin\/cli\.js|\$HOME/.test(commands)) {
     throw new Error("Antigravity local hooks must not reference bundled runtime paths.");
   }
   if (/SessionStart|Stop/.test(commands)) {

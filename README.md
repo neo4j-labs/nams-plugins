@@ -67,8 +67,9 @@ $nams:workspace use <workspace-id-or-name>
 
 ### Antigravity
 
-Antigravity support is generated for the repo's v1 macOS scope. Live validation
-against a local Antigravity CLI or IDE install is still pending.
+Antigravity support is generated for the repo's v1 macOS scope. `agy` 1.0.8
+manual validation confirmed plugin validation and install path resolution with a
+disposable HOME; live hook memory behavior is still pending validation.
 
 The generated project-local plugin lives under:
 
@@ -84,7 +85,7 @@ dist-marketplace/antigravity/plugins/nams-hooks/
 ```
 
 Its hook commands call the bundled runtime at
-`$HOME/.gemini/antigravity-cli/plugins/nams-hooks/bin/cli.js`.
+`$HOME/.gemini/config/plugins/nams-hooks/bin/cli.js`.
 
 Generated Antigravity hooks map `PreInvocation` to NAMS `BeforeAgent`,
 `PostInvocation` to `AfterAgent`, and `PostToolUse` with matcher `*` to

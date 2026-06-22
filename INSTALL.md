@@ -277,8 +277,9 @@ nams-hooks workspaces configure gemini --scope session --session-id <session-id>
 
 ## Antigravity
 
-Antigravity support follows the repo's v1 macOS scope. The generated artifacts
-have not yet been validated against a live local Antigravity CLI or IDE install.
+Antigravity support follows the repo's v1 macOS scope. `agy` 1.0.8 manual
+validation confirmed plugin validation and install path resolution with a
+disposable HOME; live hook memory behavior is still pending validation.
 
 Antigravity project-local configuration is generated under:
 
@@ -306,19 +307,18 @@ cp -R dist-local/antigravity/.agents/plugins/nams-hooks /path/to/project/.agents
 ```
 
 For Antigravity CLI plugin staging from a checkout, build marketplace artifacts
-and copy the self-contained plugin to the Antigravity CLI plugin directory used
-by the generated hook commands:
+and install the self-contained plugin with `agy`:
 
 ```bash
 npm run dist:marketplace
-mkdir -p "$HOME/.gemini/antigravity-cli/plugins"
-cp -R dist-marketplace/antigravity/plugins/nams-hooks "$HOME/.gemini/antigravity-cli/plugins/"
+agy plugin validate dist-marketplace/antigravity/plugins/nams-hooks
+agy plugin install dist-marketplace/antigravity/plugins/nams-hooks
 ```
 
 It bundles `bin/cli.js`; hook commands use:
 
 ```bash
-node "$HOME/.gemini/antigravity-cli/plugins/nams-hooks/bin/cli.js" run antigravity --event <event>
+node "$HOME/.gemini/config/plugins/nams-hooks/bin/cli.js" run antigravity --event <event>
 ```
 
 Generated Antigravity hooks map native events to NAMS lifecycle events as:

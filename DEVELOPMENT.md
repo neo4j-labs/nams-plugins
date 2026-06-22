@@ -383,19 +383,19 @@ hook commands:
 
 ```bash
 npm run dist:marketplace
-mkdir -p "$HOME/.gemini/antigravity-cli/plugins"
-cp -R dist-marketplace/antigravity/plugins/nams-hooks "$HOME/.gemini/antigravity-cli/plugins/"
+agy plugin validate dist-marketplace/antigravity/plugins/nams-hooks
+agy plugin install dist-marketplace/antigravity/plugins/nams-hooks
 ```
 
 It bundles `bin/cli.js` and hook commands call that install location:
 
 ```bash
-node "$HOME/.gemini/antigravity-cli/plugins/nams-hooks/bin/cli.js" run antigravity --event BeforeAgent
+node "$HOME/.gemini/config/plugins/nams-hooks/bin/cli.js" run antigravity --event BeforeAgent
 ```
 
-Manual validation against a live local Antigravity CLI or IDE install is still
-pending. Until that is complete, treat these steps as generated artifact
-inspection and staging instructions, not proof of live platform behavior.
+Manual validation with `agy` 1.0.8 confirmed `plugin validate` and `plugin
+install` place the plugin under `$HOME/.gemini/config/plugins/nams-hooks/` in a
+disposable HOME. Live hook memory behavior against Antigravity remains pending.
 
 ## Test Claude Code Locally
 
