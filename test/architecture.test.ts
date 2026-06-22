@@ -72,18 +72,22 @@ function importsConcreteAdapter(file: SourceFile): boolean {
     "src/platforms/claude/index.ts",
     "src/platforms/codex/index.ts",
     "src/platforms/opencode/index.ts",
+    "src/platforms/antigravity/index.ts",
     "src/platforms/gemini/workspaces.ts",
     "src/platforms/claude/workspaces.ts",
     "src/platforms/codex/workspaces.ts",
     "src/platforms/opencode/workspaces.ts",
+    "src/platforms/antigravity/workspaces.ts",
   ]);
 
   return importedSourcePaths(file.path, file.content).some((importedPath) => concreteAdapters.has(importedPath));
 }
 
 test("platform adapters do not import each other", async () => {
-  for (const platform of ["gemini", "claude", "codex", "opencode"]) {
-    const otherPlatforms = ["gemini", "claude", "codex", "opencode"].filter((candidate) => candidate !== platform);
+  for (const platform of ["gemini", "claude", "codex", "opencode", "antigravity"]) {
+    const otherPlatforms = ["gemini", "claude", "codex", "opencode", "antigravity"].filter(
+      (candidate) => candidate !== platform,
+    );
     for (const otherPlatform of otherPlatforms) {
       await assertNoViolations(
         projectFiles()
@@ -156,7 +160,7 @@ test("platform adapters do not accept test-only runtime dependencies", async () 
   assert.equal(/\bruntimeEnvironment\?:/.test(content), false);
   assert.equal(/\benv\?:/.test(content), false);
 
-  for (const platform of ["gemini", "claude", "codex", "opencode"]) {
+  for (const platform of ["gemini", "claude", "codex", "opencode", "antigravity"]) {
     const filePath = `src/platforms/${platform}/index.ts`;
     const platformContent = await readFile(filePath, "utf8");
 
@@ -187,7 +191,7 @@ test("workspace resolution runtime does not format platform hook output", async 
   const content = await readFile("src/runtime/workspace-resolution.ts", "utf8");
 
   assert.doesNotMatch(content, /\bdecision\b|\bhookSpecificOutput\b|\bsystemMessage\b|\bnamsWorkspaceSelectionRequired\b/);
-  assert.doesNotMatch(content, /\bgemini\b|\bclaude\b|\bcodex\b|\bopencode\b/);
+  assert.doesNotMatch(content, /\bgemini\b|\bclaude\b|\bcodex\b|\bopencode\b|\bantigravity\b/);
 });
 
 test("workspace selection notice formatter does not branch by platform", async () => {
@@ -206,7 +210,7 @@ test("platform session-start contract names local session initialization", async
   assert.match(cliContent, /\badapter\.startSession\(/);
   assert.equal(/\badapter\.startConversation\b/.test(cliContent), false);
 
-  for (const platform of ["gemini", "claude", "codex", "opencode"]) {
+  for (const platform of ["gemini", "claude", "codex", "opencode", "antigravity"]) {
     const filePath = `src/platforms/${platform}/index.ts`;
     const content = await readFile(filePath, "utf8");
 
@@ -216,7 +220,7 @@ test("platform session-start contract names local session initialization", async
 });
 
 test("platform adapters do not manage runtime environment", async () => {
-  for (const platform of ["gemini", "claude", "codex", "opencode"]) {
+  for (const platform of ["gemini", "claude", "codex", "opencode", "antigravity"]) {
     const filePath = `src/platforms/${platform}/index.ts`;
     const content = await readFile(filePath, "utf8");
 
@@ -249,7 +253,7 @@ test("runtime environment home lookup stays in paths module", async () => {
 });
 
 test("platform adapters use shared logging wrappers", async () => {
-  for (const platform of ["gemini", "codex", "opencode"]) {
+  for (const platform of ["gemini", "codex", "opencode", "antigravity"]) {
     const filePath = `src/platforms/${platform}/index.ts`;
     const content = await readFile(filePath, "utf8");
 
