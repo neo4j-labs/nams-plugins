@@ -15,6 +15,7 @@ dev dependencies from this repository.
 - A NAMS API key, NAMS base URL, and workspace ID unless your harness path can
   auto-select a single available workspace
 - The platform CLI you want to test:
+  - Antigravity
   - Gemini CLI
   - Codex
   - Claude Code
@@ -99,10 +100,11 @@ The command creates three ignored trees:
 - `dist/`: npm-installable package output with `bin/cli.js` and
   `package.json`. Use this for `npm install -g ./dist`.
 - `dist-marketplace/`: self-contained marketplace output for Gemini,
-  Claude Code, Codex, and OpenCode. Marketplace hooks call bundled runtime
-  files under `dist-marketplace/plugins/<platform>-nams-hooks/bin/`.
+  Claude Code, Codex, OpenCode, and Antigravity. Most marketplace hooks call
+  bundled runtime files under `dist-marketplace/plugins/<platform>-nams-hooks/bin/`;
+  Antigravity uses `dist-marketplace/antigravity/plugins/nams-hooks/bin/`.
 - `dist-local/`: project-shaped local configuration output for Gemini,
-  Claude Code, Codex, and OpenCode. These files call an installed
+  Claude Code, Codex, OpenCode, and Antigravity. These files call an installed
   `nams-hooks` executable and do not include compiled runtime files.
 
 Use target-specific commands when you only need one tree:
@@ -126,6 +128,7 @@ ln -sF <repository-root-or-worktree>/dist-local/gemini/.gemini /path/to/project/
 ln -sF <repository-root-or-worktree>/dist-local/codex/.codex /path/to/project/.codex
 ln -sF <repository-root-or-worktree>/dist-local/claude/.claude /path/to/project/.claude
 ln -sF <repository-root-or-worktree>/dist-local/opencode/.opencode /path/to/project/.opencode
+ln -sF <repository-root-or-worktree>/dist-local/antigravity/.agents /path/to/project/.agents
 ```
 
 Only replace a target project folder when it is disposable. If the project
@@ -330,6 +333,69 @@ Start Codex from the target project and use `/hooks` to review and trust the new
 command hooks. Codex loads project-local `.codex/` configuration only after the
 project is trusted. If the project already has `.codex/` content, merge the
 generated hook and skill entries instead of replacing the folder.
+
+## Test Antigravity Artifacts Locally
+
+Build and verify the generated Antigravity artifacts:
+
+```bash
+npm run package:check
+```
+
+The project-local Antigravity plugin lives at:
+
+```text
+dist-local/antigravity/.agents/plugins/nams-hooks/
+```
+
+It calls an installed `nams-hooks` executable. For a disposable Antigravity test
+project, build and install the npm artifact, then link or copy the generated
+project-local plugin:
+
+```bash
+npm run dist:npm
+npm install -g ./dist
+npm run dist:local
+ln -sF <repository-root-or-worktree>/dist-local/antigravity/.agents /path/to/project/.agents
+```
+
+If the target project already has `.agents/` content, merge only
+`dist-local/antigravity/.agents/plugins/nams-hooks/` into
+`/path/to/project/.agents/plugins/nams-hooks/` instead of replacing the whole
+folder.
+
+The generated local hooks route:
+
+```bash
+nams-hooks run antigravity --event BeforeAgent
+nams-hooks run antigravity --event AfterAgent
+nams-hooks run antigravity --event AfterTool
+```
+
+The self-contained Antigravity CLI plugin is generated at:
+
+```text
+dist-marketplace/antigravity/plugins/nams-hooks/
+```
+
+Build and stage it at the Antigravity CLI plugin path used by the generated
+hook commands:
+
+```bash
+npm run dist:marketplace
+mkdir -p "$HOME/.gemini/antigravity-cli/plugins"
+cp -R dist-marketplace/antigravity/plugins/nams-hooks "$HOME/.gemini/antigravity-cli/plugins/"
+```
+
+It bundles `bin/cli.js` and hook commands call that install location:
+
+```bash
+node "$HOME/.gemini/antigravity-cli/plugins/nams-hooks/bin/cli.js" run antigravity --event BeforeAgent
+```
+
+Manual validation against a live local Antigravity CLI or IDE install is still
+pending. Until that is complete, treat these steps as generated artifact
+inspection and staging instructions, not proof of live platform behavior.
 
 ## Test Claude Code Locally
 

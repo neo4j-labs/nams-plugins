@@ -65,6 +65,46 @@ NAMS credentials. Codex exposes workspace selection as the explicit skill:
 $nams:workspace use <workspace-id-or-name>
 ```
 
+### Antigravity
+
+Antigravity support is generated for the repo's v1 macOS scope. Live validation
+against a local Antigravity CLI or IDE install is still pending.
+
+The generated project-local plugin lives under:
+
+```text
+dist-local/antigravity/.agents/plugins/nams-hooks/
+```
+
+It calls an installed `nams-hooks` executable. The generated self-contained
+Antigravity CLI plugin lives under:
+
+```text
+dist-marketplace/antigravity/plugins/nams-hooks/
+```
+
+Its hook commands call the bundled runtime at
+`$HOME/.gemini/antigravity-cli/plugins/nams-hooks/bin/cli.js`.
+
+Generated Antigravity hooks map `PreInvocation` to NAMS `BeforeAgent`,
+`PostInvocation` to `AfterAgent`, and `PostToolUse` with matcher `*` to
+`AfterTool`. The templates do not emit `SessionStart` or `Stop` by default.
+
+`BeforeAgent` reads the latest user prompt from `transcriptPath`, stores it
+once, recalls memory, and injects context only through
+`injectSteps[].ephemeralMessage`. Assistant and tool capture are best-effort
+from transcript content only when details are cleanly exposed. Tool inputs are
+sanitized, and hidden reasoning or thought-shaped content is filtered.
+
+Antigravity plugin templates do not declare native credential prompts. Configure
+NAMS through `~/.nams/config.json`, project `.nams/config.json`, or
+`NAMS_API_KEY`, `NAMS_BASE_URL`, and optional `NAMS_WORKSPACE_ID` environment
+variables. Workspace selection currently uses the explicit shell command:
+
+```bash
+nams-hooks workspaces configure antigravity --scope session --session-id <session-id> --workspace <workspace-id-or-name>
+```
+
 ### OpenCode
 
 OpenCode uses the project plugin shim and the `nams-hooks` CLI package:
@@ -121,8 +161,8 @@ for project-specific overrides:
   key type; it uses the number of workspaces returned by NAMS to decide whether
   a workspace can be auto-selected.
 - Claude Code and Gemini installs expose `/nams:workspace use <workspace-id-or-name>`.
-  Codex exposes `$nams:workspace use <workspace-id-or-name>`. OpenCode uses the
-  explicit shell command because OpenCode markdown commands are prompt templates.
+  Codex exposes `$nams:workspace use <workspace-id-or-name>`. OpenCode and
+  Antigravity use the explicit shell command for v1.
 - For all platforms, scripts, and troubleshooting, use the explicit shell
   command from the hook notice:
 
@@ -159,14 +199,14 @@ nams-hooks workspaces configure <platform> --scope session --session-id <session
 - **Deterministic Memory**: Automatically persists user and assistant messages to NAMS.
 - **Memory Recall**: Searches and injects relevant past context before the agent responds.
 - **Tool Logging**: Records tool-call metadata (name, input, status, duration) for observability.
-- **Platform Aware**: Memory-flow support for **Gemini CLI**, **Claude Code**, **Codex**, and **OpenCode**, with platform-specific behavior kept behind clean adapter boundaries.
+- **Platform Aware**: Memory-flow support for **Gemini CLI**, **Claude Code**, **Codex**, **OpenCode**, and generated **Antigravity** artifacts, with platform-specific behavior kept behind clean adapter boundaries.
 - **Zero Runtime Dependencies**: The hook runtime and generated distribution use only Node.js built-in modules, so target projects do not need extra package installs for transitive runtime libraries.
 - **JSON-First Runtime Storage**: Uses JSON configuration with user-local state and logs.
 
 ## Architecture
 
 - `src/cli.ts`: Entry point that dispatches events to platform adapters.
-- `src/platforms/`: Contains adapter logic for Claude, Gemini, Codex, and OpenCode.
+- `src/platforms/`: Contains adapter logic for Claude, Gemini, Codex, OpenCode, and Antigravity.
 - `src/interfaces.ts`: Shared contracts and hook event definitions.
 - `templates/`: Configuration templates for various harnesses.
 
