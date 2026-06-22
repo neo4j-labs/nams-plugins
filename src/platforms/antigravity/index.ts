@@ -24,7 +24,7 @@ import {
 } from "../../runtime/workspace-resolution.js";
 import { hasSeenAssistantMessage, markAssistantMessageSeen } from "../dedupe.js";
 import { formatWorkspaceSelectionNotice } from "../workspace-selection.js";
-import { parseAntigravityPayload } from "./payload.js";
+import { parseAntigravityPayload, type AntigravityPayloadInfo } from "./payload.js";
 import {
   readAntigravityTranscript,
   readLatestAntigravityToolCall,
@@ -42,7 +42,7 @@ async function beforeAgent(invocation: HookInvocation<"BeforeAgent">): Promise<H
   const initialState = createInitialSessionState({
     platform: invocation.platform,
     projectDirectory: payloadInfo.projectDirectory,
-    sessionId: payloadInfo.sessionId,
+    sessionId: antigravitySessionId(payloadInfo),
   });
   const state =
     (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
@@ -123,7 +123,7 @@ async function afterAgent(invocation: HookInvocation<"AfterAgent">): Promise<Hoo
   const initialState = createInitialSessionState({
     platform: invocation.platform,
     projectDirectory: payloadInfo.projectDirectory,
-    sessionId: payloadInfo.sessionId,
+    sessionId: antigravitySessionId(payloadInfo),
   });
   const state =
     (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
@@ -182,7 +182,7 @@ async function afterTool(invocation: HookInvocation<"AfterTool">): Promise<HookR
   const initialState = createInitialSessionState({
     platform: invocation.platform,
     projectDirectory: payloadInfo.projectDirectory,
-    sessionId: payloadInfo.sessionId,
+    sessionId: antigravitySessionId(payloadInfo),
   });
   const state =
     (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
@@ -278,7 +278,7 @@ async function logOnly(invocation: HookInvocation): Promise<HookResult> {
   const initialState = createInitialSessionState({
     platform: invocation.platform,
     projectDirectory: payloadInfo.projectDirectory,
-    sessionId: payloadInfo.sessionId,
+    sessionId: antigravitySessionId(payloadInfo),
   });
   const state =
     (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
@@ -306,6 +306,21 @@ function allowOutput(additionalContext?: string): HookResult {
           }
         : {},
   };
+}
+
+function antigravitySessionId(payloadInfo: AntigravityPayloadInfo): string | undefined {
+  if (payloadInfo.sessionId !== undefined && payloadInfo.sessionId.trim() !== "") {
+    return payloadInfo.sessionId;
+  }
+  if (payloadInfo.transcriptPath === undefined || payloadInfo.workspacePaths.length === 0) {
+    return undefined;
+  }
+  return `antigravity-transcript-${sha256(
+    JSON.stringify({
+      transcriptPath: payloadInfo.transcriptPath,
+      workspacePaths: payloadInfo.workspacePaths,
+    }),
+  )}`;
 }
 
 function workspaceResultOutput(

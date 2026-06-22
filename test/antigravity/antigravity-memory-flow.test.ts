@@ -47,8 +47,12 @@ async function copyHiddenReasoningTranscript(projectDir: string): Promise<string
   return transcriptPath;
 }
 
-async function writeTranscript(projectDir: string, lines: Array<Record<string, unknown>>): Promise<string> {
-  const transcriptPath = path.join(projectDir, "transcript.jsonl");
+async function writeTranscript(
+  projectDir: string,
+  lines: Array<Record<string, unknown>>,
+  filename = "transcript.jsonl",
+): Promise<string> {
+  const transcriptPath = path.join(projectDir, filename);
   await writeFile(transcriptPath, `${lines.map((line) => JSON.stringify(line)).join("\n")}\n`, "utf8");
   return transcriptPath;
 }
@@ -69,6 +73,16 @@ function antigravityPayload(
 ): Record<string, unknown> {
   return {
     conversationId: sessionId,
+    workspacePaths: [projectDir],
+    ...(transcriptPath !== undefined ? { transcriptPath } : {}),
+  };
+}
+
+function antigravityPayloadWithoutConversation(
+  projectDir: string,
+  transcriptPath?: string,
+): Record<string, unknown> {
+  return {
     workspacePaths: [projectDir],
     ...(transcriptPath !== undefined ? { transcriptPath } : {}),
   };
@@ -255,6 +269,76 @@ test("Antigravity BeforeAgent stores a duplicate transcript-derived user message
     assert.equal(nams.calls("createConversation").length, 1);
     assert.equal(nams.calls("getConversationContext").length, 1);
     assert.equal(nams.calls("searchEntities").length, 1);
+    assert.equal(nams.calls("addMessage").length, 1);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Antigravity BeforeAgent separates missing conversationId sessions by transcript path", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
+  try {
+    const prompt = "Remember transcript fallback sessions stay separate.";
+    const firstTranscriptPath = await writeTranscript(
+      projectDir,
+      [{ id: "user-content-1", role: "user", content: prompt, status: "completed" }],
+      "transcript-one.jsonl",
+    );
+    const secondTranscriptPath = await writeTranscript(
+      projectDir,
+      [{ id: "user-content-1", role: "user", content: prompt, status: "completed" }],
+      "transcript-two.jsonl",
+    );
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+
+    await antigravityMemoryAdapter.beforeAgent({
+      platform: "antigravity",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: antigravityPayloadWithoutConversation(projectDir, firstTranscriptPath),
+    });
+    await antigravityMemoryAdapter.beforeAgent({
+      platform: "antigravity",
+      event: "BeforeAgent",
+      processCwd: projectDir,
+      rawPayload: antigravityPayloadWithoutConversation(projectDir, secondTranscriptPath),
+    });
+
+    assert.equal(nams.calls("createConversation").length, 2);
+    assert.equal(nams.calls("addMessage").length, 2);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("Antigravity BeforeAgent dedupes missing conversationId events for the same transcript path", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "nams-antigravity-flow-"));
+  try {
+    const transcriptPath = await writeTranscript(projectDir, [
+      { id: "user-content-1", role: "user", content: "Remember same transcript fallback dedupe.", status: "completed" },
+    ]);
+    const nams = createNamsFetchMock().createConversation().context().searchEntities().message();
+    testEnv(projectDir, {
+      NAMS_API_KEY: "key",
+      NAMS_WORKSPACE_ID: "workspace-1",
+      NAMS_BASE_URL: "https://memory.example.test",
+    });
+    const invocation = {
+      platform: "antigravity" as const,
+      event: "BeforeAgent" as const,
+      processCwd: projectDir,
+      rawPayload: antigravityPayloadWithoutConversation(projectDir, transcriptPath),
+    };
+
+    await antigravityMemoryAdapter.beforeAgent(invocation);
+    await antigravityMemoryAdapter.beforeAgent(invocation);
+
+    assert.equal(nams.calls("createConversation").length, 1);
     assert.equal(nams.calls("addMessage").length, 1);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
