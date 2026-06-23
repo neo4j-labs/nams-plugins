@@ -8,7 +8,9 @@ const projections = [
   { kind: "template", platform: "claude", from: "templates/local/claude", to: "claude", renderPackage: false },
   { kind: "template", platform: "codex", from: "templates/local/codex", to: "codex", renderPackage: false },
   { kind: "template", platform: "gemini", from: "templates/local/gemini", to: "gemini", renderPackage: false },
+  { kind: "template", platform: "gemini-mcp", from: "templates/local/gemini-mcp", to: "gemini-mcp", renderPackage: false },
   { kind: "opencode", platform: "opencode", from: "templates/local/opencode/.opencode/plugins/nams-hooks.js", to: "opencode/.opencode/plugins/nams-hooks.js", commandMode: "installed" },
+  { kind: "template", platform: "opencode-mcp", from: "templates/local/opencode-mcp", to: "opencode-mcp", renderPackage: false },
 ];
 
 await buildProjectionTarget(outputRoot, projections);
