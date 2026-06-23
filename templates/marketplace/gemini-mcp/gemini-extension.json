@@ -1,0 +1,5 @@
+{
+  "name": "nams-mcp",
+  "version": "__PACKAGE_VERSION__",
+  "description": "OAuth-first Neo4j Agent Memory Service MCP tools for Gemini CLI."
+}

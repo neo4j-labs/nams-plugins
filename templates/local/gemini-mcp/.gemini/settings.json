@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "nams": {
+      "httpUrl": "https://memory.neo4jlabs.com/mcp"
+    }
+  }
+}
