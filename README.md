@@ -65,6 +65,24 @@ NAMS credentials. Codex exposes workspace selection as the explicit skill:
 $nams:workspace use <workspace-id-or-name>
 ```
 
+### NAMS MCP
+
+`nams-plugins` also ships a separate OAuth-first MCP integration for the hosted
+NAMS MCP server at `https://memory.neo4jlabs.com/mcp`. Install it separately
+from `nams-hooks` when you want agent-controlled NAMS tools in addition to, or
+instead of, deterministic hook persistence.
+
+Claude Code installs the MCP plugin from the same marketplace:
+
+```bash
+claude plugin marketplace add neo4j-labs/nams-plugins@latest
+claude plugin install mcp@nams-plugins
+```
+
+Codex users add the same marketplace, then install `NAMS MCP` from `/plugins`.
+Gemini CLI and OpenCode use the generated MCP config artifacts described in
+`INSTALL.md`.
+
 ### OpenCode
 
 OpenCode uses the project plugin shim and the `nams-hooks` CLI package:

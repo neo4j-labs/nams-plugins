@@ -227,6 +227,82 @@ explicit shell command from the hook notice:
 nams-hooks workspaces configure codex --scope session --session-id <session-id> --workspace <workspace-id-or-name>
 ```
 
+## NAMS MCP
+
+The hosted NAMS MCP server is packaged separately from `nams-hooks`. Use it when
+you want platform-native MCP tools backed by Neo4j Agent Memory Service. The
+generated MCP artifacts are OAuth-first and do not include static
+`Authorization` headers or `NAMS_API_KEY` prompts.
+
+### Claude Code MCP
+
+```bash
+claude plugin marketplace add neo4j-labs/nams-plugins@latest
+claude plugin install mcp@nams-plugins
+```
+
+On first MCP use, Claude Code starts its native OAuth flow for the NAMS MCP
+server.
+
+### Codex MCP
+
+```bash
+codex plugin marketplace add neo4j-labs/nams-plugins@latest
+```
+
+Restart Codex, open `/plugins`, select the `nams-plugins` marketplace, and
+install `NAMS MCP`. Use `/mcp` in Codex to inspect the connected server.
+
+### Gemini CLI MCP
+
+The v1 generated artifact is an MCP-only config root:
+
+```text
+dist-marketplace/gemini-mcp/
+```
+
+Link or copy that directory as a separate Gemini extension/config root. It
+declares:
+
+```json
+{
+  "mcpServers": {
+    "nams": {
+      "httpUrl": "https://memory.neo4jlabs.com/mcp"
+    }
+  }
+}
+```
+
+The later `npx @neo4j-labs/nams-plugins install mcp` workstream will provide a
+one-command Gemini setup.
+
+### OpenCode MCP
+
+The v1 generated artifact is a mergeable `opencode.json` fragment:
+
+```text
+dist-marketplace/opencode-mcp/opencode.json
+```
+
+Merge its `mcp.nams` entry into your project or user `opencode.json`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "nams": {
+      "type": "remote",
+      "url": "https://memory.neo4jlabs.com/mcp",
+      "enabled": true
+    }
+  }
+}
+```
+
+The later `npx @neo4j-labs/nams-plugins install mcp` workstream will provide a
+safe config merge command.
+
 ## Gemini CLI
 
 Gemini CLI installs `nams-hooks` as a Gemini extension from the latest branch.
