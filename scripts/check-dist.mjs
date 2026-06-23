@@ -307,8 +307,8 @@ async function verifyClaudeMcpMarketplaceFiles() {
   assertOAuthFirstMcpServer(plugin.mcpServers?.nams, "Claude MCP");
   await assertNoMcpRuntime(path.join(marketplaceDistDir, "plugins", "claude-nams-mcp"), "Claude MCP");
   assertNoStaticMcpSecrets(plugin, "Claude MCP");
-  if (Object.hasOwn(plugin, "hooks") || Object.hasOwn(plugin, "userConfig")) {
-    throw new Error("Claude MCP plugin must not define hooks or userConfig.");
+  if (Object.hasOwn(plugin, "hooks") || Object.hasOwn(plugin, "userConfig") || Object.hasOwn(plugin, "authentication")) {
+    throw new Error("Claude MCP plugin must not define hooks, userConfig, or authentication.");
   }
 }
 
@@ -432,7 +432,7 @@ async function assertNoMcpRuntime(rootPath, label) {
 }
 
 function assertNoStaticMcpSecrets(value, label) {
-  if (/NAMS_API_KEY|Authorization|Bearer/.test(JSON.stringify(value))) {
+  if (/NAMS_API_KEY|authorization|bearer/i.test(JSON.stringify(value))) {
     throw new Error(`${label} must not include static credential configuration.`);
   }
 }

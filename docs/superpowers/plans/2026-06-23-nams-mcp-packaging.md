@@ -1,6 +1,6 @@
 # NAMS MCP Packaging Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]` / `- [x]`) syntax for tracking.
 
 **Goal:** Package the hosted NAMS MCP server as a separate OAuth-first `mcp` integration for Claude Code, Codex, Gemini CLI, and OpenCode inside the existing `nams-plugins` release.
 
@@ -42,7 +42,7 @@
 - Modify: `templates/marketplace/claude/.claude-plugin/marketplace.json`
 - Create: `templates/marketplace/claude/plugins/claude-nams-mcp/.claude-plugin/plugin.json`
 
-- [ ] **Step 1: Add Claude MCP template tests**
+- [x] **Step 1: Add Claude MCP template tests**
 
 Edit `test/claude-template.test.ts`. Add this constant beside the existing `pluginManifestPath` constant:
 
@@ -99,7 +99,7 @@ test("Claude MCP plugin manifest template declares OAuth-first remote MCP only",
 });
 ```
 
-- [ ] **Step 2: Run the focused Claude template test and verify it fails**
+- [x] **Step 2: Run the focused Claude template test and verify it fails**
 
 Run:
 
@@ -109,7 +109,7 @@ node --import=tsx --test test/claude-template.test.ts
 
 Expected: FAIL because the marketplace has only one plugin and `templates/marketplace/claude/plugins/claude-nams-mcp/.claude-plugin/plugin.json` does not exist.
 
-- [ ] **Step 3: Add the Claude marketplace `mcp` entry**
+- [x] **Step 3: Add the Claude marketplace `mcp` entry**
 
 Edit `templates/marketplace/claude/.claude-plugin/marketplace.json` so its `plugins` array contains both existing `nams-hooks` entry and this second entry:
 
@@ -140,7 +140,7 @@ Edit `templates/marketplace/claude/.claude-plugin/marketplace.json` so its `plug
 
 Keep the existing `nams-hooks` entry unchanged.
 
-- [ ] **Step 4: Create the Claude MCP plugin manifest**
+- [x] **Step 4: Create the Claude MCP plugin manifest**
 
 Create `templates/marketplace/claude/plugins/claude-nams-mcp/.claude-plugin/plugin.json` with this exact content:
 
@@ -169,7 +169,7 @@ Create `templates/marketplace/claude/plugins/claude-nams-mcp/.claude-plugin/plug
 }
 ```
 
-- [ ] **Step 5: Run the focused Claude template test and verify it passes**
+- [x] **Step 5: Run the focused Claude template test and verify it passes**
 
 Run:
 
@@ -179,7 +179,7 @@ node --import=tsx --test test/claude-template.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit the Claude MCP template**
+- [x] **Step 6: Commit the Claude MCP template**
 
 Run:
 
@@ -197,7 +197,7 @@ git commit -m "feat: add claude nams mcp marketplace template" -m "Co-authored-b
 - Modify: `templates/marketplace/codex/.agents/plugins/marketplace.json`
 - Create: `templates/marketplace/codex/plugins/codex-nams-mcp/.codex-plugin/plugin.json`
 
-- [ ] **Step 1: Add Codex MCP template tests**
+- [x] **Step 1: Add Codex MCP template tests**
 
 Edit `test/codex-template.test.ts`. Add this constant beside `pluginManifestPath`:
 
@@ -280,7 +280,7 @@ test("Codex MCP plugin manifest template declares OAuth-first remote MCP only", 
 });
 ```
 
-- [ ] **Step 2: Run the focused Codex template test and verify it fails**
+- [x] **Step 2: Run the focused Codex template test and verify it fails**
 
 Run:
 
@@ -290,7 +290,7 @@ node --import=tsx --test test/codex-template.test.ts
 
 Expected: FAIL because the marketplace has only one plugin and `templates/marketplace/codex/plugins/codex-nams-mcp/.codex-plugin/plugin.json` does not exist.
 
-- [ ] **Step 3: Add the Codex marketplace `mcp` entry**
+- [x] **Step 3: Add the Codex marketplace `mcp` entry**
 
 Edit `templates/marketplace/codex/.agents/plugins/marketplace.json` so its `plugins` array contains both the existing `nams-hooks` entry and this second entry:
 
@@ -327,7 +327,7 @@ Edit `templates/marketplace/codex/.agents/plugins/marketplace.json` so its `plug
 
 Keep the existing `nams-hooks` entry unchanged.
 
-- [ ] **Step 4: Create the Codex MCP plugin manifest**
+- [x] **Step 4: Create the Codex MCP plugin manifest**
 
 Create `templates/marketplace/codex/plugins/codex-nams-mcp/.codex-plugin/plugin.json` with this exact content:
 
@@ -355,7 +355,7 @@ Create `templates/marketplace/codex/plugins/codex-nams-mcp/.codex-plugin/plugin.
 }
 ```
 
-- [ ] **Step 5: Run the focused Codex template test and verify it passes**
+- [x] **Step 5: Run the focused Codex template test and verify it passes**
 
 Run:
 
@@ -365,7 +365,7 @@ node --import=tsx --test test/codex-template.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit the Codex MCP template**
+- [x] **Step 6: Commit the Codex MCP template**
 
 Run:
 
@@ -384,7 +384,7 @@ git commit -m "feat: add codex nams mcp marketplace template" -m "Co-authored-by
 - Create: `templates/marketplace/gemini-mcp/settings.json`
 - Create: `templates/local/gemini-mcp/.gemini/settings.json`
 
-- [ ] **Step 1: Add Gemini MCP template tests**
+- [x] **Step 1: Add Gemini MCP template tests**
 
 Edit `test/gemini-template.test.ts`. Add these constants near the existing marketplace constants:
 
@@ -429,7 +429,7 @@ test("Gemini MCP local template is a settings-only config fragment", async () =>
 });
 ```
 
-- [ ] **Step 2: Run the focused Gemini template test and verify it fails**
+- [x] **Step 2: Run the focused Gemini template test and verify it fails**
 
 Run:
 
@@ -439,7 +439,7 @@ node --import=tsx --test test/gemini-template.test.ts
 
 Expected: FAIL because the `templates/marketplace/gemini-mcp/` and `templates/local/gemini-mcp/` files do not exist.
 
-- [ ] **Step 3: Create Gemini MCP marketplace extension metadata**
+- [x] **Step 3: Create Gemini MCP marketplace extension metadata**
 
 Create `templates/marketplace/gemini-mcp/gemini-extension.json` with this exact content:
 
@@ -451,7 +451,7 @@ Create `templates/marketplace/gemini-mcp/gemini-extension.json` with this exact 
 }
 ```
 
-- [ ] **Step 4: Create Gemini MCP marketplace settings**
+- [x] **Step 4: Create Gemini MCP marketplace settings**
 
 Create `templates/marketplace/gemini-mcp/settings.json` with this exact content:
 
@@ -465,7 +465,7 @@ Create `templates/marketplace/gemini-mcp/settings.json` with this exact content:
 }
 ```
 
-- [ ] **Step 5: Create Gemini MCP local settings**
+- [x] **Step 5: Create Gemini MCP local settings**
 
 Create `templates/local/gemini-mcp/.gemini/settings.json` with this exact content:
 
@@ -479,7 +479,7 @@ Create `templates/local/gemini-mcp/.gemini/settings.json` with this exact conten
 }
 ```
 
-- [ ] **Step 6: Run the focused Gemini template test and verify it passes**
+- [x] **Step 6: Run the focused Gemini template test and verify it passes**
 
 Run:
 
@@ -489,7 +489,7 @@ node --import=tsx --test test/gemini-template.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit the Gemini MCP templates**
+- [x] **Step 7: Commit the Gemini MCP templates**
 
 Run:
 
@@ -507,7 +507,7 @@ git commit -m "feat: add gemini nams mcp config templates" -m "Co-authored-by: C
 - Create: `templates/marketplace/opencode-mcp/opencode.json`
 - Create: `templates/local/opencode-mcp/opencode.json`
 
-- [ ] **Step 1: Add OpenCode MCP template tests**
+- [x] **Step 1: Add OpenCode MCP template tests**
 
 Edit `test/opencode-template.test.ts`. Add these constants after `repoRoot`:
 
@@ -552,7 +552,7 @@ test("opencode MCP local template is a remote OAuth config fragment", async () =
 });
 ```
 
-- [ ] **Step 2: Run the focused OpenCode template test and verify it fails**
+- [x] **Step 2: Run the focused OpenCode template test and verify it fails**
 
 Run:
 
@@ -562,7 +562,7 @@ node --import=tsx --test test/opencode-template.test.ts
 
 Expected: FAIL because the `templates/marketplace/opencode-mcp/` and `templates/local/opencode-mcp/` files do not exist.
 
-- [ ] **Step 3: Create OpenCode MCP marketplace config**
+- [x] **Step 3: Create OpenCode MCP marketplace config**
 
 Create `templates/marketplace/opencode-mcp/opencode.json` with this exact content:
 
@@ -579,7 +579,7 @@ Create `templates/marketplace/opencode-mcp/opencode.json` with this exact conten
 }
 ```
 
-- [ ] **Step 4: Create OpenCode MCP local config**
+- [x] **Step 4: Create OpenCode MCP local config**
 
 Create `templates/local/opencode-mcp/opencode.json` with this exact content:
 
@@ -596,7 +596,7 @@ Create `templates/local/opencode-mcp/opencode.json` with this exact content:
 }
 ```
 
-- [ ] **Step 5: Run the focused OpenCode template test and verify it passes**
+- [x] **Step 5: Run the focused OpenCode template test and verify it passes**
 
 Run:
 
@@ -606,7 +606,7 @@ node --import=tsx --test test/opencode-template.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit the OpenCode MCP templates**
+- [x] **Step 6: Commit the OpenCode MCP templates**
 
 Run:
 
@@ -624,7 +624,7 @@ git commit -m "feat: add opencode nams mcp config templates" -m "Co-authored-by:
 - Modify: `scripts/build-dist-local.mjs`
 - Modify: `scripts/check-dist.mjs`
 
-- [ ] **Step 1: Add failing generated-artifact checks**
+- [x] **Step 1: Add failing generated-artifact checks**
 
 Edit `scripts/check-dist.mjs`. In `verifyMarketplaceDist()`, add this call after `await verifyOpenCodeMarketplaceFiles();`:
 
@@ -800,7 +800,7 @@ function assertNoStaticMcpSecrets(value, label) {
 }
 ```
 
-- [ ] **Step 2: Build current dist trees and verify the new check fails**
+- [x] **Step 2: Build current dist trees and verify the new check fails**
 
 Run:
 
@@ -811,7 +811,7 @@ node scripts/check-dist.mjs
 
 Expected: `npm run dist` succeeds, then `node scripts/check-dist.mjs` fails because `dist-marketplace/plugins/claude-nams-mcp/.claude-plugin/plugin.json` and the other MCP generated artifacts do not exist.
 
-- [ ] **Step 3: Project MCP marketplace templates**
+- [x] **Step 3: Project MCP marketplace templates**
 
 Edit `scripts/build-dist-marketplace.mjs`. Add these projection entries after the existing Claude, Codex, Gemini, and OpenCode hook projections are present:
 
@@ -824,7 +824,7 @@ Edit `scripts/build-dist-marketplace.mjs`. Add these projection entries after th
 
 Do not add `packageJson` or `runtime` projections for MCP directories.
 
-- [ ] **Step 4: Project MCP local templates**
+- [x] **Step 4: Project MCP local templates**
 
 Edit `scripts/build-dist-local.mjs`. Add these projection entries before the OpenCode hook shim projection or after it:
 
@@ -835,7 +835,7 @@ Edit `scripts/build-dist-local.mjs`. Add these projection entries before the Ope
 
 Do not add runtime projections for MCP directories.
 
-- [ ] **Step 5: Build dist trees and verify generated-artifact checks pass**
+- [x] **Step 5: Build dist trees and verify generated-artifact checks pass**
 
 Run:
 
@@ -846,7 +846,7 @@ node scripts/check-dist.mjs
 
 Expected: both commands exit 0.
 
-- [ ] **Step 6: Run the full package check**
+- [x] **Step 6: Run the full package check**
 
 Run:
 
@@ -856,7 +856,7 @@ npm run package:check
 
 Expected: PASS, including `npm run check`, `npm run dist`, and `node scripts/check-dist.mjs`.
 
-- [ ] **Step 7: Commit projections and generated-artifact checks**
+- [x] **Step 7: Commit projections and generated-artifact checks**
 
 Run:
 
@@ -874,7 +874,7 @@ git commit -m "test: verify nams mcp distribution artifacts" -m "Co-authored-by:
 - Modify: `INSTALL.md`
 - Modify: `DEVELOPMENT.md`
 
-- [ ] **Step 1: Update README with MCP overview**
+- [x] **Step 1: Update README with MCP overview**
 
 Edit `README.md`. After the existing Codex section and before the OpenCode section, add:
 
@@ -898,7 +898,7 @@ Gemini CLI and OpenCode use the generated MCP config artifacts described in
 `INSTALL.md`.
 ````
 
-- [ ] **Step 2: Update INSTALL with platform MCP instructions**
+- [x] **Step 2: Update INSTALL with platform MCP instructions**
 
 Edit `INSTALL.md`. After the existing Codex section and before the Gemini CLI section, add:
 
@@ -980,7 +980,7 @@ The later `npx @neo4j-labs/nams-plugins install mcp` workstream will provide a
 safe config merge command.
 ````
 
-- [ ] **Step 3: Update DEVELOPMENT with local MCP artifact checks**
+- [x] **Step 3: Update DEVELOPMENT with local MCP artifact checks**
 
 Edit `DEVELOPMENT.md`. After the section that describes validating `dist-marketplace`, add:
 
@@ -1005,7 +1005,7 @@ MCP artifacts must point at `https://memory.neo4jlabs.com/mcp`, must not include
 `bin/cli.js` runtime files.
 ````
 
-- [ ] **Step 4: Run docs-free verification commands**
+- [x] **Step 4: Run docs-free verification commands**
 
 Run:
 
@@ -1016,7 +1016,7 @@ npm run package:check
 
 Expected: both commands exit 0. Documentation content is not asserted by tests, matching the repository testing rule that docs content should not be tested.
 
-- [ ] **Step 5: Commit documentation**
+- [x] **Step 5: Commit documentation**
 
 Run:
 
@@ -1032,7 +1032,7 @@ git commit -m "docs: document nams mcp packaging" -m "Co-authored-by: Codex <cod
 **Files:**
 - Inspect: all files changed by Tasks 1-6
 
-- [ ] **Step 1: Verify no unintended runtime changes**
+- [x] **Step 1: Verify no unintended runtime changes**
 
 Run:
 
@@ -1042,7 +1042,7 @@ git diff --name-only devel HEAD
 
 Expected: output includes template, test, docs, and build/check script files only. It must not include `src/`, `src/generated/`, or runtime platform files.
 
-- [ ] **Step 2: Run final verification**
+- [x] **Step 2: Run final verification**
 
 Run:
 
@@ -1053,7 +1053,7 @@ npm run package:check
 
 Expected: both commands exit 0.
 
-- [ ] **Step 3: Inspect generated MCP artifacts**
+- [x] **Step 3: Inspect generated MCP artifacts**
 
 Run:
 
@@ -1072,7 +1072,7 @@ dist-marketplace/gemini-mcp/settings.json
 dist-marketplace/opencode-mcp/opencode.json
 ```
 
-- [ ] **Step 4: Inspect for static MCP credentials**
+- [x] **Step 4: Inspect for static MCP credentials**
 
 Run:
 
@@ -1082,7 +1082,7 @@ rg -n "NAMS_API_KEY|Authorization|Bearer" templates/marketplace/claude/plugins/c
 
 Expected: no matches.
 
-- [ ] **Step 5: Confirm worktree status**
+- [x] **Step 5: Confirm worktree status**
 
 Run:
 
@@ -1092,7 +1092,7 @@ git status --short
 
 Expected: no output.
 
-- [ ] **Step 6: Report implementation summary**
+- [x] **Step 6: Report implementation summary**
 
 Report:
 
