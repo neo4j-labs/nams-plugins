@@ -30,7 +30,7 @@ test("package scripts expose split dist targets and umbrella dist", async () => 
   assert.equal(packageJson.scripts["dist:marketplace"], "npm run build && node scripts/build-dist-marketplace.mjs");
   assert.equal(packageJson.scripts["dist:local"], "npm run build && node scripts/build-dist-local.mjs");
   assert.equal(packageJson.scripts.dist, "npm run dist:npm && npm run dist:local && npm run dist:marketplace");
-  assert.equal(packageJson.scripts["dist:check"], "node scripts/check-dist.mjs");
+  assert.equal(packageJson.scripts["dist:check"], "node --import=tsx --test scripts/check-dist.test.ts");
   assert.equal(packageJson.scripts["package:check"], "npm run check && npm run dist && npm run dist:check");
 });
 
