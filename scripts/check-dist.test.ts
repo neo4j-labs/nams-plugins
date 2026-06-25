@@ -3,6 +3,7 @@ import { constants } from "node:fs";
 import { access, cp, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { describe, it } from "node:test";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
@@ -31,13 +32,90 @@ const forbiddenNpmArtifactPatterns = [
   /(^|\/)nams-hooks\.js$/,
 ];
 
-const rootPackageJson = await verifySourcePackageIdentity(rootPackagePath);
-await verifyRootPackageFiles(rootPackagePath);
-await verifyNpmDist(rootPackageJson);
-await verifyMarketplaceDist();
-await verifyLocalDist();
-await checkPackedPackage(root, "dist/bin/cli.js", { packageJson: rootPackageJson, identityAlreadyVerified: true });
-await checkPackedPackage(npmDistDir, "bin/cli.js");
+describe("source package metadata", () => {
+  it("uses the release package name and root nams-hooks bin target", async () => {
+    await verifySourcePackageIdentity(rootPackagePath);
+  });
+
+  it("publishes dist and docs without source templates", async () => {
+    await verifyRootPackageFiles(rootPackagePath);
+  });
+});
+
+describe("npm dist", () => {
+  it("contains only executable runtime package artifacts", async () => {
+    await verifyNpmDist(await readRootPackageJson());
+  });
+
+  it("root package dry-run packs the generated dist runtime files", async () => {
+    const rootPackageJson = await verifySourcePackageIdentity(rootPackagePath);
+    await checkPackedPackage(root, "dist/bin/cli.js", { packageJson: rootPackageJson, identityAlreadyVerified: true });
+  });
+
+  it("dist package dry-run packs runtime files from the package root", async () => {
+    await checkPackedPackage(npmDistDir, "bin/cli.js");
+  });
+});
+
+describe("marketplace dist", () => {
+  it("renders Antigravity plugin metadata, hooks, and bundled CLI", async () => {
+    await verifyAntigravityMarketplaceFiles();
+  });
+
+  it("renders Gemini extension metadata, hooks, command, and bundled CLI", async () => {
+    await verifyGeminiMarketplaceFiles();
+  });
+
+  it("renders Claude marketplace metadata, hooks, command, and bundled CLI", async () => {
+    await verifyClaudeMarketplaceFiles();
+  });
+
+  it("renders Codex marketplace metadata, hooks, skill, and bundled CLI", async () => {
+    await verifyCodexMarketplaceFiles();
+  });
+
+  it("renders OpenCode plugin hook bridge and bundled CLI", async () => {
+    await verifyOpenCodeMarketplaceFiles();
+  });
+
+  it("renders package metadata for every marketplace plugin", async () => {
+    await verifyMarketplacePluginPackageMetadata();
+  });
+
+  it("keeps a copied marketplace CLI runnable outside package scope", async () => {
+    await verifyMarketplaceCliRunsOutsidePackageScope();
+  });
+
+  it("omits OpenAPI artifacts and unresolved template placeholders", async () => {
+    await verifyMarketplaceDistContents();
+  });
+});
+
+describe("local dist", () => {
+  it("renders Antigravity installed-command plugin configuration", async () => {
+    await verifyLocalAntigravityDist();
+  });
+
+  it("renders Claude installed-command configuration", async () => {
+    await verifyLocalClaudeDist();
+  });
+
+  it("renders Codex installed-command configuration", async () => {
+    await verifyLocalCodexDist();
+  });
+
+  it("renders Gemini installed-command configuration", async () => {
+    await verifyLocalGeminiDist();
+  });
+
+  it("renders OpenCode installed-command plugin configuration", async () => {
+    await verifyLocalOpenCodeDist();
+  });
+
+  it("omits runtime, marketplace roots, and unresolved template placeholders", async () => {
+    await verifyLocalDistContents();
+  });
+});
 
 async function verifyNpmDist(rootPackageJson) {
   await assertExecutable(path.join(npmDistDir, "bin", "cli.js"));
@@ -63,15 +141,11 @@ async function verifyNpmDist(rootPackageJson) {
   assertNoMatchingFiles(files, /openapi|nams-openapi/i, "dist must not include OpenAPI artifacts");
 }
 
-async function verifyMarketplaceDist() {
-  await verifyAntigravityMarketplaceFiles();
-  await verifyGeminiMarketplaceFiles();
-  await verifyClaudeMarketplaceFiles();
-  await verifyCodexMarketplaceFiles();
-  await verifyOpenCodeMarketplaceFiles();
-  await verifyMarketplacePluginPackageMetadata();
-  await verifyMarketplaceCliRunsOutsidePackageScope();
+async function readRootPackageJson() {
+  return JSON.parse(await readFile(rootPackagePath, "utf8"));
+}
 
+async function verifyMarketplaceDistContents() {
   const files = await listFiles(marketplaceDistDir);
   assertNoMatchingFiles(files, /openapi|nams-openapi/i, "dist-marketplace must not include OpenAPI artifacts");
   const unresolved = await filesWithPattern(marketplaceDistDir, /__PACKAGE_VERSION__|__PACKAGE_LICENSE__|__NAMS_HOOKS_COMMAND__/);
@@ -80,23 +154,32 @@ async function verifyMarketplaceDist() {
   }
 }
 
-async function verifyLocalDist() {
-  await verifyLocalAntigravityFiles();
+async function verifyLocalClaudeDist() {
   await verifyLocalCommandJson(path.join(localDistDir, "claude", ".claude", "settings.local.json"), "claude");
   await verifyLocalClaudeWorkspaceCommand(path.join(localDistDir, "claude", ".claude", "commands", "nams", "workspace.md"));
+}
+
+async function verifyLocalCodexDist() {
   await verifyLocalCommandJson(path.join(localDistDir, "codex", ".codex", "hooks.json"), "codex");
   await verifyLocalCodexWorkspaceSkill(
     path.join(localDistDir, "codex", ".codex", "skills", "workspace", "SKILL.md"),
     path.join(localDistDir, "codex", ".codex", "skills", "workspace", "agents", "openai.yaml"),
   );
+}
+
+async function verifyLocalGeminiDist() {
   await verifyLocalCommandJson(path.join(localDistDir, "gemini", ".gemini", "settings.json"), "gemini");
   await verifyLocalGeminiWorkspaceCommand(path.join(localDistDir, "gemini", ".gemini", "commands", "nams", "workspace.toml"));
+}
 
+async function verifyLocalOpenCodeDist() {
   const opencodeSource = await readFile(path.join(localDistDir, "opencode", ".opencode", "plugins", "nams-hooks.js"), "utf8");
   if (!/"nams-hooks"/.test(opencodeSource) || /new URL\("\.\/bin\/cli\.js"/.test(opencodeSource)) {
     throw new Error("dist-local OpenCode plugin must default to the installed nams-hooks executable.");
   }
+}
 
+async function verifyLocalDistContents() {
   const files = await listFiles(localDistDir);
   assertNoMatchingFiles(files, /(^|\/)bin\/cli\.js$/, "dist-local must not include compiled runtime");
   assertNoMatchingFiles(files, /(^|\/)(\.agents\/plugins\/marketplace\.json|\.claude-plugin\/marketplace\.json)$/, "dist-local must not include marketplace roots");
@@ -421,7 +504,7 @@ async function verifyLocalGeminiWorkspaceCommand(filePath) {
   }
 }
 
-async function verifyLocalAntigravityFiles() {
+async function verifyLocalAntigravityDist() {
   const manifestPath = path.join(localDistDir, "antigravity", ".agents", "plugins", "nams-hooks", "plugin.json");
   const hooksPath = path.join(localDistDir, "antigravity", ".agents", "plugins", "nams-hooks", "hooks.json");
 
@@ -662,35 +745,6 @@ function assertCodexHookCommand(hooks, eventName, namsEvent, statusMessage, matc
   }
   if (handler.statusMessage !== statusMessage) {
     throw new Error(`Codex plugin ${eventName} hook must use status message ${statusMessage}.`);
-  }
-}
-
-async function verifyGeminiWorkspaceCommand(filePath) {
-  const source = await readFile(filePath, "utf8");
-  if (!/nams-hooks workspaces run gemini --event CustomCommand/.test(source)) {
-    throw new Error("Gemini workspace command must call the installed nams-hooks executable.");
-  }
-  if (!/echo '\{ "command_name": "nams:workspace", "command_args": "\{\{args\}\}" \}'/.test(source)) {
-    throw new Error("Gemini workspace command must keep the readable echo payload.");
-  }
-  if (/\$\{extensionPath\}|bin\/cli\.js|node -e|process\.argv|process\.stdin|workspaces configure/.test(source)) {
-    throw new Error("Gemini workspace command must not use bundled runtime paths, node bridges, or workspaces configure.");
-  }
-}
-
-async function assertCodexWorkspaceSkill() {
-  const skill = await readFile(codexPluginSkillPath, "utf8");
-  if (!/nams-hooks workspaces run codex --event CustomCommand/.test(skill)) {
-    throw new Error("Codex workspace skill must call the installed nams-hooks executable.");
-  }
-  if (!/requires the `nams-hooks` executable/.test(skill)) {
-    throw new Error("Codex workspace skill must state the installed nams-hooks requirement.");
-  }
-  if (/node bin\/cli\.js|plugin root|bundled plugin CLI/i.test(skill)) {
-    throw new Error("Codex workspace skill must not branch to bundled plugin CLI behavior.");
-  }
-  if (/workspaces configure/.test(skill)) {
-    throw new Error("Codex workspace skill must not call workspaces configure directly.");
   }
 }
 
