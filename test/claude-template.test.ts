@@ -8,6 +8,7 @@ const claudeBaselineCommandPath = "templates/local/claude/.claude/commands/nams/
 const marketplacePath = "templates/marketplace/claude/.claude-plugin/marketplace.json";
 const pluginManifestPath = "templates/marketplace/claude/plugins/claude-nams-hooks/.claude-plugin/plugin.json";
 const claudeMcpManifestPath = "templates/marketplace/claude/plugins/claude-nams-mcp/.claude-plugin/plugin.json";
+const claudeLocalMcpManifestPath = "templates/local/claude-mcp/.claude-plugin/plugin.json";
 const pluginHooksPath = "templates/marketplace/claude/plugins/claude-nams-hooks/hooks/hooks.json";
 
 test("Claude template maps native hooks to NAMS events", async () => {
@@ -86,6 +87,16 @@ test("Claude plugin manifest template declares user config without standard hook
 test("Claude MCP plugin manifest template declares OAuth-first remote MCP only", async () => {
   const template = JSON.parse(await readFile(claudeMcpManifestPath, "utf8"));
 
+  assertClaudeMcpManifest(template);
+});
+
+test("Claude MCP local template declares OAuth-first remote MCP only", async () => {
+  const template = JSON.parse(await readFile(claudeLocalMcpManifestPath, "utf8"));
+
+  assertClaudeMcpManifest(template);
+});
+
+function assertClaudeMcpManifest(template: any): void {
   assert.equal(template.name, "mcp");
   assert.equal(template.version, "__PACKAGE_VERSION__");
   assert.equal(template.description, "OAuth-first Neo4j Agent Memory Service MCP tools for Claude Code.");
@@ -100,7 +111,7 @@ test("Claude MCP plugin manifest template declares OAuth-first remote MCP only",
   assert.equal(Object.hasOwn(template, "hooks"), false);
   assert.equal(Object.hasOwn(template, "userConfig"), false);
   assert.doesNotMatch(JSON.stringify(template), /NAMS_API_KEY|Authorization|Bearer/);
-});
+}
 
 test("Claude plugin template packages slash workspace command hook", async () => {
   const command = await readFile(claudeCommandPath, "utf8");

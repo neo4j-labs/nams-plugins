@@ -128,6 +128,11 @@ ln -sF <repository-root-or-worktree>/dist-local/claude/.claude /path/to/project/
 ln -sF <repository-root-or-worktree>/dist-local/opencode/.opencode /path/to/project/.opencode
 ```
 
+MCP-only local artifacts are separate roots under `dist-local/claude-mcp/`,
+`dist-local/codex-mcp/`, `dist-local/gemini-mcp/`, and
+`dist-local/opencode-mcp/`. Keep them separate from the `nams-hooks` local hook
+folders when testing installs.
+
 Only replace a target project folder when it is disposable. If the project
 already has platform configuration, merge the generated hook, command, skill, or
 plugin entries from `dist-local/` instead of replacing the whole folder.
@@ -146,6 +151,8 @@ dist-marketplace/plugins/claude-nams-mcp/.claude-plugin/plugin.json
 dist-marketplace/plugins/codex-nams-mcp/.codex-plugin/plugin.json
 dist-marketplace/gemini-mcp/settings.json
 dist-marketplace/opencode-mcp/opencode.json
+dist-local/claude-mcp/.claude-plugin/plugin.json
+dist-local/codex-mcp/.codex-plugin/plugin.json
 dist-local/gemini-mcp/.gemini/settings.json
 dist-local/opencode-mcp/opencode.json
 ```

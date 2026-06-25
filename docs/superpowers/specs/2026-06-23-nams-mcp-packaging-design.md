@@ -334,20 +334,23 @@ dist-marketplace/
 
 No MCP directory receives a `bin/` directory or copied compiled runtime.
 
-`dist-local/` includes equivalent MCP-only config fragments for manual local
-testing:
+`dist-local/` includes equivalent MCP-only local-installation artifacts for
+manual local testing:
 
 ```text
 dist-local/
+  claude-mcp/
+    .claude-plugin/
+      plugin.json
+  codex-mcp/
+    .codex-plugin/
+      plugin.json
   gemini-mcp/
     .gemini/
       settings.json
   opencode-mcp/
     opencode.json
 ```
-
-Claude and Codex local testing can use the generated marketplace root directly
-through existing marketplace-add commands against `./dist-marketplace`.
 
 ## Auth And Data Flow
 
@@ -375,14 +378,18 @@ claude plugin marketplace add neo4j-labs/nams-plugins@latest
 claude plugin install mcp@nams-plugins
 ```
 
+They also identify `dist-local/claude-mcp/` as the local MCP plugin artifact.
+
 Codex docs show marketplace installation followed by `/plugins` selection of
-`NAMS MCP`.
+`NAMS MCP`, plus the `dist-local/codex-mcp/` local artifact.
 
 Gemini docs explain that `nams-hooks` remains the root extension and that
-`nams-mcp` is a separate MCP-only extension/config artifact.
+`nams-mcp` is a separate MCP-only extension/config artifact, with both
+`dist-marketplace/gemini-mcp/` and `dist-local/gemini-mcp/` outputs.
 
 OpenCode docs explain that `opencode-mcp/opencode.json` is a config fragment to
-merge, and that automated merge/install behavior is deferred to the later
+merge, that both marketplace and local output roots exist, and that automated
+merge/install behavior is deferred to the later
 `npx @neo4j-labs/nams-plugins install mcp` workstream.
 
 ## Testing
@@ -393,11 +400,13 @@ Template tests should cover:
 - Claude `mcp` plugin manifest declares the `nams` remote MCP server.
 - Claude `mcp` plugin manifest does not declare hooks, `userConfig`, or static
   authorization headers.
+- Claude local MCP artifact declares the same OAuth-first remote MCP server.
 - Codex marketplace exposes both `nams-hooks` and `mcp`.
 - Codex `mcp` plugin manifest declares a plugin-provided remote MCP server
   named `nams` using the current supported Codex manifest schema.
 - Codex `mcp` plugin manifest does not declare hooks, skills, static
   authorization headers, or NAMS credential prompts.
+- Codex local MCP artifact declares the same OAuth-first remote MCP server.
 - Gemini MCP artifact declares `mcpServers.nams.httpUrl` and includes no hooks,
   commands, or runtime.
 - OpenCode MCP artifact declares `mcp.nams.type = "remote"` and includes no
@@ -407,6 +416,7 @@ Distribution checks should cover:
 
 - `dist-marketplace/` contains MCP artifacts for Claude, Codex, Gemini, and
   OpenCode.
+- `dist-local/` contains MCP artifacts for Claude, Codex, Gemini, and OpenCode.
 - MCP plugin folders do not contain `bin/cli.js`.
 - MCP artifacts do not contain `NAMS_API_KEY`, `Authorization`, or
   `__PACKAGE_*` placeholders after rendering.
@@ -426,7 +436,8 @@ npm run package:check
 - Should v1 cover all NAMS MCP docs clients? No. v1 covers existing repo
   platforms only.
 - Should OAuth or static API key be the generated default? OAuth first.
-- Should local setup be implemented now? No. Defer to
+- Should the local setup command be implemented now? No. Generate local MCP
+  artifacts now, but defer the one-command setup and safe merge UX to
   `npx @neo4j-labs/nams-plugins install mcp`.
 - Should Gemini and OpenCode pretend to support the same plugin install command
   as Claude? No. Use native declarative artifacts and document the difference.

@@ -6,7 +6,9 @@ import { buildProjectionTarget, root } from "./build-dist-common.mjs";
 const outputRoot = path.join(root, "dist-local");
 const projections = [
   { kind: "template", platform: "claude", from: "templates/local/claude", to: "claude", renderPackage: false },
+  { kind: "template", platform: "claude-mcp", from: "templates/local/claude-mcp", to: "claude-mcp", renderPackage: true },
   { kind: "template", platform: "codex", from: "templates/local/codex", to: "codex", renderPackage: false },
+  { kind: "template", platform: "codex-mcp", from: "templates/local/codex-mcp", to: "codex-mcp", renderPackage: true },
   { kind: "template", platform: "gemini", from: "templates/local/gemini", to: "gemini", renderPackage: false },
   { kind: "template", platform: "gemini-mcp", from: "templates/local/gemini-mcp", to: "gemini-mcp", renderPackage: false },
   { kind: "opencode", platform: "opencode", from: "templates/local/opencode/.opencode/plugins/nams-hooks.js", to: "opencode/.opencode/plugins/nams-hooks.js", commandMode: "installed" },

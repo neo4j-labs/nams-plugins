@@ -377,19 +377,44 @@ async function verifyOpenCodeMcpMarketplaceFiles() {
 }
 
 async function verifyLocalMcpFiles() {
+  const claudeManifestPath = path.join(localDistDir, "claude-mcp", ".claude-plugin", "plugin.json");
+  const codexManifestPath = path.join(localDistDir, "codex-mcp", ".codex-plugin", "plugin.json");
   const geminiSettingsPath = path.join(localDistDir, "gemini-mcp", ".gemini", "settings.json");
   const opencodeConfigPath = path.join(localDistDir, "opencode-mcp", "opencode.json");
 
+  await access(claudeManifestPath);
+  await access(codexManifestPath);
   await access(geminiSettingsPath);
   await access(opencodeConfigPath);
 
+  const packageJson = JSON.parse(await readFile(rootPackagePath, "utf8"));
+  const claudeManifest = JSON.parse(await readFile(claudeManifestPath, "utf8"));
+  const codexManifest = JSON.parse(await readFile(codexManifestPath, "utf8"));
   const geminiSettings = JSON.parse(await readFile(geminiSettingsPath, "utf8"));
   const opencodeConfig = JSON.parse(await readFile(opencodeConfigPath, "utf8"));
 
+  if (claudeManifest.name !== "mcp" || claudeManifest.version !== packageJson.version || claudeManifest.license !== packageJson.license) {
+    throw new Error("local Claude MCP plugin manifest must name mcp and match package.json metadata.");
+  }
+  if (codexManifest.name !== "mcp" || codexManifest.version !== packageJson.version || codexManifest.license !== packageJson.license) {
+    throw new Error("local Codex MCP plugin manifest must name mcp and match package.json metadata.");
+  }
+  assertOAuthFirstMcpServer(claudeManifest.mcpServers?.nams, "local Claude MCP");
+  assertOAuthFirstMcpServer(codexManifest.mcpServers?.nams, "local Codex MCP");
   assertGeminiOAuthFirstMcpServer(geminiSettings.mcpServers?.nams, "local Gemini MCP");
   assertOpenCodeOAuthFirstMcpServer(opencodeConfig.mcp?.nams, "local OpenCode MCP");
+  assertNoStaticMcpSecrets(claudeManifest, "local Claude MCP");
+  assertNoStaticMcpSecrets(codexManifest, "local Codex MCP");
   assertNoStaticMcpSecrets(geminiSettings, "local Gemini MCP");
   assertNoStaticMcpSecrets(opencodeConfig, "local OpenCode MCP");
+  if (Object.hasOwn(claudeManifest, "hooks") || Object.hasOwn(claudeManifest, "userConfig") || Object.hasOwn(claudeManifest, "authentication")) {
+    throw new Error("local Claude MCP plugin must not define hooks, userConfig, or authentication.");
+  }
+  if (Object.hasOwn(codexManifest, "hooks") || Object.hasOwn(codexManifest, "skills") || Object.hasOwn(codexManifest, "userConfig") || Object.hasOwn(codexManifest, "authentication")) {
+    throw new Error("local Codex MCP plugin must not define hooks, skills, userConfig, or authentication.");
+  }
+  await assertNoMcpRuntime(path.join(localDistDir, "claude-mcp"), "local Claude MCP");
+  await assertNoMcpRuntime(path.join(localDistDir, "codex-mcp"), "local Codex MCP");
   await assertNoMcpRuntime(path.join(localDistDir, "gemini-mcp"), "local Gemini MCP");
   await assertNoMcpRuntime(path.join(localDistDir, "opencode-mcp"), "local OpenCode MCP");
 }

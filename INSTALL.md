@@ -234,6 +234,10 @@ you want platform-native MCP tools backed by Neo4j Agent Memory Service. The
 generated MCP artifacts are OAuth-first and do not include static
 `Authorization` headers or `NAMS_API_KEY` prompts.
 
+Remote-installation artifacts are generated under `dist-marketplace/`.
+Local-installation equivalents for all available platforms are generated under
+`dist-local/`.
+
 ### Claude Code MCP
 
 ```bash
@@ -242,7 +246,12 @@ claude plugin install mcp@nams-plugins
 ```
 
 On first MCP use, Claude Code starts its native OAuth flow for the NAMS MCP
-server.
+server. For local development or manual installation, use the generated local
+plugin root:
+
+```text
+dist-local/claude-mcp/
+```
 
 ### Codex MCP
 
@@ -251,18 +260,29 @@ codex plugin marketplace add neo4j-labs/nams-plugins@latest
 ```
 
 Restart Codex, open `/plugins`, select the `nams-plugins` marketplace, and
-install `NAMS MCP`. Use `/mcp` in Codex to inspect the connected server.
+install `NAMS MCP`. Use `/mcp` in Codex to inspect the connected server. For
+local development or manual installation, use the generated local plugin root:
+
+```text
+dist-local/codex-mcp/
+```
 
 ### Gemini CLI MCP
 
-The v1 generated artifact is an MCP-only config root:
+The remote-install generated artifact is an MCP-only config root:
 
 ```text
 dist-marketplace/gemini-mcp/
 ```
 
-Link or copy that directory as a separate Gemini extension/config root. It
-declares:
+The local-install equivalent is:
+
+```text
+dist-local/gemini-mcp/
+```
+
+Link or copy the appropriate directory as a separate Gemini extension/config
+root. It declares:
 
 ```json
 {
@@ -279,13 +299,20 @@ one-command Gemini setup.
 
 ### OpenCode MCP
 
-The v1 generated artifact is a mergeable `opencode.json` fragment:
+The remote-install generated artifact is a mergeable `opencode.json` fragment:
 
 ```text
 dist-marketplace/opencode-mcp/opencode.json
 ```
 
-Merge its `mcp.nams` entry into your project or user `opencode.json`:
+The local-install equivalent is:
+
+```text
+dist-local/opencode-mcp/opencode.json
+```
+
+Merge the appropriate artifact's `mcp.nams` entry into your project or user
+`opencode.json`:
 
 ```json
 {

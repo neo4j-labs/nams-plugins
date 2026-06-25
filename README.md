@@ -80,8 +80,9 @@ claude plugin install mcp@nams-plugins
 ```
 
 Codex users add the same marketplace, then install `NAMS MCP` from `/plugins`.
-Gemini CLI and OpenCode use the generated MCP config artifacts described in
-`INSTALL.md`.
+Local-installation equivalents for all platforms are generated under
+`dist-local/`, and remote-installation artifacts are generated under
+`dist-marketplace/`; see `INSTALL.md` for the platform-specific MCP paths.
 
 ### OpenCode
 

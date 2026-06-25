@@ -5,6 +5,7 @@ import { test } from "node:test";
 const marketplacePath = "templates/marketplace/codex/.agents/plugins/marketplace.json";
 const pluginManifestPath = "templates/marketplace/codex/plugins/codex-nams-hooks/.codex-plugin/plugin.json";
 const mcpPluginManifestPath = "templates/marketplace/codex/plugins/codex-nams-mcp/.codex-plugin/plugin.json";
+const localMcpPluginManifestPath = "templates/local/codex-mcp/.codex-plugin/plugin.json";
 const pluginHooksPath = "templates/marketplace/codex/plugins/codex-nams-hooks/hooks/hooks.json";
 const pluginSkillPath = "templates/marketplace/codex/plugins/codex-nams-hooks/skills/workspace/SKILL.md";
 const pluginSkillPolicyPath = "templates/marketplace/codex/plugins/codex-nams-hooks/skills/workspace/agents/openai.yaml";
@@ -79,6 +80,16 @@ test("Codex plugin manifest template declares metadata without credential prompt
 test("Codex MCP plugin manifest template declares OAuth-first remote MCP only", async () => {
   const template = JSON.parse(await readFile(mcpPluginManifestPath, "utf8"));
 
+  assertCodexMcpManifest(template);
+});
+
+test("Codex MCP local template declares OAuth-first remote MCP only", async () => {
+  const template = JSON.parse(await readFile(localMcpPluginManifestPath, "utf8"));
+
+  assertCodexMcpManifest(template);
+});
+
+function assertCodexMcpManifest(template: any): void {
   assert.equal(template.name, "mcp");
   assert.equal(template.version, "__PACKAGE_VERSION__");
   assert.equal(template.description, "OAuth-first Neo4j Agent Memory Service MCP tools for Codex.");
@@ -96,7 +107,7 @@ test("Codex MCP plugin manifest template declares OAuth-first remote MCP only", 
   assert.equal(Object.hasOwn(template, "userConfig"), false);
   assert.equal(Object.hasOwn(template, "authentication"), false);
   assert.doesNotMatch(JSON.stringify(template), /NAMS_API_KEY|Authorization|Bearer/);
-});
+}
 
 test("Codex plugin template packages explicit nams workspace skill", async () => {
   const skill = await readFile(pluginSkillPath, "utf8");
