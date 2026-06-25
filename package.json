@@ -22,7 +22,7 @@
     "dist:marketplace": "npm run build && node scripts/build-dist-marketplace.mjs",
     "dist:local": "npm run build && node scripts/build-dist-local.mjs",
     "dist": "npm run dist:npm && npm run dist:local && npm run dist:marketplace",
-    "dist:check": "node scripts/check-dist.mjs",
+    "dist:check": "node --import=tsx --test scripts/check-dist.test.ts",
     "package:check": "npm run check && npm run dist && npm run dist:check"
   },
   "engines": {
