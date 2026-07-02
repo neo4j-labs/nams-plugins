@@ -1,12 +1,19 @@
 import type { HookInvocation, HookResult } from "../interfaces.js";
 import {
+  hasSeenAny,
   hasSeenAssistantMessage,
+  markSeen,
   markAssistantMessageSeen,
   type AssistantMessageState,
 } from "./dedupe.js";
 import { sha256 } from "./hashing.js";
 import { appendNamsFailureDiagnostic, appendRawPlatformLog } from "./logging.js";
-import { combineMemoryContexts, type NamsMemoryService } from "./memory-service.js";
+import {
+  combineMemoryContexts,
+  type NamsMemoryService,
+  type ReasoningStepInput,
+  type ToolCallInput,
+} from "./memory-service.js";
 import { createInitialSessionState, loadSessionState, saveSessionState, type SessionState } from "./session-state.js";
 
 export interface HookPayloadIdentity {
@@ -17,6 +24,17 @@ export interface HookPayloadIdentity {
 export interface AssistantMessageKeys {
   lookupHash: string;
   markHashes: string[];
+}
+
+export interface ToolCallDedupeKeys {
+  lookupKeys: string[];
+  markKeys: string[];
+}
+
+export interface ToolCallTraceState {
+  seenToolCallIds: string[];
+  seenReasoningStepHashes: string[];
+  reasoningStepIdsByHash: Record<string, string>;
 }
 
 export async function loadHookSessionState(
@@ -116,4 +134,30 @@ export async function storeAssistantMessageOnce(
     await memory.storeAssistantMessage(conversationId, content);
   }
   markAssistantMessageSeen(state, keys.markHashes);
+}
+
+export async function recordToolCallOnce(
+  memory: NamsMemoryService,
+  state: ToolCallTraceState,
+  keys: ToolCallDedupeKeys,
+  reasoningStep: ReasoningStepInput,
+  reasoningStepHash: string,
+  toolCall: Omit<ToolCallInput, "stepId">,
+): Promise<void> {
+  if (hasSeenAny(state.seenToolCallIds, keys.lookupKeys)) {
+    return;
+  }
+  let stepId: string | undefined = state.reasoningStepIdsByHash[reasoningStepHash];
+  if (!state.seenReasoningStepHashes.includes(reasoningStepHash)) {
+    stepId = await memory.recordReasoningStep(reasoningStep);
+    state.seenReasoningStepHashes.push(reasoningStepHash);
+    if (stepId !== undefined) {
+      state.reasoningStepIdsByHash[reasoningStepHash] = stepId;
+    }
+  }
+  await memory.recordToolCall({
+    ...(stepId !== undefined ? { stepId } : {}),
+    ...toolCall,
+  });
+  markSeen(state.seenToolCallIds, keys.markKeys);
 }

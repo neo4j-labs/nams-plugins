@@ -10,6 +10,7 @@ import {
   ensureConversation,
   loadHookSessionState,
   recallMemoryContextOnce,
+  recordToolCallOnce,
   storeAssistantMessageOnce,
   storeUserPromptOnce,
   withHookSessionState,
@@ -19,6 +20,7 @@ import { createNamsFetchMock, namsBaseUrl } from "./support/nams-fetch-mock.js";
 import { readSingleSessionLog } from "./support/runtime-home.js";
 
 const config = { apiKey: "key", workspaceId: "workspace-1", baseUrl: namsBaseUrl };
+const reasoningStep = { conversationId: "conversation-1", reasoning: "why", actionTaken: "Ran read" };
 
 function invocation(event: "SessionStart" | "BeforeAgent" = "BeforeAgent"): HookInvocation {
   return { platform: "claude", event, rawPayload: {}, processCwd: "/tmp" };
@@ -172,6 +174,114 @@ test("storeAssistantMessageOnce does not mark hashes when the store fails", asyn
 
     assert.equal(state.lastAssistantMessageHash, undefined);
     assert.deepEqual(state.seenAssistantMessageHashes, []);
+  });
+});
+
+test("recordToolCallOnce records the step and tool call once per key", async () => {
+  await withTempHome(async () => {
+    const nams = createNamsFetchMock().reasoningStep().toolCall();
+    const state = freshState();
+    const memory = createNamsMemoryService(config, invocation(), state);
+    const keys = { lookupKeys: ["key-1"], markKeys: ["key-1"] };
+
+    await recordToolCallOnce(memory, state, keys, reasoningStep, "hash-1", { toolName: "read", input: { path: "a" } });
+    await recordToolCallOnce(memory, state, keys, reasoningStep, "hash-1", { toolName: "read", input: { path: "a" } });
+
+    assert.equal(nams.calls("addReasoningStep").length, 1);
+    assert.equal(nams.calls("addToolCall").length, 1);
+    assert.deepEqual(state.seenToolCallIds, ["key-1"]);
+    assert.deepEqual(state.reasoningStepIdsByHash, { "hash-1": "step-1" });
+    assert.equal(nams.requestBody("addToolCall").stepId, "step-1");
+  });
+});
+
+test("recordToolCallOnce reuses a seen reasoning step for a new tool call", async () => {
+  await withTempHome(async () => {
+    const nams = createNamsFetchMock().reasoningStep().toolCall();
+    const state = freshState();
+    const memory = createNamsMemoryService(config, invocation(), state);
+
+    await recordToolCallOnce(
+      memory,
+      state,
+      { lookupKeys: ["key-1"], markKeys: ["key-1"] },
+      reasoningStep,
+      "hash-1",
+      { toolName: "read", input: { path: "a" } },
+    );
+    await recordToolCallOnce(
+      memory,
+      state,
+      { lookupKeys: ["key-2"], markKeys: ["key-2"] },
+      reasoningStep,
+      "hash-1",
+      { toolName: "read", input: { path: "b" } },
+    );
+
+    assert.equal(nams.calls("addReasoningStep").length, 1);
+    assert.equal(nams.calls("addToolCall").length, 2);
+    assert.equal(nams.requestBodies("addToolCall").at(1).stepId, "step-1");
+  });
+});
+
+test("recordToolCallOnce leaves the tool call unmarked when recording fails", async () => {
+  await withTempHome(async () => {
+    createNamsFetchMock().reasoningStep().toolCall({ error: "unavailable" }, 500);
+    const state = freshState();
+    const memory = createNamsMemoryService(config, invocation(), state);
+
+    await assert.rejects(
+      recordToolCallOnce(
+        memory,
+        state,
+        { lookupKeys: ["key-1"], markKeys: ["key-1"] },
+        reasoningStep,
+        "hash-1",
+        { toolName: "read", input: {} },
+      ),
+    );
+
+    assert.deepEqual(state.seenToolCallIds, []);
+    assert.deepEqual(state.seenReasoningStepHashes, ["hash-1"]);
+  });
+});
+
+test("recordToolCallOnce reuses the recorded reasoning step when retrying a failed tool call", async () => {
+  await withTempHome(async () => {
+    let failToolCall = true;
+    const nams = createNamsFetchMock().reasoningStep().toolCall(() => {
+      if (failToolCall) {
+        failToolCall = false;
+        return { status: 503, body: { error: "temporary failure" } };
+      }
+      return { status: 201, body: { id: "tool-call-1" } };
+    });
+    const state = freshState();
+    const memory = createNamsMemoryService(config, invocation(), state);
+
+    await assert.rejects(
+      recordToolCallOnce(
+        memory,
+        state,
+        { lookupKeys: ["key-1"], markKeys: ["key-1"] },
+        reasoningStep,
+        "hash-1",
+        { toolName: "read", input: {} },
+      ),
+    );
+    await recordToolCallOnce(
+      memory,
+      state,
+      { lookupKeys: ["key-1"], markKeys: ["key-1"] },
+      reasoningStep,
+      "hash-1",
+      { toolName: "read", input: {} },
+    );
+
+    assert.equal(nams.calls("addReasoningStep").length, 1);
+    assert.equal(nams.calls("addToolCall").length, 2);
+    assert.equal(nams.requestBody("addToolCall").stepId, "step-1");
+    assert.deepEqual(state.seenToolCallIds, ["key-1"]);
   });
 });
 
