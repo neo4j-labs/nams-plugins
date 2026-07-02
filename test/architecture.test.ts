@@ -161,6 +161,30 @@ test("platform adapters do not call fetch directly", async () => {
   }
 });
 
+test("memory platform adapters use shared memory-turn runtime", async () => {
+  for (const platform of platformNames) {
+    const filePath = `src/platforms/${platform}/index.ts`;
+    const content = await readFile(filePath, "utf8");
+
+    assert.match(content, /from "\.\.\/\.\.\/runtime\/memory-turn\.js"/, `${filePath} should import shared memory-turn helpers`);
+    assert.match(content, /\bloadHookSessionState\b/, `${filePath} should use shared hook session loading`);
+    assert.match(content, /\bensureConversation\b/, `${filePath} should use shared conversation creation`);
+    assert.match(content, /\brecallMemoryContextOnce\b/, `${filePath} should use shared recall-once behavior`);
+    assert.doesNotMatch(
+      content,
+      /\bcreateInitialSessionState\b|\bloadSessionState\b|\bappendRawPlatformLog\b/,
+      `${filePath} should not duplicate shared hook session loading`,
+    );
+  }
+
+  for (const platform of ["gemini", "claude", "codex", "antigravity"] as const) {
+    const filePath = `src/platforms/${platform}/index.ts`;
+    const content = await readFile(filePath, "utf8");
+
+    assert.match(content, /\bstoreUserPromptOnce\b/, `${filePath} should use shared user prompt persistence`);
+  }
+});
+
 test("workspace adapter registry is static", async () => {
   const content = await readFile("src/platforms/index.ts", "utf8");
   const platforms = platformNames;

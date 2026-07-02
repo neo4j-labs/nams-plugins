@@ -3,17 +3,20 @@ import { sha256 } from "../../runtime/hashing.js";
 import {
   appendNamsFailureDiagnostic,
   appendPlatformDiagnosticLog,
-  appendRawPlatformLog,
 } from "../../runtime/logging.js";
 import {
-  combineMemoryContexts,
   createNamsMemoryService,
   serializeToolInput,
   type NamsMemoryService,
 } from "../../runtime/memory-service.js";
 import {
-  createInitialSessionState,
-  loadSessionState,
+  ensureConversation,
+  loadHookSessionState,
+  recallMemoryContextOnce,
+  storeUserPromptOnce,
+  type HookPayloadIdentity,
+} from "../../runtime/memory-turn.js";
+import {
   saveSessionState,
   type SessionState,
 } from "../../runtime/session-state.js";
@@ -39,16 +42,7 @@ async function startSession(invocation: HookInvocation<"SessionStart">): Promise
 
 async function beforeAgent(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult> {
   const payloadInfo = parseAntigravityPayload(invocation.rawPayload, invocation.processCwd);
-  const initialState = createInitialSessionState({
-    platform: invocation.platform,
-    projectDirectory: payloadInfo.projectDirectory,
-    sessionId: antigravitySessionId(payloadInfo),
-  });
-  const state =
-    (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
-    initialState;
-
-  await appendRawPlatformLog(invocation, state);
+  const state = await loadHookSessionState(invocation, antigravityHookPayloadIdentity(payloadInfo));
 
   if (payloadInfo.transcriptPath === undefined) {
     await saveSessionState(invocation.platform, state.sessionKey, state);
@@ -74,40 +68,9 @@ async function beforeAgent(invocation: HookInvocation<"BeforeAgent">): Promise<H
   let additionalContext: string | undefined;
   try {
     const memory = createNamsMemoryService(workspaceResult.config, invocation, state);
-
-    let conversationId = state.conversationId;
-    if (conversationId === undefined) {
-      conversationId = await memory.createConversation({
-        harness: invocation.platform,
-        projectDirectory: payloadInfo.projectDirectory,
-      });
-      state.conversationId = conversationId;
-    }
-
-    if (state.lastRecallAt === undefined) {
-      const recallContexts: string[] = [];
-      try {
-        recallContexts.push(await memory.recall(conversationId));
-      } catch {
-        await appendNamsFailureDiagnostic(invocation, state);
-      }
-      try {
-        recallContexts.push(await memory.searchEntities(userPrompt));
-      } catch {
-        await appendNamsFailureDiagnostic(invocation, state);
-      }
-      state.lastRecallAt = new Date().toISOString();
-      const recalledContext = combineMemoryContexts(recallContexts);
-      if (recalledContext.trim() !== "") {
-        additionalContext = recalledContext;
-      }
-    }
-
-    const promptHash = sha256([invocation.platform, state.sessionKey, "user", userPrompt.trim()].join("\n"));
-    if (state.lastUserMessageHash !== promptHash) {
-      await memory.storeUserMessage(conversationId, userPrompt);
-      state.lastUserMessageHash = promptHash;
-    }
+    const conversationId = await ensureConversation(memory, invocation, state, payloadInfo.projectDirectory);
+    additionalContext = await recallMemoryContextOnce(memory, invocation, state, conversationId, userPrompt);
+    await storeUserPromptOnce(memory, invocation, state, conversationId, userPrompt);
   } catch {
     await appendNamsFailureDiagnostic(invocation, state);
     await saveSessionState(invocation.platform, state.sessionKey, state);
@@ -120,18 +83,7 @@ async function beforeAgent(invocation: HookInvocation<"BeforeAgent">): Promise<H
 
 async function afterAgent(invocation: HookInvocation<"AfterAgent">): Promise<HookResult> {
   const payloadInfo = parseAntigravityPayload(invocation.rawPayload, invocation.processCwd);
-  const initialState = createInitialSessionState({
-    platform: invocation.platform,
-    projectDirectory: payloadInfo.projectDirectory,
-    sessionId: antigravitySessionId(payloadInfo),
-  });
-  const state =
-    (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
-    initialState;
-
-  await appendRawPlatformLog(invocation, state);
-  state.seenAssistantMessageHashes ??= [];
-  state.seenTranscriptEntryIds ??= [];
+  const state = await loadHookSessionState(invocation, antigravityHookPayloadIdentity(payloadInfo));
 
   if (state.conversationId === undefined) {
     await saveSessionState(invocation.platform, state.sessionKey, state);
@@ -179,19 +131,7 @@ async function afterAgent(invocation: HookInvocation<"AfterAgent">): Promise<Hoo
 
 async function afterTool(invocation: HookInvocation<"AfterTool">): Promise<HookResult> {
   const payloadInfo = parseAntigravityPayload(invocation.rawPayload, invocation.processCwd);
-  const initialState = createInitialSessionState({
-    platform: invocation.platform,
-    projectDirectory: payloadInfo.projectDirectory,
-    sessionId: antigravitySessionId(payloadInfo),
-  });
-  const state =
-    (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
-    initialState;
-
-  await appendRawPlatformLog(invocation, state);
-  state.seenToolCallIds ??= [];
-  state.seenReasoningStepHashes ??= [];
-  state.reasoningStepIdsByHash ??= {};
+  const state = await loadHookSessionState(invocation, antigravityHookPayloadIdentity(payloadInfo));
 
   const conversationId = state.conversationId;
   if (conversationId === undefined) {
@@ -275,16 +215,7 @@ async function afterTool(invocation: HookInvocation<"AfterTool">): Promise<HookR
 
 async function logOnly(invocation: HookInvocation): Promise<HookResult> {
   const payloadInfo = parseAntigravityPayload(invocation.rawPayload, invocation.processCwd);
-  const initialState = createInitialSessionState({
-    platform: invocation.platform,
-    projectDirectory: payloadInfo.projectDirectory,
-    sessionId: antigravitySessionId(payloadInfo),
-  });
-  const state =
-    (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
-    initialState;
-
-  await appendRawPlatformLog(invocation, state);
+  const state = await loadHookSessionState(invocation, antigravityHookPayloadIdentity(payloadInfo));
   await saveSessionState(invocation.platform, state.sessionKey, state);
 
   return { stdout: {} };
@@ -321,6 +252,14 @@ function antigravitySessionId(payloadInfo: AntigravityPayloadInfo): string | und
       workspacePaths: payloadInfo.workspacePaths,
     }),
   )}`;
+}
+
+function antigravityHookPayloadIdentity(payloadInfo: AntigravityPayloadInfo): HookPayloadIdentity {
+  const sessionId = antigravitySessionId(payloadInfo);
+  return {
+    projectDirectory: payloadInfo.projectDirectory,
+    ...(sessionId !== undefined ? { sessionId } : {}),
+  };
 }
 
 function workspaceResultOutput(
