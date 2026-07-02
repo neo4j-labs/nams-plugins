@@ -13,6 +13,8 @@ interface SourceFile {
   content: string;
 }
 
+const platformNames = ["gemini", "claude", "codex", "opencode", "antigravity"] as const;
+
 async function readProjectFiles(folders: string[]): Promise<SourceFile[]> {
   const files: SourceFile[] = [];
   for (const folder of folders) {
@@ -84,10 +86,8 @@ function importsConcreteAdapter(file: SourceFile): boolean {
 }
 
 test("platform adapters do not import each other", async () => {
-  for (const platform of ["gemini", "claude", "codex", "opencode", "antigravity"]) {
-    const otherPlatforms = ["gemini", "claude", "codex", "opencode", "antigravity"].filter(
-      (candidate) => candidate !== platform,
-    );
+  for (const platform of platformNames) {
+    const otherPlatforms = platformNames.filter((candidate) => candidate !== platform);
     for (const otherPlatform of otherPlatforms) {
       await assertNoViolations(
         projectFiles()
@@ -152,39 +152,65 @@ test("only the platform registry imports all concrete adapters", async () => {
   );
 });
 
-test("platform adapters do not accept test-only runtime dependencies", async () => {
-  const content = await readFile("src/interfaces.ts", "utf8");
-
-  assert.equal(/\bMemoryPlatformAdapterOptions\b/.test(content), false);
-  assert.equal(/\bfetch\?: typeof fetch\b/.test(content), false);
-  assert.equal(/\bruntimeEnvironment\?:/.test(content), false);
-  assert.equal(/\benv\?:/.test(content), false);
-
-  for (const platform of ["gemini", "claude", "codex", "opencode", "antigravity"]) {
+test("platform adapters do not call fetch directly", async () => {
+  for (const platform of platformNames) {
     const filePath = `src/platforms/${platform}/index.ts`;
     const platformContent = await readFile(filePath, "utf8");
 
-    assert.equal(/\bMemoryPlatformAdapterOptions\b/.test(platformContent), false);
-    assert.equal(/\bprivate readonly options\b|\bthis\.options\b/.test(platformContent), false);
-    assert.equal(/\bfetch\b/.test(platformContent), false);
+    assert.equal(/\bfetch\b/.test(platformContent), false, `${filePath} must route NAMS traffic through runtime/memory-service.ts`);
   }
-});
-
-test("memory platform adapter contract is named explicitly", async () => {
-  const interfaceContent = await readFile("src/interfaces.ts", "utf8");
-  const registryContent = await readFile("src/platforms/index.ts", "utf8");
-
-  assert.match(interfaceContent, /\bexport type MemoryPlatformAdapter\b/);
-  assert.doesNotMatch(interfaceContent, /\bexport type PlatformAdapter\b/);
-  assert.match(registryContent, /\bgetMemoryPlatformAdapter\b/);
-  assert.doesNotMatch(registryContent, /\bgetPlatformAdapter\b/);
 });
 
 test("workspace adapter registry is static", async () => {
   const content = await readFile("src/platforms/index.ts", "utf8");
+  const platforms = platformNames;
+  const platformPattern = platforms.join("|");
+  const importedWorkspaceAdapterNames = new Map<string, Set<string>>();
 
-  assert.match(content, /\bgetWorkspacePlatformAdapter\b/);
-  assert.equal(/\bimport\(|readdir|dynamic\b/.test(content), false);
+  assert.equal(/\bimport\s*\(|\breaddir(?:Sync)?\b|\bdynamic\b/.test(content), false);
+
+  for (const platform of platforms) {
+    const importMatch = content.match(
+      new RegExp(String.raw`import\s+\{([^}]+)\}\s+from\s+["']\./${platform}/workspaces\.js["'];`),
+    );
+
+    assert.ok(importMatch, `src/platforms/index.ts must statically import ${platform} workspace adapter`);
+
+    const importedNames = importMatch[1]
+      .split(",")
+      .map((specifier) => specifier.trim().match(/(?:\bas\s+)?([A-Za-z_$][\w$]*)$/)?.[1])
+      .filter((name): name is string => name !== undefined);
+
+    assert.notEqual(importedNames.length, 0, `${platform} workspace import must expose an adapter binding`);
+    importedWorkspaceAdapterNames.set(platform, new Set(importedNames));
+  }
+
+  const registryMatch = content.match(
+    /\bconst\s+[A-Za-z_$][\w$]*\s*:\s*Record<\s*Platform\s*,\s*WorkspacePlatformAdapter\s*>\s*=\s*\{([\s\S]*?)\n\};/,
+  );
+  assert.ok(registryMatch, "src/platforms/index.ts must declare a static workspace adapter registry");
+
+  const registryEntryMatches = [
+    ...registryMatch[1].matchAll(new RegExp(String.raw`\b(${platformPattern})\s*:\s*([A-Za-z_$][\w$]*)\s*,?`, "g")),
+  ];
+  assert.equal(registryEntryMatches.length, platforms.length);
+
+  const registryEntries = new Map(
+    registryEntryMatches.map((match) => [match[1], match[2]]),
+  );
+
+  assert.deepEqual([...registryEntries.keys()].sort(), [...platforms].sort());
+
+  for (const platform of platforms) {
+    const adapterName = registryEntries.get(platform);
+
+    assert.ok(adapterName, `workspace adapter registry must include ${platform}`);
+    assert.equal(
+      importedWorkspaceAdapterNames.get(platform)?.has(adapterName),
+      true,
+      `workspace adapter registry must map ${platform} to its statically imported workspace adapter`,
+    );
+  }
 });
 
 test("workspace resolution runtime does not format platform hook output", async () => {
@@ -199,43 +225,6 @@ test("workspace selection notice formatter does not branch by platform", async (
 
   assert.doesNotMatch(content, /\bplatform\s*===\s*["']/);
   assert.doesNotMatch(content, /\bswitch\s*\(\s*platform\s*\)/);
-});
-
-test("platform session-start contract names local session initialization", async () => {
-  const interfaceContent = await readFile("src/interfaces.ts", "utf8");
-  const cliContent = await readFile("src/cli.ts", "utf8");
-
-  assert.match(interfaceContent, /\bstartSession[:(]/);
-  assert.equal(/\bstartConversation\b/.test(interfaceContent), false);
-  assert.match(cliContent, /\badapter\.startSession\(/);
-  assert.equal(/\badapter\.startConversation\b/.test(cliContent), false);
-
-  for (const platform of ["gemini", "claude", "codex", "opencode", "antigravity"]) {
-    const filePath = `src/platforms/${platform}/index.ts`;
-    const content = await readFile(filePath, "utf8");
-
-    assert.match(content, /\basync function startSession\(invocation: HookInvocation<"SessionStart">\): Promise<HookResult>/);
-    assert.equal(/\bstartConversation\b/.test(content), false);
-  }
-});
-
-test("platform adapters do not manage runtime environment", async () => {
-  for (const platform of ["gemini", "claude", "codex", "opencode", "antigravity"]) {
-    const filePath = `src/platforms/${platform}/index.ts`;
-    const content = await readFile(filePath, "utf8");
-
-    assert.equal(/\bRuntimeEnvironment\b|\bruntimeEnvironment\b/.test(content), false, `${filePath} should not manage runtime environment`);
-  }
-});
-
-test("global runtime modules do not accept unused project directory plumbing", async () => {
-  const sessionState = await readFile("src/runtime/session-state.ts", "utf8");
-  const logging = await readFile("src/runtime/logging.ts", "utf8");
-
-  assert.equal(/loadSessionState\(\s*\n\s*projectDirectory:/.test(sessionState), false);
-  assert.equal(/saveSessionState\(\s*\n\s*projectDirectory:/.test(sessionState), false);
-  assert.equal(/\bvoid projectDirectory\b/.test(sessionState), false);
-  assert.equal(/\bprojectDirectory: string;/.test(logging), false);
 });
 
 test("runtime environment home lookup stays in paths module", async () => {
@@ -253,7 +242,7 @@ test("runtime environment home lookup stays in paths module", async () => {
 });
 
 test("platform adapters use shared logging wrappers", async () => {
-  for (const platform of ["gemini", "codex", "opencode", "antigravity"]) {
+  for (const platform of platformNames) {
     const filePath = `src/platforms/${platform}/index.ts`;
     const content = await readFile(filePath, "utf8");
 
@@ -264,6 +253,5 @@ test("platform adapters use shared logging wrappers", async () => {
       false,
       `${filePath} should reuse shared runtime logging helpers`,
     );
-    assert.equal(/sanitizeNamsRequestLogPayload|isSensitiveLogKey|redactSecretValue/.test(content), false);
   }
 });

@@ -2,23 +2,20 @@ import type { HookInvocation, HookResult, MemoryPlatformAdapter } from "../../in
 import { recordActiveWorkspaceSession } from "../../runtime/active-workspace-session.js";
 import { hasSeenAssistantMessage, markAssistantMessageSeen } from "../dedupe.js";
 import { sha256 } from "../../runtime/hashing.js";
+import { appendNamsFailureDiagnostic } from "../../runtime/logging.js";
 import {
-  appendNamsFailureDiagnostic,
-  appendRawPlatformLog,
-} from "../../runtime/logging.js";
-import {
-  combineMemoryContexts,
   createNamsMemoryService,
   serializeToolInput,
   type NamsMemoryService,
 } from "../../runtime/memory-service.js";
-import { sessionStatePath } from "../../runtime/paths.js";
 import {
-  createInitialSessionState,
-  loadSessionState,
-  saveSessionState,
-  type SessionState,
-} from "../../runtime/session-state.js";
+  ensureConversation,
+  loadHookSessionState,
+  recallMemoryContextOnce,
+  storeUserPromptOnce,
+} from "../../runtime/memory-turn.js";
+import { sessionStatePath } from "../../runtime/paths.js";
+import { saveSessionState, type SessionState } from "../../runtime/session-state.js";
 import {
   loadEffectiveNamsConfigForMemory,
   resolveWorkspaceForMemory,
@@ -30,15 +27,7 @@ import { readCodexTranscript, type CodexTranscriptEntry } from "./transcript.js"
 
 async function startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
     const payloadInfo = parseCodexPayload(invocation.rawPayload, invocation.processCwd);
-    const initialState = createInitialSessionState({
-      platform: invocation.platform,
-      sessionId: payloadInfo.sessionId,
-      projectDirectory: payloadInfo.projectDirectory,
-    });
-    const state =
-      (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
-      initialState;
-    await appendRawPlatformLog(invocation, state);
+    const state = await loadHookSessionState(invocation, payloadInfo);
     await saveSessionState(invocation.platform, state.sessionKey, state);
 
     return { stdout: { continue: true, suppressOutput: true } };
@@ -46,15 +35,7 @@ async function startSession(invocation: HookInvocation<"SessionStart">): Promise
 
 async function beforeAgent(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult> {
     const payloadInfo = parseCodexPayload(invocation.rawPayload, invocation.processCwd);
-    const initialState = createInitialSessionState({
-      platform: invocation.platform,
-      sessionId: payloadInfo.sessionId,
-      projectDirectory: payloadInfo.projectDirectory,
-    });
-    const state =
-      (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
-      initialState;
-    await appendRawPlatformLog(invocation, state);
+    const state = await loadHookSessionState(invocation, payloadInfo);
 
     if (payloadInfo.prompt === undefined) {
       await saveSessionState(invocation.platform, state.sessionKey, state);
@@ -88,49 +69,15 @@ async function beforeAgent(invocation: HookInvocation<"BeforeAgent">): Promise<H
       }
       return workspaceResultOutput(workspaceResult, payloadInfo.sessionId);
     }
-    const config = workspaceResult.config;
 
     let additionalContext: string | undefined;
     try {
-      const memory = createNamsMemoryService(config, invocation, state);
-
-      let conversationId = state.conversationId;
-      if (conversationId === undefined) {
-        conversationId = await memory.createConversation({
-          harness: invocation.platform,
-          projectDirectory: payloadInfo.projectDirectory,
-        });
-        state.conversationId = conversationId;
-      }
-
-      if (state.lastRecallAt === undefined) {
-        const recallContexts: string[] = [];
-        try {
-          recallContexts.push(await memory.recall(conversationId));
-        } catch {
-          await appendNamsFailureDiagnostic(invocation, state);
-        }
-        try {
-          recallContexts.push(await memory.searchEntities(payloadInfo.prompt));
-        } catch {
-          await appendNamsFailureDiagnostic(invocation, state);
-        }
-        state.lastRecallAt = new Date().toISOString();
-        const recalledContext = combineMemoryContexts(recallContexts);
-        if (recalledContext.trim() !== "") {
-          additionalContext = recalledContext;
-        }
-      }
-
-      const promptHash = sha256([invocation.platform, state.sessionKey, "user", payloadInfo.prompt.trim()].join("\n"));
-      if (state.lastUserMessageHash !== promptHash) {
-        await memory.storeUserMessage(conversationId, payloadInfo.prompt);
-        state.lastUserMessageHash = promptHash;
-      }
+      const memory = createNamsMemoryService(workspaceResult.config, invocation, state);
+      const conversationId = await ensureConversation(memory, invocation, state, payloadInfo.projectDirectory);
+      additionalContext = await recallMemoryContextOnce(memory, invocation, state, conversationId, payloadInfo.prompt);
+      await storeUserPromptOnce(memory, invocation, state, conversationId, payloadInfo.prompt);
     } catch {
       await appendNamsFailureDiagnostic(invocation, state);
-      await saveSessionState(invocation.platform, state.sessionKey, state);
-      return allowOutput(additionalContext);
     }
 
     await saveSessionState(invocation.platform, state.sessionKey, state);
@@ -139,20 +86,7 @@ async function beforeAgent(invocation: HookInvocation<"BeforeAgent">): Promise<H
 
 async function afterAgent(invocation: HookInvocation<"AfterAgent">): Promise<HookResult> {
     const payloadInfo = parseCodexPayload(invocation.rawPayload, invocation.processCwd);
-    const initialState = createInitialSessionState({
-      platform: invocation.platform,
-      sessionId: payloadInfo.sessionId,
-      projectDirectory: payloadInfo.projectDirectory,
-    });
-    const state =
-      (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
-      initialState;
-    await appendRawPlatformLog(invocation, state);
-    state.seenAssistantMessageHashes ??= [];
-    state.seenTranscriptEntryIds ??= [];
-    state.seenToolCallIds ??= [];
-    state.seenReasoningStepHashes ??= [];
-    state.reasoningStepIdsByHash ??= {};
+    const state = await loadHookSessionState(invocation, payloadInfo);
 
     if (state.conversationId === undefined) {
       await saveSessionState(invocation.platform, state.sessionKey, state);
@@ -203,18 +137,7 @@ async function afterAgent(invocation: HookInvocation<"AfterAgent">): Promise<Hoo
 
 async function afterTool(invocation: HookInvocation<"AfterTool">): Promise<HookResult> {
     const payloadInfo = parseCodexPayload(invocation.rawPayload, invocation.processCwd);
-    const initialState = createInitialSessionState({
-      platform: invocation.platform,
-      sessionId: payloadInfo.sessionId,
-      projectDirectory: payloadInfo.projectDirectory,
-    });
-    const state =
-      (await loadSessionState(invocation.platform, initialState.sessionKey)) ??
-      initialState;
-    await appendRawPlatformLog(invocation, state);
-    state.seenToolCallIds ??= [];
-    state.seenReasoningStepHashes ??= [];
-    state.reasoningStepIdsByHash ??= {};
+    const state = await loadHookSessionState(invocation, payloadInfo);
 
     const conversationId = state.conversationId;
     const toolName = payloadInfo.toolName;
