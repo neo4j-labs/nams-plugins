@@ -10,8 +10,9 @@ import {
   loadHookSessionState,
   recallMemoryContextOnce,
   storeUserPromptOnce,
+  withHookSessionState,
 } from "../src/runtime/memory-turn.js";
-import { createInitialSessionState, type SessionState } from "../src/runtime/session-state.js";
+import { createInitialSessionState, loadSessionState, type SessionState } from "../src/runtime/session-state.js";
 import { createNamsFetchMock, namsBaseUrl } from "./support/nams-fetch-mock.js";
 import { readSingleSessionLog } from "./support/runtime-home.js";
 
@@ -127,5 +128,41 @@ test("loadHookSessionState creates initial state and logs the raw payload", asyn
     const { lines } = await readSingleSessionLog(process.env.HOME!, "claude");
     assert.equal(lines.length, 1);
     assert.deepEqual(lines[0].payload, { session_id: "session-1" });
+  });
+});
+
+test("withHookSessionState persists state mutations after the run", async () => {
+  await withTempHome(async () => {
+    const result = await withHookSessionState(
+      invocation("SessionStart"),
+      { sessionId: "session-1", projectDirectory: "/tmp/project" },
+      async (state) => {
+        state.conversationId = "conversation-9";
+        return { stdout: { continue: true, suppressOutput: true } };
+      },
+    );
+
+    assert.deepEqual(result, { stdout: { continue: true, suppressOutput: true } });
+    const reloaded = await loadSessionState("claude", "session-1");
+    assert.equal(reloaded?.conversationId, "conversation-9");
+  });
+});
+
+test("withHookSessionState persists state even when the run throws", async () => {
+  await withTempHome(async () => {
+    await assert.rejects(
+      withHookSessionState(
+        invocation("BeforeAgent"),
+        { sessionId: "session-1", projectDirectory: "/tmp/project" },
+        async (state) => {
+          state.conversationId = "conversation-9";
+          throw new Error("boom");
+        },
+      ),
+      /boom/,
+    );
+
+    const reloaded = await loadSessionState("claude", "session-1");
+    assert.equal(reloaded?.conversationId, "conversation-9");
   });
 });

@@ -1,8 +1,8 @@
-import type { HookInvocation } from "../interfaces.js";
+import type { HookInvocation, HookResult } from "../interfaces.js";
 import { sha256 } from "./hashing.js";
 import { appendNamsFailureDiagnostic, appendRawPlatformLog } from "./logging.js";
 import { combineMemoryContexts, type NamsMemoryService } from "./memory-service.js";
-import { createInitialSessionState, loadSessionState, type SessionState } from "./session-state.js";
+import { createInitialSessionState, loadSessionState, saveSessionState, type SessionState } from "./session-state.js";
 
 export interface HookPayloadIdentity {
   sessionId?: string;
@@ -21,6 +21,19 @@ export async function loadHookSessionState(
   const state = (await loadSessionState(invocation.platform, initialState.sessionKey)) ?? initialState;
   await appendRawPlatformLog(invocation, state);
   return state;
+}
+
+export async function withHookSessionState(
+  invocation: HookInvocation,
+  payload: HookPayloadIdentity,
+  run: (state: SessionState) => Promise<HookResult>,
+): Promise<HookResult> {
+  const state = await loadHookSessionState(invocation, payload);
+  try {
+    return await run(state);
+  } finally {
+    await saveSessionState(invocation.platform, state.sessionKey, state);
+  }
 }
 
 export async function ensureConversation(
