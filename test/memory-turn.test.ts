@@ -6,9 +6,11 @@ import { test } from "node:test";
 import type { HookInvocation } from "../src/interfaces.js";
 import { createNamsMemoryService } from "../src/runtime/memory-service.js";
 import {
+  assistantContentHash,
   ensureConversation,
   loadHookSessionState,
   recallMemoryContextOnce,
+  storeAssistantMessageOnce,
   storeUserPromptOnce,
   withHookSessionState,
 } from "../src/runtime/memory-turn.js";
@@ -106,6 +108,70 @@ test("storeUserPromptOnce stores each distinct prompt once", async () => {
 
     assert.equal(nams.calls().length, 1);
     assert.deepEqual(nams.requestBody(), { role: "user", content: "hello" });
+  });
+});
+
+test("storeAssistantMessageOnce stores unseen content and marks all hashes", async () => {
+  await withTempHome(async () => {
+    const nams = createNamsFetchMock().message();
+    const state = freshState();
+    const memory = createNamsMemoryService(config, invocation(), state);
+    const hash = assistantContentHash("claude", state.sessionKey, "answer");
+
+    await storeAssistantMessageOnce(memory, state, "conversation-1", "answer", {
+      lookupHash: hash,
+      markHashes: [hash, "extra-hash"],
+    });
+    await storeAssistantMessageOnce(memory, state, "conversation-1", "answer", {
+      lookupHash: hash,
+      markHashes: [hash, "extra-hash"],
+    });
+
+    assert.equal(nams.calls().length, 1);
+    assert.deepEqual(nams.requestBody(), { role: "assistant", content: "answer" });
+    assert.equal(state.lastAssistantMessageHash, hash);
+    assert.deepEqual(state.seenAssistantMessageHashes, [hash, "extra-hash"]);
+  });
+});
+
+test("storeAssistantMessageOnce marks new hashes when lookup hash was already seen", async () => {
+  await withTempHome(async () => {
+    const nams = createNamsFetchMock().message();
+    const state = freshState();
+    const memory = createNamsMemoryService(config, invocation(), state);
+    const hash = assistantContentHash("claude", state.sessionKey, "answer");
+
+    await storeAssistantMessageOnce(memory, state, "conversation-1", "answer", {
+      lookupHash: hash,
+      markHashes: [hash],
+    });
+    await storeAssistantMessageOnce(memory, state, "conversation-1", "answer", {
+      lookupHash: hash,
+      markHashes: [hash, "late-hash"],
+    });
+
+    assert.equal(nams.calls().length, 1);
+    assert.equal(state.lastAssistantMessageHash, hash);
+    assert.deepEqual(state.seenAssistantMessageHashes, [hash, "late-hash"]);
+  });
+});
+
+test("storeAssistantMessageOnce does not mark hashes when the store fails", async () => {
+  await withTempHome(async () => {
+    createNamsFetchMock().all({ error: "unavailable" }, 500);
+    const state = freshState();
+    const memory = createNamsMemoryService(config, invocation(), state);
+    const hash = assistantContentHash("claude", state.sessionKey, "answer");
+
+    await assert.rejects(
+      storeAssistantMessageOnce(memory, state, "conversation-1", "answer", {
+        lookupHash: hash,
+        markHashes: [hash],
+      }),
+    );
+
+    assert.equal(state.lastAssistantMessageHash, undefined);
+    assert.deepEqual(state.seenAssistantMessageHashes, []);
   });
 });
 

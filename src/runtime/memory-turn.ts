@@ -1,4 +1,9 @@
 import type { HookInvocation, HookResult } from "../interfaces.js";
+import {
+  hasSeenAssistantMessage,
+  markAssistantMessageSeen,
+  type AssistantMessageState,
+} from "./dedupe.js";
 import { sha256 } from "./hashing.js";
 import { appendNamsFailureDiagnostic, appendRawPlatformLog } from "./logging.js";
 import { combineMemoryContexts, type NamsMemoryService } from "./memory-service.js";
@@ -7,6 +12,11 @@ import { createInitialSessionState, loadSessionState, saveSessionState, type Ses
 export interface HookPayloadIdentity {
   sessionId?: string;
   projectDirectory: string;
+}
+
+export interface AssistantMessageKeys {
+  lookupHash: string;
+  markHashes: string[];
 }
 
 export async function loadHookSessionState(
@@ -89,4 +99,21 @@ export async function storeUserPromptOnce(
     await memory.storeUserMessage(conversationId, prompt);
     state.lastUserMessageHash = promptHash;
   }
+}
+
+export function assistantContentHash(platform: string, sessionKey: string, content: string): string {
+  return sha256([platform, sessionKey, "assistant", content].join("\n"));
+}
+
+export async function storeAssistantMessageOnce(
+  memory: NamsMemoryService,
+  state: AssistantMessageState,
+  conversationId: string,
+  content: string,
+  keys: AssistantMessageKeys,
+): Promise<void> {
+  if (!hasSeenAssistantMessage(state, keys.lookupHash)) {
+    await memory.storeAssistantMessage(conversationId, content);
+  }
+  markAssistantMessageSeen(state, keys.markHashes);
 }
