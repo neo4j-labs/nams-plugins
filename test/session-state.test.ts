@@ -271,3 +271,37 @@ test("persists colliding-looking session keys in separate state files", async ()
     await rm(projectDir, { recursive: true, force: true });
   }
 });
+
+test("loadSessionState normalizes missing seen collections from legacy state files", async () => {
+  const homeDir = await mkdtemp(path.join(tmpdir(), "nams-session-state-"));
+  const previousHome = process.env.HOME;
+  const previousProfile = process.env.USERPROFILE;
+  process.env.HOME = homeDir;
+  process.env.USERPROFILE = homeDir;
+  try {
+    const statePath = sessionStatePath("claude", "legacy-session", "2026-01-01T00:00:00.000Z");
+    await mkdir(path.dirname(statePath), { recursive: true });
+    await writeFile(
+      statePath,
+      JSON.stringify({
+        harness: "claude",
+        sessionKey: "legacy-session",
+        projectDirectory: "/tmp/project",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+
+    const state = (await loadSessionState("claude", "legacy-session"))!;
+
+    assert.notEqual(state, null);
+    assert.deepEqual(state.seenAssistantMessageHashes, []);
+    assert.deepEqual(state.seenTranscriptEntryIds, []);
+    assert.deepEqual(state.seenReasoningStepHashes, []);
+    assert.deepEqual(state.seenToolCallIds, []);
+    assert.deepEqual(state.reasoningStepIdsByHash, {});
+  } finally {
+    process.env.HOME = previousHome;
+    process.env.USERPROFILE = previousProfile;
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});

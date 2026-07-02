@@ -71,6 +71,11 @@ export async function loadSessionState(
       state.lastRecallAt = state.lastMemorySearchAt;
     }
     delete state.lastMemorySearchAt;
+    state.seenAssistantMessageHashes ??= [];
+    state.seenTranscriptEntryIds ??= [];
+    state.seenReasoningStepHashes ??= [];
+    state.seenToolCallIds ??= [];
+    state.reasoningStepIdsByHash ??= {};
     return state;
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
