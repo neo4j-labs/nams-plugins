@@ -281,7 +281,27 @@ function parseGeminiAfterToolPayload(payload) {
         ...(outputSummary !== undefined ? { outputSummary } : {}),
     };
 }
-function geminiToolCallDedupeKeys(sessionKey, toolName, input, geminiToolCallId) {
+/**
+ * Lookup and mark key sets are deliberately asymmetric.
+ *
+ * Invariant: one tool call must dedupe across Gemini's id-bearing and id-less
+ * payload variants in either arrival order, while two DISTINCT id-bearing calls
+ * that happen to share identical input must NOT dedupe.
+ *
+ * How the keys achieve that:
+ * - id-less mark writes `fallback:` + bare hash; an id-bearing lookup includes
+ *   `fallback:`, so it finds the earlier mark.
+ * - id-bearing mark writes `gemini-id:` + `gemini-id-fallback:` (NOT
+ *   `fallback:`); an id-less lookup includes `gemini-id-fallback:`, so it
+ *   finds the earlier mark. A second id-bearing call with a different id looks
+ *   up `gemini-id:<other>` + `fallback:` - neither was marked - so it records.
+ * - the bare hash in lookup keys accepts marks written by older builds.
+ *
+ * Pinned by test/gemini/gemini-dedupe-keys.test.ts - keep the tests and this
+ * comment in sync with any key-shape change, and keep new key shapes findable
+ * by the previous version's marks (state files outlive upgrades).
+ */
+export function geminiToolCallDedupeKeys(sessionKey, toolName, input, geminiToolCallId) {
     const fallbackHash = stableJsonHash({
         sessionKey,
         toolName,
