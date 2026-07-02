@@ -2,7 +2,7 @@ import type { HookInvocation, HookResult, MemoryPlatformAdapter } from "../../in
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
 import { recordActiveWorkspaceSession } from "../../runtime/active-workspace-session.js";
 import { firstDefined, firstRecord, firstString } from "../../runtime/util.js";
-import { hasSeenAny, hasSeenAssistantMessage, markAssistantMessageSeen, markSeen, type AssistantMessageState } from "../dedupe.js";
+import { hasSeenAny, hasSeenAssistantMessage, markAssistantMessageSeen, markSeen, type AssistantMessageState } from "../../runtime/dedupe.js";
 import { pickStringFields } from "../payload.js";
 import { appendNamsFailureDiagnostic } from "../../runtime/logging.js";
 import { createNamsMemoryService, type NamsMemoryService } from "../../runtime/memory-service.js";

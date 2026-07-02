@@ -1,6 +1,6 @@
 import type { HookInvocation, HookResult, MemoryPlatformAdapter } from "../../interfaces.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
-import { hasSeenAny, markSeen } from "../dedupe.js";
+import { hasSeenAny, markSeen } from "../../runtime/dedupe.js";
 import { appendNamsFailureDiagnostic } from "../../runtime/logging.js";
 import { createNamsMemoryService } from "../../runtime/memory-service.js";
 import {

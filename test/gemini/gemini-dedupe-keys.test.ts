@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { hasSeenAny, markSeen } from "../../src/platforms/dedupe.js";
+import { hasSeenAny, markSeen } from "../../src/runtime/dedupe.js";
 import { geminiToolCallDedupeKeys } from "../../src/platforms/gemini/index.js";
 
 const sessionKey = "session-1";
