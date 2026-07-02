@@ -20,6 +20,11 @@ export async function loadSessionState(platform, sessionKey) {
             state.lastRecallAt = state.lastMemorySearchAt;
         }
         delete state.lastMemorySearchAt;
+        state.seenAssistantMessageHashes ??= [];
+        state.seenTranscriptEntryIds ??= [];
+        state.seenReasoningStepHashes ??= [];
+        state.seenToolCallIds ??= [];
+        state.reasoningStepIdsByHash ??= {};
         return state;
     }
     catch (error) {
