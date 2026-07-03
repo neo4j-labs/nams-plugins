@@ -1,17 +1,14 @@
-import { hasSeenAssistantMessage, markAssistantMessageSeen, markSeen } from "../dedupe.js";
+import { markSeen } from "../../runtime/dedupe.js";
 import { sha256, stableJsonHash } from "../../runtime/hashing.js";
-import { ensureConversation, loadHookSessionState, recallMemoryContextOnce, } from "../../runtime/memory-turn.js";
+import { assistantContentHash, ensureConversation, recallMemoryContextOnce, recordToolCallOnce, storeAssistantMessageOnce, withHookSessionState, } from "../../runtime/memory-turn.js";
 import { appendNamsFailureDiagnostic, } from "../../runtime/logging.js";
 import { createNamsMemoryService, serializeToolInput } from "../../runtime/memory-service.js";
-import { saveSessionState } from "../../runtime/session-state.js";
 import { loadEffectiveNamsConfigForMemory, resolveWorkspaceForMemory, } from "../../runtime/workspace-resolution.js";
 import { formatWorkspaceSelectionNotice } from "../workspace-selection.js";
 import { parseOpenCodePayload } from "./payload.js";
 async function startSession(invocation) {
     const payloadInfo = parseOpenCodePayload(invocation.rawPayload, invocation.processCwd);
-    const state = await loadHookSessionState(invocation, payloadInfo);
-    await saveSessionState(invocation.platform, state.sessionKey, state);
-    return allowOutput();
+    return withHookSessionState(invocation, payloadInfo, async () => allowOutput());
 }
 async function beforeAgent(invocation) {
     const payloadInfo = parseOpenCodePayload(invocation.rawPayload, invocation.processCwd);
@@ -21,156 +18,120 @@ async function beforeAgent(invocation) {
     if (payloadInfo.hookName !== "chat.message") {
         return allowOutput();
     }
-    const state = await loadHookSessionState(invocation, payloadInfo);
-    state.seenUserMessageIds ??= [];
-    const userPrompt = payloadInfo.userPrompt;
-    if (userPrompt === undefined || userPrompt.trim() === "") {
-        await saveSessionState(invocation.platform, state.sessionKey, state);
-        return allowOutput();
-    }
-    const workspaceResult = await resolveWorkspaceForMemory({
-        invocation,
-        state,
-        projectDirectory: payloadInfo.projectDirectory,
-    });
-    if (workspaceResult.status !== "ready") {
-        await saveSessionState(invocation.platform, state.sessionKey, state);
-        return workspaceResultOutput(workspaceResult, payloadInfo.sessionId);
-    }
-    try {
-        const memory = createNamsMemoryService(workspaceResult.config, invocation, state);
-        const conversationId = await ensureConversation(memory, invocation, state, payloadInfo.projectDirectory);
-        const recalledContext = await recallMemoryContextOnce(memory, invocation, state, conversationId, userPrompt);
-        if (recalledContext !== undefined) {
-            state.pendingMemoryContext = {
-                ...(payloadInfo.messageId !== undefined ? { messageId: payloadInfo.messageId } : {}),
-                content: recalledContext,
-                createdAt: state.lastRecallAt ?? new Date().toISOString(),
-            };
-        }
-        if (hasSeenUserMessage(state, payloadInfo.messageId, invocation.platform, userPrompt)) {
-            await saveSessionState(invocation.platform, state.sessionKey, state);
+    return withHookSessionState(invocation, payloadInfo, async (state) => {
+        state.seenUserMessageIds ??= [];
+        const userPrompt = payloadInfo.userPrompt;
+        if (userPrompt === undefined || userPrompt.trim() === "") {
             return allowOutput();
         }
-        await memory.storeUserMessage(conversationId, userPrompt);
-        markUserMessageSeen(state, payloadInfo.messageId, invocation.platform, userPrompt);
-    }
-    catch {
-        await appendNamsFailureDiagnostic(invocation, state);
-        await saveSessionState(invocation.platform, state.sessionKey, state);
+        const workspaceResult = await resolveWorkspaceForMemory({
+            invocation,
+            state,
+            projectDirectory: payloadInfo.projectDirectory,
+        });
+        if (workspaceResult.status !== "ready") {
+            return workspaceResultOutput(workspaceResult, payloadInfo.sessionId);
+        }
+        try {
+            const memory = createNamsMemoryService(workspaceResult.config, invocation, state);
+            const conversationId = await ensureConversation(memory, invocation, state, payloadInfo.projectDirectory);
+            const recalledContext = await recallMemoryContextOnce(memory, invocation, state, conversationId, userPrompt);
+            if (recalledContext !== undefined) {
+                state.pendingMemoryContext = {
+                    ...(payloadInfo.messageId !== undefined ? { messageId: payloadInfo.messageId } : {}),
+                    content: recalledContext,
+                    createdAt: state.lastRecallAt ?? new Date().toISOString(),
+                };
+            }
+            if (!hasSeenUserMessage(state, payloadInfo.messageId, invocation.platform, userPrompt)) {
+                await memory.storeUserMessage(conversationId, userPrompt);
+                markUserMessageSeen(state, payloadInfo.messageId, invocation.platform, userPrompt);
+            }
+        }
+        catch {
+            await appendNamsFailureDiagnostic(invocation, state);
+        }
         return allowOutput();
-    }
-    await saveSessionState(invocation.platform, state.sessionKey, state);
-    return allowOutput();
+    });
 }
 async function afterAgent(invocation) {
     const payloadInfo = parseOpenCodePayload(invocation.rawPayload, invocation.processCwd);
-    const state = await loadHookSessionState(invocation, payloadInfo);
-    state.seenAssistantPartIds ??= [];
-    if (payloadInfo.hookName !== "experimental.text.complete") {
-        await saveSessionState(invocation.platform, state.sessionKey, state);
-        return allowOutput();
-    }
-    if (state.conversationId === undefined) {
-        await saveSessionState(invocation.platform, state.sessionKey, state);
-        return allowOutput();
-    }
-    const assistantText = payloadInfo.assistantText?.trim();
-    if (assistantText === undefined || assistantText === "") {
-        await saveSessionState(invocation.platform, state.sessionKey, state);
-        return allowOutput();
-    }
-    const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
-    if (config === undefined) {
-        await saveSessionState(invocation.platform, state.sessionKey, state);
-        return allowOutput();
-    }
-    try {
-        const memory = createNamsMemoryService(config, invocation, state);
-        const assistantPartId = assistantPartKey(payloadInfo);
-        if (assistantPartId !== undefined) {
-            if (state.seenAssistantPartIds.includes(assistantPartId)) {
-                await saveSessionState(invocation.platform, state.sessionKey, state);
-                return allowOutput();
-            }
-            await memory.storeAssistantMessage(state.conversationId, assistantText);
-            markSeen(state.seenAssistantPartIds, [assistantPartId]);
+    return withHookSessionState(invocation, payloadInfo, async (state) => {
+        state.seenAssistantPartIds ??= [];
+        if (payloadInfo.hookName !== "experimental.text.complete") {
+            return allowOutput();
         }
-        else {
-            const assistantHash = assistantMessageHash(invocation.platform, state.sessionKey, assistantText);
-            if (!hasSeenAssistantMessage(state, assistantHash)) {
-                await memory.storeAssistantMessage(state.conversationId, assistantText);
-                markAssistantMessageSeen(state, [assistantHash]);
+        if (state.conversationId === undefined) {
+            return allowOutput();
+        }
+        const assistantText = payloadInfo.assistantText?.trim();
+        if (assistantText === undefined || assistantText === "") {
+            return allowOutput();
+        }
+        const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
+        if (config === undefined) {
+            return allowOutput();
+        }
+        try {
+            const memory = createNamsMemoryService(config, invocation, state);
+            const assistantPartId = assistantPartKey(payloadInfo);
+            if (assistantPartId !== undefined) {
+                if (!state.seenAssistantPartIds.includes(assistantPartId)) {
+                    await memory.storeAssistantMessage(state.conversationId, assistantText);
+                    markSeen(state.seenAssistantPartIds, [assistantPartId]);
+                }
+            }
+            else {
+                const assistantHash = assistantContentHash(invocation.platform, state.sessionKey, assistantText);
+                await storeAssistantMessageOnce(memory, state, state.conversationId, assistantText, {
+                    lookupHash: assistantHash,
+                    markHashes: [assistantHash],
+                });
             }
         }
-    }
-    catch {
-        await appendNamsFailureDiagnostic(invocation, state);
-        await saveSessionState(invocation.platform, state.sessionKey, state);
+        catch {
+            await appendNamsFailureDiagnostic(invocation, state);
+        }
         return allowOutput();
-    }
-    await saveSessionState(invocation.platform, state.sessionKey, state);
-    return allowOutput();
+    });
 }
 async function afterTool(invocation) {
     const payloadInfo = parseOpenCodePayload(invocation.rawPayload, invocation.processCwd);
-    const state = await loadHookSessionState(invocation, payloadInfo);
-    if (state.conversationId === undefined) {
-        await saveSessionState(invocation.platform, state.sessionKey, state);
-        return allowOutput();
-    }
-    if (payloadInfo.hookName !== "tool.execute.after") {
-        await saveSessionState(invocation.platform, state.sessionKey, state);
-        return allowOutput();
-    }
-    if (payloadInfo.toolName === undefined || payloadInfo.toolName.trim() === "") {
-        await saveSessionState(invocation.platform, state.sessionKey, state);
-        return allowOutput();
-    }
-    const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
-    if (config === undefined) {
-        await saveSessionState(invocation.platform, state.sessionKey, state);
-        return allowOutput();
-    }
-    try {
-        const dedupeKey = opencodeToolCallDedupeKey(state.sessionKey, payloadInfo.toolCallId, payloadInfo.toolName, payloadInfo.toolInput);
-        if (!state.seenToolCallIds.includes(dedupeKey)) {
+    return withHookSessionState(invocation, payloadInfo, async (state) => {
+        if (state.conversationId === undefined) {
+            return allowOutput();
+        }
+        if (payloadInfo.hookName !== "tool.execute.after") {
+            return allowOutput();
+        }
+        if (payloadInfo.toolName === undefined || payloadInfo.toolName.trim() === "") {
+            return allowOutput();
+        }
+        const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
+        if (config === undefined) {
+            return allowOutput();
+        }
+        try {
             const memory = createNamsMemoryService(config, invocation, state);
+            const dedupeKey = opencodeToolCallDedupeKey(state.sessionKey, payloadInfo.toolCallId, payloadInfo.toolName, payloadInfo.toolInput);
             const reasoningStep = {
                 conversationId: state.conversationId,
                 reasoning: `OpenCode invoked ${payloadInfo.toolName} with the provided tool input.`,
                 actionTaken: `Ran ${payloadInfo.toolName}`,
                 ...(payloadInfo.toolTitle !== undefined ? { result: payloadInfo.toolTitle } : {}),
             };
-            const reasoningStepHash = stableJsonHash({
-                sessionKey: state.sessionKey,
-                ...reasoningStep,
-            });
-            let stepId = state.reasoningStepIdsByHash[reasoningStepHash];
-            if (!state.seenReasoningStepHashes.includes(reasoningStepHash)) {
-                stepId = await memory.recordReasoningStep(reasoningStep);
-                state.seenReasoningStepHashes.push(reasoningStepHash);
-                if (stepId !== undefined) {
-                    state.reasoningStepIdsByHash[reasoningStepHash] = stepId;
-                }
-            }
-            await memory.recordToolCall({
-                ...(stepId !== undefined ? { stepId } : {}),
+            await recordToolCallOnce(memory, state, { lookupKeys: [dedupeKey], markKeys: [dedupeKey] }, reasoningStep, stableJsonHash({ sessionKey: state.sessionKey, ...reasoningStep }), {
                 toolName: payloadInfo.toolName,
                 input: payloadInfo.toolInput,
                 ...(payloadInfo.toolOutput !== undefined ? { output: payloadInfo.toolOutput } : {}),
                 status: payloadInfo.toolStatus ?? "completed",
             });
-            markSeen(state.seenToolCallIds, [dedupeKey]);
         }
-    }
-    catch {
-        await appendNamsFailureDiagnostic(invocation, state);
-        await saveSessionState(invocation.platform, state.sessionKey, state);
+        catch {
+            await appendNamsFailureDiagnostic(invocation, state);
+        }
         return allowOutput();
-    }
-    await saveSessionState(invocation.platform, state.sessionKey, state);
-    return allowOutput();
+    });
 }
 export const opencodeMemoryAdapter = { startSession, beforeAgent, afterAgent, afterTool };
 function allowOutput() {
@@ -190,24 +151,23 @@ function workspaceResultOutput(result, sessionId) {
     return allowOutput();
 }
 async function consumePendingContext(invocation, payloadInfo) {
-    const state = await loadHookSessionState(invocation, payloadInfo);
-    const pendingContext = state.pendingMemoryContext;
-    if (pendingContext === undefined) {
-        await saveSessionState(invocation.platform, state.sessionKey, state);
-        return allowOutput();
-    }
-    delete state.pendingMemoryContext;
-    await saveSessionState(invocation.platform, state.sessionKey, state);
-    return {
-        stdout: {
-            continue: true,
-            suppressOutput: true,
-            hookSpecificOutput: {
-                hookEventName: "BeforeAgent",
-                additionalContext: pendingContext.content,
+    return withHookSessionState(invocation, payloadInfo, async (state) => {
+        const pendingContext = state.pendingMemoryContext;
+        if (pendingContext === undefined) {
+            return allowOutput();
+        }
+        delete state.pendingMemoryContext;
+        return {
+            stdout: {
+                continue: true,
+                suppressOutput: true,
+                hookSpecificOutput: {
+                    hookEventName: "BeforeAgent",
+                    additionalContext: pendingContext.content,
+                },
             },
-        },
-    };
+        };
+    });
 }
 function hasSeenUserMessage(state, messageId, platform, content) {
     if (messageId !== undefined) {
@@ -231,9 +191,6 @@ function assistantPartKey(payloadInfo) {
         return undefined;
     }
     return JSON.stringify([payloadInfo.messageId, payloadInfo.partId]);
-}
-function assistantMessageHash(platform, sessionKey, content) {
-    return sha256([platform, sessionKey, "assistant", content.trim()].join("\n"));
 }
 function opencodeToolCallDedupeKey(sessionKey, toolCallId, toolName, toolInput) {
     if (toolCallId !== undefined && toolCallId.trim() !== "") {

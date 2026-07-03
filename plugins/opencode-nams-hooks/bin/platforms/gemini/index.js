@@ -1,115 +1,103 @@
-import { sha256, stableJsonHash } from "../../runtime/hashing.js";
+import { stableJsonHash } from "../../runtime/hashing.js";
 import { recordActiveWorkspaceSession } from "../../runtime/active-workspace-session.js";
 import { firstDefined, firstRecord, firstString } from "../../runtime/util.js";
-import { hasSeenAny, hasSeenAssistantMessage, markAssistantMessageSeen, markSeen } from "../dedupe.js";
+import { hasSeenAny, markSeen } from "../../runtime/dedupe.js";
 import { pickStringFields } from "../payload.js";
 import { appendNamsFailureDiagnostic } from "../../runtime/logging.js";
 import { createNamsMemoryService } from "../../runtime/memory-service.js";
-import { ensureConversation, loadHookSessionState, recallMemoryContextOnce, storeUserPromptOnce, } from "../../runtime/memory-turn.js";
+import { assistantContentHash, ensureConversation, recallMemoryContextOnce, recordToolCallOnce, storeAssistantMessageOnce, storeUserPromptOnce, withHookSessionState, } from "../../runtime/memory-turn.js";
 import { sessionStatePath } from "../../runtime/paths.js";
-import { saveSessionState } from "../../runtime/session-state.js";
 import { loadEffectiveNamsConfigForMemory, resolveWorkspaceForMemory, } from "../../runtime/workspace-resolution.js";
 import { formatWorkspaceSelectionNotice } from "../workspace-selection.js";
 import { parseGeminiPayload } from "./payload.js";
 import { readGeminiTranscript } from "./transcript.js";
 async function startSession(invocation) {
     const payloadInfo = parseGeminiPayload(invocation.rawPayload, invocation.processCwd);
-    const state = await loadHookSessionState(invocation, payloadInfo);
-    await saveSessionState(invocation.platform, state.sessionKey, state);
-    await recordActiveGeminiWorkspaceSession(invocation, state, payloadInfo.projectDirectory, payloadInfo.sessionId);
-    return { stdout: { continue: true, suppressOutput: true } };
+    return withHookSessionState(invocation, payloadInfo, async (state) => {
+        await recordActiveGeminiWorkspaceSession(invocation, state, payloadInfo.projectDirectory, payloadInfo.sessionId);
+        return { stdout: { continue: true, suppressOutput: true } };
+    });
 }
 async function beforeAgent(invocation) {
     const payloadInfo = parseGeminiPayload(invocation.rawPayload, invocation.processCwd);
-    const state = await loadHookSessionState(invocation, payloadInfo);
-    if (payloadInfo.prompt === undefined || isWorkspaceCommandResultPrompt(payloadInfo.prompt)) {
-        await saveSessionState(invocation.platform, state.sessionKey, state);
-        return allowOutput();
-    }
-    const workspaceResult = await resolveWorkspaceForMemory({
-        invocation,
-        state,
-        projectDirectory: payloadInfo.projectDirectory,
-    });
-    if (workspaceResult.status !== "ready") {
-        await saveSessionState(invocation.platform, state.sessionKey, state);
-        if (workspaceResult.reason === "selection-required") {
-            await recordActiveGeminiWorkspaceSession(invocation, state, payloadInfo.projectDirectory, payloadInfo.sessionId);
+    return withHookSessionState(invocation, payloadInfo, async (state) => {
+        if (payloadInfo.prompt === undefined || isWorkspaceCommandResultPrompt(payloadInfo.prompt)) {
+            return allowOutput();
         }
-        return workspaceResultOutput(workspaceResult, payloadInfo.sessionId);
-    }
-    let additionalContext;
-    try {
-        const memory = createNamsMemoryService(workspaceResult.config, invocation, state);
-        const conversationId = await ensureConversation(memory, invocation, state, payloadInfo.projectDirectory);
-        additionalContext = await recallMemoryContextOnce(memory, invocation, state, conversationId, payloadInfo.prompt);
-        await storeUserPromptOnce(memory, invocation, state, conversationId, payloadInfo.prompt);
-    }
-    catch {
-        await appendNamsFailureDiagnostic(invocation, state);
-    }
-    await saveSessionState(invocation.platform, state.sessionKey, state);
-    return allowOutput(additionalContext);
+        const workspaceResult = await resolveWorkspaceForMemory({
+            invocation,
+            state,
+            projectDirectory: payloadInfo.projectDirectory,
+        });
+        if (workspaceResult.status !== "ready") {
+            if (workspaceResult.reason === "selection-required") {
+                await recordActiveGeminiWorkspaceSession(invocation, state, payloadInfo.projectDirectory, payloadInfo.sessionId);
+            }
+            return workspaceResultOutput(workspaceResult, payloadInfo.sessionId);
+        }
+        let additionalContext;
+        try {
+            const memory = createNamsMemoryService(workspaceResult.config, invocation, state);
+            const conversationId = await ensureConversation(memory, invocation, state, payloadInfo.projectDirectory);
+            additionalContext = await recallMemoryContextOnce(memory, invocation, state, conversationId, payloadInfo.prompt);
+            await storeUserPromptOnce(memory, invocation, state, conversationId, payloadInfo.prompt);
+        }
+        catch {
+            await appendNamsFailureDiagnostic(invocation, state);
+        }
+        return allowOutput(additionalContext);
+    });
 }
 async function afterAgent(invocation) {
     const payloadInfo = parseGeminiPayload(invocation.rawPayload, invocation.processCwd);
-    const state = await loadHookSessionState(invocation, payloadInfo);
-    if (state.conversationId === undefined) {
-        await saveSessionState(invocation.platform, state.sessionKey, state);
-        return allowOutput();
-    }
-    const conversationId = state.conversationId;
-    const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
-    if (config === undefined) {
-        await saveSessionState(invocation.platform, state.sessionKey, state);
-        return allowOutput();
-    }
-    try {
-        const memory = createNamsMemoryService(config, invocation, state);
-        const response = payloadInfo.promptResponse?.trim();
-        if (response !== undefined && response !== "") {
-            const responseHash = sha256([invocation.platform, state.sessionKey, "assistant", response].join("\n"));
-            if (!hasSeenAssistantMessage(state, responseHash)) {
-                await memory.storeAssistantMessage(state.conversationId, response);
-            }
-            markAssistantMessageSeen(state, [responseHash]);
+    return withHookSessionState(invocation, payloadInfo, async (state) => {
+        if (state.conversationId === undefined) {
+            return allowOutput();
         }
-        if (payloadInfo.transcriptPath !== undefined) {
-            const entries = await readGeminiTranscript(payloadInfo.transcriptPath);
-            if (response === undefined || response === "") {
-                await storeAssistantMessagesFromTranscript(invocation.platform, conversationId, state, memory, entries);
-            }
-            await recordTraceFromTranscript(conversationId, state, memory, entries);
+        const conversationId = state.conversationId;
+        const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
+        if (config === undefined) {
+            return allowOutput();
         }
-    }
-    catch {
-        await appendNamsFailureDiagnostic(invocation, state);
-        await saveSessionState(invocation.platform, state.sessionKey, state);
+        try {
+            const memory = createNamsMemoryService(config, invocation, state);
+            const response = payloadInfo.promptResponse?.trim();
+            if (response !== undefined && response !== "") {
+                const responseHash = assistantContentHash(invocation.platform, state.sessionKey, response);
+                await storeAssistantMessageOnce(memory, state, conversationId, response, {
+                    lookupHash: responseHash,
+                    markHashes: [responseHash],
+                });
+            }
+            if (payloadInfo.transcriptPath !== undefined) {
+                const entries = await readGeminiTranscript(payloadInfo.transcriptPath);
+                if (response === undefined || response === "") {
+                    await storeAssistantMessagesFromTranscript(invocation.platform, conversationId, state, memory, entries);
+                }
+                await recordTraceFromTranscript(conversationId, state, memory, entries);
+            }
+        }
+        catch {
+            await appendNamsFailureDiagnostic(invocation, state);
+        }
         return allowOutput();
-    }
-    await saveSessionState(invocation.platform, state.sessionKey, state);
-    return allowOutput();
+    });
 }
 async function afterTool(invocation) {
     const payloadInfo = parseGeminiPayload(invocation.rawPayload, invocation.processCwd);
-    const state = await loadHookSessionState(invocation, payloadInfo);
-    if (state.conversationId === undefined) {
-        await saveSessionState(invocation.platform, state.sessionKey, state);
-        return allowOutput();
-    }
-    const toolPayload = parseGeminiAfterToolPayload(invocation.rawPayload);
-    if (toolPayload.toolName === undefined) {
-        await saveSessionState(invocation.platform, state.sessionKey, state);
-        return allowOutput();
-    }
-    const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
-    if (config === undefined) {
-        await saveSessionState(invocation.platform, state.sessionKey, state);
-        return allowOutput();
-    }
-    try {
-        const toolCallKeys = geminiToolCallDedupeKeys(state.sessionKey, toolPayload.toolName, toolPayload.input);
-        if (!hasSeenAny(state.seenToolCallIds, toolCallKeys.lookupKeys)) {
+    return withHookSessionState(invocation, payloadInfo, async (state) => {
+        if (state.conversationId === undefined) {
+            return allowOutput();
+        }
+        const toolPayload = parseGeminiAfterToolPayload(invocation.rawPayload);
+        if (toolPayload.toolName === undefined) {
+            return allowOutput();
+        }
+        const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
+        if (config === undefined) {
+            return allowOutput();
+        }
+        try {
             const memory = createNamsMemoryService(config, invocation, state);
             const reasoningStep = {
                 conversationId: state.conversationId,
@@ -117,34 +105,17 @@ async function afterTool(invocation) {
                 actionTaken: `Ran ${toolPayload.toolName}`,
                 ...(toolPayload.outputSummary !== undefined ? { result: toolPayload.outputSummary } : {}),
             };
-            const reasoningStepHash = stableJsonHash({
-                sessionKey: state.sessionKey,
-                ...reasoningStep,
-            });
-            let stepId = state.reasoningStepIdsByHash[reasoningStepHash];
-            if (!state.seenReasoningStepHashes.includes(reasoningStepHash)) {
-                stepId = await memory.recordReasoningStep(reasoningStep);
-                state.seenReasoningStepHashes.push(reasoningStepHash);
-                if (stepId !== undefined) {
-                    state.reasoningStepIdsByHash[reasoningStepHash] = stepId;
-                }
-            }
-            await memory.recordToolCall({
-                ...(stepId !== undefined ? { stepId } : {}),
+            await recordToolCallOnce(memory, state, geminiToolCallDedupeKeys(state.sessionKey, toolPayload.toolName, toolPayload.input), reasoningStep, stableJsonHash({ sessionKey: state.sessionKey, ...reasoningStep }), {
                 toolName: toolPayload.toolName,
                 input: toolPayload.input,
                 ...(toolPayload.output !== undefined ? { output: toolPayload.output } : {}),
             });
-            markSeen(state.seenToolCallIds, toolCallKeys.markKeys);
         }
-    }
-    catch {
-        await appendNamsFailureDiagnostic(invocation, state);
-        await saveSessionState(invocation.platform, state.sessionKey, state);
+        catch {
+            await appendNamsFailureDiagnostic(invocation, state);
+        }
         return allowOutput();
-    }
-    await saveSessionState(invocation.platform, state.sessionKey, state);
-    return allowOutput();
+    });
 }
 export const geminiMemoryAdapter = { startSession, beforeAgent, afterAgent, afterTool };
 function allowOutput(additionalContext) {
@@ -259,11 +230,11 @@ async function storeAssistantMessagesFromTranscript(platform, conversationId, st
         }
         const content = entry.content.trim();
         if (content !== "") {
-            const responseHash = sha256([platform, state.sessionKey, "assistant", content].join("\n"));
-            if (!hasSeenAssistantMessage(state, responseHash)) {
-                await memory.storeAssistantMessage(conversationId, content);
-            }
-            markAssistantMessageSeen(state, [responseHash]);
+            const responseHash = assistantContentHash(platform, state.sessionKey, content);
+            await storeAssistantMessageOnce(memory, state, conversationId, content, {
+                lookupHash: responseHash,
+                markHashes: [responseHash],
+            });
         }
         if (entry.id !== undefined) {
             state.seenTranscriptEntryIds.push(entry.id);

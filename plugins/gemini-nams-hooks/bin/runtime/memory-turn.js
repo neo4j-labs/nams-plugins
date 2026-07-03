@@ -1,7 +1,8 @@
+import { hasSeenAny, hasSeenAssistantMessage, markSeen, markAssistantMessageSeen, } from "./dedupe.js";
 import { sha256 } from "./hashing.js";
 import { appendNamsFailureDiagnostic, appendRawPlatformLog } from "./logging.js";
-import { combineMemoryContexts } from "./memory-service.js";
-import { createInitialSessionState, loadSessionState } from "./session-state.js";
+import { combineMemoryContexts, } from "./memory-service.js";
+import { createInitialSessionState, loadSessionState, saveSessionState } from "./session-state.js";
 export async function loadHookSessionState(invocation, payload) {
     const initialState = createInitialSessionState({
         platform: invocation.platform,
@@ -11,6 +12,15 @@ export async function loadHookSessionState(invocation, payload) {
     const state = (await loadSessionState(invocation.platform, initialState.sessionKey)) ?? initialState;
     await appendRawPlatformLog(invocation, state);
     return state;
+}
+export async function withHookSessionState(invocation, payload, run) {
+    const state = await loadHookSessionState(invocation, payload);
+    try {
+        return await run(state);
+    }
+    finally {
+        await saveSessionState(invocation.platform, state.sessionKey, state);
+    }
 }
 export async function ensureConversation(memory, invocation, state, projectDirectory) {
     if (state.conversationId === undefined) {
@@ -48,4 +58,31 @@ export async function storeUserPromptOnce(memory, invocation, state, conversatio
         await memory.storeUserMessage(conversationId, prompt);
         state.lastUserMessageHash = promptHash;
     }
+}
+export function assistantContentHash(platform, sessionKey, content) {
+    return sha256([platform, sessionKey, "assistant", content].join("\n"));
+}
+export async function storeAssistantMessageOnce(memory, state, conversationId, content, keys) {
+    if (!hasSeenAssistantMessage(state, keys.lookupHash)) {
+        await memory.storeAssistantMessage(conversationId, content);
+    }
+    markAssistantMessageSeen(state, keys.markHashes);
+}
+export async function recordToolCallOnce(memory, state, keys, reasoningStep, reasoningStepHash, toolCall) {
+    if (hasSeenAny(state.seenToolCallIds, keys.lookupKeys)) {
+        return;
+    }
+    let stepId = state.reasoningStepIdsByHash[reasoningStepHash];
+    if (!state.seenReasoningStepHashes.includes(reasoningStepHash)) {
+        stepId = await memory.recordReasoningStep(reasoningStep);
+        state.seenReasoningStepHashes.push(reasoningStepHash);
+        if (stepId !== undefined) {
+            state.reasoningStepIdsByHash[reasoningStepHash] = stepId;
+        }
+    }
+    await memory.recordToolCall({
+        ...(stepId !== undefined ? { stepId } : {}),
+        ...toolCall,
+    });
+    markSeen(state.seenToolCallIds, keys.markKeys);
 }
