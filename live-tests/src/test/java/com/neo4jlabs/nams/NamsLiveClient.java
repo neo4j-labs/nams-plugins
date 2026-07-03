@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 
 import io.restassured.http.ContentType;
+import io.restassured.path.json.JsonPath;
 
 public class NamsLiveClient {
     private final String baseUrl;
@@ -92,7 +93,7 @@ public class NamsLiveClient {
 
     @SuppressWarnings("unchecked")
     public Map<String, Object> reasoningTrace(String conversationId) {
-        return given()
+        String response = given()
             .baseUri(baseUrl)
             .accept(ContentType.JSON)
             .header("Authorization", "Bearer " + apiKey)
@@ -102,6 +103,12 @@ public class NamsLiveClient {
             .then()
             .statusCode(200)
             .extract()
-            .as(Map.class);
+            .asString();
+        return parseReasoningTrace(response);
+    }
+
+    @SuppressWarnings("unchecked")
+    static Map<String, Object> parseReasoningTrace(String json) {
+        return JsonPath.from(json).getMap("");
     }
 }
