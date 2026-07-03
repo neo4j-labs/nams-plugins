@@ -11,21 +11,19 @@ import {
 } from "../../runtime/memory-service.js";
 import {
   ensureConversation,
-  loadHookSessionState,
+  recordToolCallOnce,
   recallMemoryContextOnce,
+  storeAssistantMessageOnce,
   storeUserPromptOnce,
+  withHookSessionState,
   type HookPayloadIdentity,
 } from "../../runtime/memory-turn.js";
-import {
-  saveSessionState,
-  type SessionState,
-} from "../../runtime/session-state.js";
+import { type SessionState } from "../../runtime/session-state.js";
 import {
   loadEffectiveNamsConfigForMemory,
   resolveWorkspaceForMemory,
   type WorkspaceResolutionResult,
 } from "../../runtime/workspace-resolution.js";
-import { hasSeenAssistantMessage, markAssistantMessageSeen } from "../dedupe.js";
 import { formatWorkspaceSelectionNotice } from "../workspace-selection.js";
 import { parseAntigravityPayload, type AntigravityPayloadInfo } from "./payload.js";
 import {
@@ -42,183 +40,154 @@ async function startSession(invocation: HookInvocation<"SessionStart">): Promise
 
 async function beforeAgent(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult> {
   const payloadInfo = parseAntigravityPayload(invocation.rawPayload, invocation.processCwd);
-  const state = await loadHookSessionState(invocation, antigravityHookPayloadIdentity(payloadInfo));
+  return withHookSessionState(invocation, antigravityHookPayloadIdentity(payloadInfo), async (state) => {
+    if (payloadInfo.transcriptPath === undefined) {
+      return allowOutput();
+    }
 
-  if (payloadInfo.transcriptPath === undefined) {
-    await saveSessionState(invocation.platform, state.sessionKey, state);
-    return allowOutput();
-  }
+    const userPrompt = await readLatestAntigravityUserPrompt(payloadInfo.transcriptPath);
+    if (userPrompt === undefined) {
+      return allowOutput();
+    }
 
-  const userPrompt = await readLatestAntigravityUserPrompt(payloadInfo.transcriptPath);
-  if (userPrompt === undefined) {
-    await saveSessionState(invocation.platform, state.sessionKey, state);
-    return allowOutput();
-  }
+    const workspaceResult = await resolveWorkspaceForMemory({
+      invocation,
+      state,
+      projectDirectory: payloadInfo.projectDirectory,
+    });
+    if (workspaceResult.status !== "ready") {
+      return workspaceResultOutput(workspaceResult, payloadInfo.sessionId);
+    }
 
-  const workspaceResult = await resolveWorkspaceForMemory({
-    invocation,
-    state,
-    projectDirectory: payloadInfo.projectDirectory,
-  });
-  if (workspaceResult.status !== "ready") {
-    await saveSessionState(invocation.platform, state.sessionKey, state);
-    return workspaceResultOutput(workspaceResult, payloadInfo.sessionId);
-  }
+    let additionalContext: string | undefined;
+    try {
+      const memory = createNamsMemoryService(workspaceResult.config, invocation, state);
+      const conversationId = await ensureConversation(memory, invocation, state, payloadInfo.projectDirectory);
+      additionalContext = await recallMemoryContextOnce(memory, invocation, state, conversationId, userPrompt);
+      await storeUserPromptOnce(memory, invocation, state, conversationId, userPrompt);
+    } catch {
+      await appendNamsFailureDiagnostic(invocation, state);
+      return allowOutput(additionalContext);
+    }
 
-  let additionalContext: string | undefined;
-  try {
-    const memory = createNamsMemoryService(workspaceResult.config, invocation, state);
-    const conversationId = await ensureConversation(memory, invocation, state, payloadInfo.projectDirectory);
-    additionalContext = await recallMemoryContextOnce(memory, invocation, state, conversationId, userPrompt);
-    await storeUserPromptOnce(memory, invocation, state, conversationId, userPrompt);
-  } catch {
-    await appendNamsFailureDiagnostic(invocation, state);
-    await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput(additionalContext);
-  }
-
-  await saveSessionState(invocation.platform, state.sessionKey, state);
-  return allowOutput(additionalContext);
+  });
 }
 
 async function afterAgent(invocation: HookInvocation<"AfterAgent">): Promise<HookResult> {
   const payloadInfo = parseAntigravityPayload(invocation.rawPayload, invocation.processCwd);
-  const state = await loadHookSessionState(invocation, antigravityHookPayloadIdentity(payloadInfo));
+  return withHookSessionState(invocation, antigravityHookPayloadIdentity(payloadInfo), async (state) => {
+    if (state.conversationId === undefined) {
+      return allowOutput();
+    }
+    const conversationId = state.conversationId;
 
-  if (state.conversationId === undefined) {
-    await saveSessionState(invocation.platform, state.sessionKey, state);
+    if (payloadInfo.transcriptPath === undefined) {
+      return allowOutput();
+    }
+
+    let entries: AntigravityTranscriptEntry[];
+    try {
+      entries = await readAntigravityTranscript(payloadInfo.transcriptPath);
+    } catch {
+      await appendNamsFailureDiagnostic(invocation, state);
+      return allowOutput();
+    }
+
+    if (!entries.some((entry) => entry.kind === "assistant")) {
+      return allowOutput();
+    }
+
+    const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
+    if (config === undefined) {
+      return allowOutput();
+    }
+
+    try {
+      const memory = createNamsMemoryService(config, invocation, state);
+      await storeAssistantMessagesFromTranscript(invocation.platform, conversationId, state, memory, entries);
+    } catch {
+      await appendNamsFailureDiagnostic(invocation, state);
+      return allowOutput();
+    }
+
     return allowOutput();
-  }
-  const conversationId = state.conversationId;
-
-  if (payloadInfo.transcriptPath === undefined) {
-    await saveSessionState(invocation.platform, state.sessionKey, state);
-    return allowOutput();
-  }
-
-  let entries: AntigravityTranscriptEntry[];
-  try {
-    entries = await readAntigravityTranscript(payloadInfo.transcriptPath);
-  } catch {
-    await appendNamsFailureDiagnostic(invocation, state);
-    await saveSessionState(invocation.platform, state.sessionKey, state);
-    return allowOutput();
-  }
-
-  if (!entries.some((entry) => entry.kind === "assistant")) {
-    await saveSessionState(invocation.platform, state.sessionKey, state);
-    return allowOutput();
-  }
-
-  const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
-  if (config === undefined) {
-    await saveSessionState(invocation.platform, state.sessionKey, state);
-    return allowOutput();
-  }
-
-  try {
-    const memory = createNamsMemoryService(config, invocation, state);
-    await storeAssistantMessagesFromTranscript(invocation.platform, conversationId, state, memory, entries);
-  } catch {
-    await appendNamsFailureDiagnostic(invocation, state);
-    await saveSessionState(invocation.platform, state.sessionKey, state);
-    return allowOutput();
-  }
-
-  await saveSessionState(invocation.platform, state.sessionKey, state);
-  return allowOutput();
+  });
 }
 
 async function afterTool(invocation: HookInvocation<"AfterTool">): Promise<HookResult> {
   const payloadInfo = parseAntigravityPayload(invocation.rawPayload, invocation.processCwd);
-  const state = await loadHookSessionState(invocation, antigravityHookPayloadIdentity(payloadInfo));
+  return withHookSessionState(invocation, antigravityHookPayloadIdentity(payloadInfo), async (state) => {
+    const conversationId = state.conversationId;
+    if (conversationId === undefined) {
+      return allowOutput();
+    }
 
-  const conversationId = state.conversationId;
-  if (conversationId === undefined) {
-    await saveSessionState(invocation.platform, state.sessionKey, state);
-    return allowOutput();
-  }
+    if (payloadInfo.transcriptPath === undefined) {
+      return allowOutput();
+    }
 
-  if (payloadInfo.transcriptPath === undefined) {
-    await saveSessionState(invocation.platform, state.sessionKey, state);
-    return allowOutput();
-  }
+    if (payloadInfo.stepIdx === undefined) {
+      return allowOutput();
+    }
 
-  if (payloadInfo.stepIdx === undefined) {
-    await saveSessionState(invocation.platform, state.sessionKey, state);
-    return allowOutput();
-  }
+    let toolCall: AntigravityToolTranscriptEntry | undefined;
+    try {
+      toolCall = await readLatestAntigravityToolCall(payloadInfo.transcriptPath, payloadInfo.stepIdx);
+    } catch (error) {
+      await appendPlatformDiagnosticLog(invocation, state, {
+        message:
+          error instanceof SyntaxError
+            ? "Antigravity transcript JSON malformed"
+            : "Antigravity transcript read failed",
+      });
+      return allowOutput();
+    }
 
-  let toolCall: AntigravityToolTranscriptEntry | undefined;
-  try {
-    toolCall = await readLatestAntigravityToolCall(payloadInfo.transcriptPath, payloadInfo.stepIdx);
-  } catch (error) {
-    await appendPlatformDiagnosticLog(invocation, state, {
-      message:
-        error instanceof SyntaxError
-          ? "Antigravity transcript JSON malformed"
-          : "Antigravity transcript read failed",
-    });
-    await saveSessionState(invocation.platform, state.sessionKey, state);
-    return allowOutput();
-  }
+    if (toolCall === undefined) {
+      return allowOutput();
+    }
 
-  if (toolCall === undefined) {
-    await saveSessionState(invocation.platform, state.sessionKey, state);
-    return allowOutput();
-  }
+    const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
+    if (config === undefined) {
+      return allowOutput();
+    }
 
-  const toolCallId = antigravityToolCallId(state.sessionKey, toolCall, payloadInfo.stepIdx);
-  if (state.seenToolCallIds.includes(toolCallId)) {
-    await saveSessionState(invocation.platform, state.sessionKey, state);
-    return allowOutput();
-  }
-
-  const config = await loadEffectiveNamsConfigForMemory(invocation, state, payloadInfo.projectDirectory);
-  if (config === undefined) {
-    await saveSessionState(invocation.platform, state.sessionKey, state);
-    return allowOutput();
-  }
-
-  const reasoningHash = antigravityReasoningStepHash(state.sessionKey, toolCallId, toolCall.name);
-  try {
-    const memory = createNamsMemoryService(config, invocation, state);
-    let stepId: string | undefined = state.reasoningStepIdsByHash[reasoningHash];
-    if (!state.seenReasoningStepHashes.includes(reasoningHash)) {
-      stepId = await memory.recordReasoningStep({
+    const toolCallId = antigravityToolCallId(state.sessionKey, toolCall, payloadInfo.stepIdx);
+    try {
+      const memory = createNamsMemoryService(config, invocation, state);
+      const reasoningStep = {
         conversationId,
         reasoning: `Antigravity ran ${toolCall.name} with the provided tool input.`,
         actionTaken: `Ran ${toolCall.name}`,
         ...(toolCall.output !== undefined ? { result: "Antigravity exposed post-tool output." } : {}),
-      });
-      markReasoningStepSeen(state, reasoningHash, stepId);
+      };
+      await recordToolCallOnce(
+        memory,
+        state,
+        { lookupKeys: [toolCallId], markKeys: [toolCallId] },
+        reasoningStep,
+        antigravityReasoningStepHash(state.sessionKey, toolCallId, toolCall.name),
+        {
+          toolName: toolCall.name,
+          input: toolCall.input,
+          ...(toolCall.output !== undefined ? { output: toolCall.output } : {}),
+          ...(toolCall.status !== undefined ? { status: toolCall.status } : {}),
+          ...(toolCall.durationMs !== undefined ? { durationMs: toolCall.durationMs } : {}),
+        },
+      );
+    } catch {
+      await appendNamsFailureDiagnostic(invocation, state);
+      return allowOutput();
     }
 
-    await memory.recordToolCall({
-      ...(stepId !== undefined ? { stepId } : {}),
-      toolName: toolCall.name,
-      input: toolCall.input,
-      ...(toolCall.output !== undefined ? { output: toolCall.output } : {}),
-      ...(toolCall.status !== undefined ? { status: toolCall.status } : {}),
-      ...(toolCall.durationMs !== undefined ? { durationMs: toolCall.durationMs } : {}),
-    });
-    markToolCallSeen(state, toolCallId);
-  } catch {
-    await appendNamsFailureDiagnostic(invocation, state);
-    await saveSessionState(invocation.platform, state.sessionKey, state);
     return allowOutput();
-  }
-
-  await saveSessionState(invocation.platform, state.sessionKey, state);
-  return allowOutput();
+  });
 }
 
 async function logOnly(invocation: HookInvocation): Promise<HookResult> {
   const payloadInfo = parseAntigravityPayload(invocation.rawPayload, invocation.processCwd);
-  const state = await loadHookSessionState(invocation, antigravityHookPayloadIdentity(payloadInfo));
-  await saveSessionState(invocation.platform, state.sessionKey, state);
-
-  return { stdout: {} };
+  return withHookSessionState(invocation, antigravityHookPayloadIdentity(payloadInfo), async () => ({ stdout: {} }));
 }
 
 export const antigravityMemoryAdapter: Required<MemoryPlatformAdapter> = {
@@ -293,10 +262,10 @@ async function storeAssistantMessagesFromTranscript(
     const content = entry.content.trim();
     if (content !== "") {
       const responseHash = assistantTranscriptDedupeHash(platform, state.sessionKey, entry, content);
-      if (!hasSeenAssistantMessage(state, responseHash)) {
-        await memory.storeAssistantMessage(conversationId, content);
-      }
-      markAssistantMessageSeen(state, [responseHash]);
+      await storeAssistantMessageOnce(memory, state, conversationId, content, {
+        lookupHash: responseHash,
+        markHashes: [responseHash],
+      });
     }
 
     if (entry.id !== undefined && !state.seenTranscriptEntryIds.includes(entry.id)) {
@@ -316,11 +285,6 @@ function assistantTranscriptDedupeHash(
   }
   return sha256([platform, sessionKey, "assistant", content].join("\n"));
 }
-
-type TraceState = Pick<
-  SessionState,
-  "seenReasoningStepHashes" | "seenToolCallIds" | "reasoningStepIdsByHash"
->;
 
 function antigravityToolCallId(
   sessionKey: string,
@@ -343,19 +307,4 @@ function antigravityToolCallId(
 
 function antigravityReasoningStepHash(sessionKey: string, toolCallId: string, toolName: string): string {
   return sha256([sessionKey, "antigravity-tool-reasoning-step", toolCallId, toolName].join("\n"));
-}
-
-function markReasoningStepSeen(state: TraceState, hash: string, stepId: string | undefined): void {
-  if (!state.seenReasoningStepHashes.includes(hash)) {
-    state.seenReasoningStepHashes.push(hash);
-  }
-  if (stepId !== undefined) {
-    state.reasoningStepIdsByHash[hash] = stepId;
-  }
-}
-
-function markToolCallSeen(state: TraceState, toolCallId: string): void {
-  if (!state.seenToolCallIds.includes(toolCallId)) {
-    state.seenToolCallIds.push(toolCallId);
-  }
 }

@@ -167,13 +167,15 @@ test("memory platform adapters use shared memory-turn runtime", async () => {
     const content = await readFile(filePath, "utf8");
 
     assert.match(content, /from "\.\.\/\.\.\/runtime\/memory-turn\.js"/, `${filePath} should import shared memory-turn helpers`);
-    assert.match(content, /\bloadHookSessionState\b/, `${filePath} should use shared hook session loading`);
+    assert.match(content, /\bwithHookSessionState\b/, `${filePath} should use the shared load-run-save state bracket`);
     assert.match(content, /\bensureConversation\b/, `${filePath} should use shared conversation creation`);
     assert.match(content, /\brecallMemoryContextOnce\b/, `${filePath} should use shared recall-once behavior`);
+    assert.match(content, /\bstoreAssistantMessageOnce\b/, `${filePath} should use shared assistant message persistence`);
+    assert.match(content, /\brecordToolCallOnce\b/, `${filePath} should use shared tool-call persistence`);
     assert.doesNotMatch(
       content,
-      /\bcreateInitialSessionState\b|\bloadSessionState\b|\bappendRawPlatformLog\b/,
-      `${filePath} should not duplicate shared hook session loading`,
+      /\bcreateInitialSessionState\b|\bloadSessionState\b|\bsaveSessionState\b|\bappendRawPlatformLog\b/,
+      `${filePath} should not duplicate shared hook session lifecycle handling`,
     );
   }
 
