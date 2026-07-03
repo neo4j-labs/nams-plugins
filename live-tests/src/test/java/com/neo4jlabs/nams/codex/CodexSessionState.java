@@ -2,16 +2,14 @@ package com.neo4jlabs.nams.codex;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.restassured.path.json.JsonPath;
+import io.restassured.path.json.exception.JsonPathException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 
 class CodexSessionState {
-    private static final ObjectMapper MAPPER = new ObjectMapper();
-
     private final String conversationId;
 
     private CodexSessionState(String conversationId) {
@@ -35,17 +33,12 @@ class CodexSessionState {
         }
 
         try {
-            JsonNode root = MAPPER.readTree(latestState.toFile());
-            assertThat(root)
-                .as("JSON root in " + latestState)
-                .isNotNull();
-            JsonNode conversationIdNode = root.get("conversationId");
-            assertThat(conversationIdNode)
+            String conversationId = JsonPath.from(Files.readString(latestState)).getString("conversationId");
+            assertThat(conversationId)
                 .as("conversationId in " + latestState)
-                .isNotNull();
-            assertThat(conversationIdNode.asText()).isNotBlank();
-            return new CodexSessionState(conversationIdNode.asText());
-        } catch (IOException error) {
+                .isNotBlank();
+            return new CodexSessionState(conversationId);
+        } catch (IOException | JsonPathException error) {
             throw new AssertionError("Unable to parse " + latestState, error);
         }
     }

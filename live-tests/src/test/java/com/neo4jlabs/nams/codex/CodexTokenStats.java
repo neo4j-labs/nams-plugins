@@ -1,14 +1,11 @@
 package com.neo4jlabs.nams.codex;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
-import java.util.Iterator;
+import io.restassured.path.json.JsonPath;
+import io.restassured.path.json.exception.JsonPathException;
+import java.util.Map;
 import java.util.Optional;
 
 class CodexTokenStats {
-    private static final ObjectMapper MAPPER = new ObjectMapper();
-
     private final long inputTokens;
     private final long outputTokens;
     private final long cachedInputTokens;
@@ -26,8 +23,8 @@ class CodexTokenStats {
                 continue;
             }
             try {
-                accumulate(MAPPER.readTree(line), accumulator);
-            } catch (IOException ignored) {
+                accumulate(JsonPath.from(line).get(), accumulator);
+            } catch (JsonPathException ignored) {
                 // Codex may mix non-JSON diagnostics into stdout/stderr; those lines do not carry usage.
             }
         }
@@ -46,15 +43,15 @@ class CodexTokenStats {
         return cachedInputTokens;
     }
 
-    private static void accumulate(JsonNode node, TokenAccumulator accumulator) {
-        if (node == null || node.isNull()) {
+    private static void accumulate(Object node, TokenAccumulator accumulator) {
+        if (node == null) {
             return;
         }
-        if (node.isObject()) {
-            accumulator.recordInput(firstLong(node, "input_tokens", "inputTokens", "prompt_tokens", "promptTokens"));
-            accumulator.recordOutput(firstLong(node, "output_tokens", "outputTokens", "completion_tokens", "completionTokens"));
+        if (node instanceof Map<?, ?> map) {
+            accumulator.recordInput(firstLong(map, "input_tokens", "inputTokens", "prompt_tokens", "promptTokens"));
+            accumulator.recordOutput(firstLong(map, "output_tokens", "outputTokens", "completion_tokens", "completionTokens"));
             accumulator.recordCached(firstLong(
-                node,
+                map,
                 "cached_input_tokens",
                 "cachedInputTokens",
                 "input_cached_tokens",
@@ -62,24 +59,21 @@ class CodexTokenStats {
                 "cached_tokens",
                 "cachedTokens"
             ));
-            Iterator<JsonNode> fields = node.elements();
-            while (fields.hasNext()) {
-                accumulate(fields.next(), accumulator);
-            }
+            map.values().forEach(child -> accumulate(child, accumulator));
             return;
         }
-        if (node.isArray()) {
-            for (JsonNode child : node) {
+        if (node instanceof Iterable<?> nodes) {
+            for (Object child : nodes) {
                 accumulate(child, accumulator);
             }
         }
     }
 
-    private static Optional<Long> firstLong(JsonNode node, String... names) {
+    private static Optional<Long> firstLong(Map<?, ?> node, String... names) {
         for (String name : names) {
-            JsonNode value = node.get(name);
-            if (value != null && value.canConvertToLong()) {
-                return Optional.of(value.asLong());
+            Object value = node.get(name);
+            if (value instanceof Number number) {
+                return Optional.of(number.longValue());
             }
         }
         return Optional.empty();

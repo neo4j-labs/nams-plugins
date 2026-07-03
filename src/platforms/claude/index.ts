@@ -1,15 +1,16 @@
 import type { HookInvocation, HookResult, MemoryPlatformAdapter } from "../../interfaces.js";
-import { sha256, stableJsonHash } from "../../runtime/hashing.js";
-import { hasSeenAny, markSeen } from "../dedupe.js";
+import { stableJsonHash } from "../../runtime/hashing.js";
 import { appendNamsFailureDiagnostic } from "../../runtime/logging.js";
 import { createNamsMemoryService } from "../../runtime/memory-service.js";
 import {
+  assistantContentHash,
   ensureConversation,
-  loadHookSessionState,
   recallMemoryContextOnce,
+  recordToolCallOnce,
+  storeAssistantMessageOnce,
   storeUserPromptOnce,
+  withHookSessionState,
 } from "../../runtime/memory-turn.js";
-import { saveSessionState } from "../../runtime/session-state.js";
 import {
   loadEffectiveNamsConfigForMemory,
   resolveWorkspaceForMemory,
@@ -21,162 +22,121 @@ import { parseClaudePayload } from "./payload.js";
 
 async function startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
     const payloadInfo = parseClaudePayload(invocation.rawPayload, invocation.processCwd);
-    const state = await loadHookSessionState(invocation, payloadInfo);
-    await saveSessionState(invocation.platform, state.sessionKey, state);
-
-    return allowOutput();
+    return withHookSessionState(invocation, payloadInfo, async () => allowOutput());
 }
 
 async function beforeAgent(invocation: HookInvocation<"BeforeAgent">): Promise<HookResult> {
     const payloadInfo = parseClaudePayload(invocation.rawPayload, invocation.processCwd);
-    const state = await loadHookSessionState(invocation, payloadInfo);
+    return withHookSessionState(invocation, payloadInfo, async (state) => {
+      if (payloadInfo.prompt === undefined) {
+        return allowOutput();
+      }
 
-    if (payloadInfo.prompt === undefined) {
-      await saveSessionState(invocation.platform, state.sessionKey, state);
-      return allowOutput();
-    }
+      const workspaceResult = await resolveWorkspaceForMemory({
+        invocation,
+        state,
+        projectDirectory: payloadInfo.projectDirectory,
+        discoverConfig: discoverClaudeNamsConfig,
+      });
+      if (workspaceResult.status !== "ready") {
+        return workspaceResultOutput(workspaceResult, payloadInfo.sessionId);
+      }
 
-    const workspaceResult = await resolveWorkspaceForMemory({
-      invocation,
-      state,
-      projectDirectory: payloadInfo.projectDirectory,
-      discoverConfig: discoverClaudeNamsConfig,
+      let additionalContext: string | undefined;
+      try {
+        const memory = createNamsMemoryService(workspaceResult.config, invocation, state);
+        const conversationId = await ensureConversation(memory, invocation, state, payloadInfo.projectDirectory);
+        additionalContext = await recallMemoryContextOnce(memory, invocation, state, conversationId, payloadInfo.prompt);
+        await storeUserPromptOnce(memory, invocation, state, conversationId, payloadInfo.prompt);
+      } catch {
+        await appendNamsFailureDiagnostic(invocation, state);
+      }
+
+      return allowOutput(additionalContext);
     });
-    if (workspaceResult.status !== "ready") {
-      await saveSessionState(invocation.platform, state.sessionKey, state);
-      return workspaceResultOutput(workspaceResult, payloadInfo.sessionId);
-    }
-
-    let additionalContext: string | undefined;
-    try {
-      const memory = createNamsMemoryService(workspaceResult.config, invocation, state);
-      const conversationId = await ensureConversation(memory, invocation, state, payloadInfo.projectDirectory);
-      additionalContext = await recallMemoryContextOnce(memory, invocation, state, conversationId, payloadInfo.prompt);
-      await storeUserPromptOnce(memory, invocation, state, conversationId, payloadInfo.prompt);
-    } catch {
-      await appendNamsFailureDiagnostic(invocation, state);
-    }
-
-    await saveSessionState(invocation.platform, state.sessionKey, state);
-    return allowOutput(additionalContext);
 }
 
 async function afterAgent(invocation: HookInvocation<"AfterAgent">): Promise<HookResult> {
     const payloadInfo = parseClaudePayload(invocation.rawPayload, invocation.processCwd);
-    const state = await loadHookSessionState(invocation, payloadInfo);
-
-    if (state.conversationId === undefined) {
-      await saveSessionState(invocation.platform, state.sessionKey, state);
-      return allowOutput();
-    }
-
-    const response = payloadInfo.lastAssistantMessage?.trim();
-    if (response === undefined || response === "") {
-      await saveSessionState(invocation.platform, state.sessionKey, state);
-      return allowOutput();
-    }
-
-    const config = await loadEffectiveNamsConfigForMemory(
-      invocation,
-      state,
-      payloadInfo.projectDirectory,
-      discoverClaudeNamsConfig,
-    );
-    if (config === undefined) {
-      await saveSessionState(invocation.platform, state.sessionKey, state);
-      return allowOutput();
-    }
-
-    const assistantMessageHash = sha256([invocation.platform, state.sessionKey, "assistant", response].join("\n"));
-    const alreadySeen =
-      state.lastAssistantMessageHash === assistantMessageHash ||
-      state.seenAssistantMessageHashes.includes(assistantMessageHash);
-
-    try {
-      if (!alreadySeen) {
-        const memory = createNamsMemoryService(config, invocation, state);
-        await memory.storeAssistantMessage(state.conversationId, response);
+    return withHookSessionState(invocation, payloadInfo, async (state) => {
+      if (state.conversationId === undefined) {
+        return allowOutput();
       }
-    } catch {
-      await appendNamsFailureDiagnostic(invocation, state);
-      await saveSessionState(invocation.platform, state.sessionKey, state);
+
+      const response = payloadInfo.lastAssistantMessage?.trim();
+      if (response === undefined || response === "") {
+        return allowOutput();
+      }
+
+      const config = await loadEffectiveNamsConfigForMemory(
+        invocation,
+        state,
+        payloadInfo.projectDirectory,
+        discoverClaudeNamsConfig,
+      );
+      if (config === undefined) {
+        return allowOutput();
+      }
+
+      try {
+        const memory = createNamsMemoryService(config, invocation, state);
+        const responseHash = assistantContentHash(invocation.platform, state.sessionKey, response);
+        await storeAssistantMessageOnce(memory, state, state.conversationId, response, {
+          lookupHash: responseHash,
+          markHashes: [responseHash],
+        });
+      } catch {
+        await appendNamsFailureDiagnostic(invocation, state);
+      }
+
       return allowOutput();
-    }
-
-    state.lastAssistantMessageHash = assistantMessageHash;
-    if (!state.seenAssistantMessageHashes.includes(assistantMessageHash)) {
-      state.seenAssistantMessageHashes.push(assistantMessageHash);
-    }
-
-    await saveSessionState(invocation.platform, state.sessionKey, state);
-    return allowOutput();
+    });
 }
 
 async function afterTool(invocation: HookInvocation<"AfterTool">): Promise<HookResult> {
     const payloadInfo = parseClaudePayload(invocation.rawPayload, invocation.processCwd);
-    const state = await loadHookSessionState(invocation, payloadInfo);
+    return withHookSessionState(invocation, payloadInfo, async (state) => {
+      if (state.conversationId === undefined || payloadInfo.toolName === undefined) {
+        return allowOutput();
+      }
 
-    if (state.conversationId === undefined || payloadInfo.toolName === undefined) {
-      await saveSessionState(invocation.platform, state.sessionKey, state);
-      return allowOutput();
-    }
-
-    const config = await loadEffectiveNamsConfigForMemory(
-      invocation,
-      state,
-      payloadInfo.projectDirectory,
-      discoverClaudeNamsConfig,
-    );
-    if (config === undefined) {
-      await saveSessionState(invocation.platform, state.sessionKey, state);
-      return allowOutput();
-    }
-
-    try {
-      const toolCallKeys = claudeToolCallDedupeKeys(
-        state.sessionKey,
-        payloadInfo.toolUseId,
-        payloadInfo.toolName,
-        payloadInfo.toolInput,
+      const config = await loadEffectiveNamsConfigForMemory(
+        invocation,
+        state,
+        payloadInfo.projectDirectory,
+        discoverClaudeNamsConfig,
       );
-      if (!hasSeenAny(state.seenToolCallIds, toolCallKeys.lookupKeys)) {
+      if (config === undefined) {
+        return allowOutput();
+      }
+
+      try {
         const memory = createNamsMemoryService(config, invocation, state);
         const reasoningStep = {
           conversationId: state.conversationId,
           reasoning: `Claude Code ran ${payloadInfo.toolName} with the provided tool input.`,
           actionTaken: `Ran ${payloadInfo.toolName}`,
         };
-        const reasoningStepHash = stableJsonHash({
-          sessionKey: state.sessionKey,
-          ...reasoningStep,
-        });
-        let stepId: string | undefined = state.reasoningStepIdsByHash[reasoningStepHash];
-        if (!state.seenReasoningStepHashes.includes(reasoningStepHash)) {
-          stepId = await memory.recordReasoningStep(reasoningStep);
-          state.seenReasoningStepHashes.push(reasoningStepHash);
-          if (stepId !== undefined) {
-            state.reasoningStepIdsByHash[reasoningStepHash] = stepId;
-          }
-        }
-
-        await memory.recordToolCall({
-          ...(stepId !== undefined ? { stepId } : {}),
-          toolName: payloadInfo.toolName,
-          input: payloadInfo.toolInput,
-          ...(payloadInfo.toolResponse !== undefined ? { output: payloadInfo.toolResponse } : {}),
-          status: "success",
-          ...(payloadInfo.durationMs !== undefined ? { durationMs: payloadInfo.durationMs } : {}),
-        });
-        markSeen(state.seenToolCallIds, toolCallKeys.markKeys);
+        await recordToolCallOnce(
+          memory,
+          state,
+          claudeToolCallDedupeKeys(state.sessionKey, payloadInfo.toolUseId, payloadInfo.toolName, payloadInfo.toolInput),
+          reasoningStep,
+          stableJsonHash({ sessionKey: state.sessionKey, ...reasoningStep }),
+          {
+            toolName: payloadInfo.toolName,
+            input: payloadInfo.toolInput,
+            ...(payloadInfo.toolResponse !== undefined ? { output: payloadInfo.toolResponse } : {}),
+            status: "success",
+            ...(payloadInfo.durationMs !== undefined ? { durationMs: payloadInfo.durationMs } : {}),
+          },
+        );
+      } catch {
+        await appendNamsFailureDiagnostic(invocation, state);
       }
-    } catch {
-      await appendNamsFailureDiagnostic(invocation, state);
-      await saveSessionState(invocation.platform, state.sessionKey, state);
-      return allowOutput();
-    }
 
-    await saveSessionState(invocation.platform, state.sessionKey, state);
-    return allowOutput();
+      return allowOutput();
+    });
 }
 
 export const claudeMemoryAdapter: Required<MemoryPlatformAdapter> = { startSession, beforeAgent, afterAgent, afterTool };
