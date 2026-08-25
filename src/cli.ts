@@ -1,25 +1,34 @@
 #!/usr/bin/env node
 
+import path from "node:path";
 import process from "node:process";
 import {
   hookEvents,
   platforms,
+  replayPlatforms,
   workspaceHookEvents,
   type HookEvent,
   type HookInvocation,
   type HookResult,
   type MemoryPlatformAdapter,
   type Platform,
+  type ReplayPlatform,
   type WorkspaceHookEvent,
   type WorkspaceHookInvocation,
   type WorkspacePlatformAdapter,
 } from "./interfaces.js";
-import { getMemoryPlatformAdapter, getWorkspacePlatformAdapter } from "./platforms/index.js";
+import {
+  getMemoryPlatformAdapter,
+  getReplayPlatformAdapter,
+  getWorkspacePlatformAdapter,
+} from "./platforms/index.js";
+import { formatReplaySummary, runReplay } from "./runtime/replay.js";
 import { readJsonPayload } from "./runtime/stdin.js";
 
 type CliArgs =
   | { command: "run"; platform: Platform; event: HookEvent }
   | { command: "workspaces"; platform: Platform; event: WorkspaceHookEvent }
+  | { command: "replay"; platform: ReplayPlatform; workingDirectory?: string }
   | {
       command: "workspace-configure";
       platform: Platform;
@@ -49,6 +58,18 @@ async function main(argv: string[]): Promise<number> {
     return writeWorkspaceConfigureResult(result);
   }
 
+  if (args.command === "replay") {
+    const importRoot = path.resolve(args.workingDirectory ?? process.cwd());
+    const adapter = getReplayPlatformAdapter(args.platform);
+    const summary = await runReplay({
+      importRoot,
+      adapter,
+      onProgress: (line) => process.stderr.write(`${line}\n`),
+    });
+    process.stdout.write(`${formatReplaySummary(adapter.platform, summary)}\n`);
+    return summary.failed === 0 ? 0 : 1;
+  }
+
   const rawPayload = await readJsonPayload();
   const result =
     args.command === "run"
@@ -70,6 +91,13 @@ async function main(argv: string[]): Promise<number> {
 
 function parseArgs(argv: string[]): CliArgs | null {
   const [command, platformArg, eventFlag, eventArg] = argv;
+  if (command === "replay" && isReplayPlatform(platformArg)) {
+    if (argv.length === 2) return { command: "replay", platform: platformArg };
+    if (argv.length === 4 && argv[2] === "--working-dir" && argv[3] !== undefined && argv[3].trim() !== "" && !argv[3].startsWith("--")) {
+      return { command: "replay", platform: platformArg, workingDirectory: argv[3] };
+    }
+    return null;
+  }
   if (command === "workspaces" && platformArg === "configure") {
     const platform = argv[2];
     const scope = flagValue(argv, "--scope");
@@ -112,6 +140,10 @@ function parseArgs(argv: string[]): CliArgs | null {
 
 function isPlatform(value: string | undefined): value is Platform {
   return value !== undefined && platforms.includes(value as Platform);
+}
+
+function isReplayPlatform(value: string | undefined): value is ReplayPlatform {
+  return value !== undefined && replayPlatforms.includes(value as ReplayPlatform);
 }
 
 function isHookEvent(value: string | undefined): value is HookEvent {
@@ -184,6 +216,7 @@ function writeWorkspaceConfigureResult(result: HookResult): number {
 function usage(): string {
   return [
     "Usage: nams-hooks run <gemini|claude|codex|opencode> --event <SessionStart|BeforeAgent|AfterAgent|AfterTool>",
+    "       nams-hooks replay <claude|codex> [--working-dir PATH]",
     "       nams-hooks workspaces run <gemini|claude|codex|opencode> --event <BeforeAgent|InstallConfigure|UserPromptExpansion|CommandExecuteBefore|CustomCommand>",
     "       nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope <project|user> [--workspace WORKSPACE_NAME_OR_ID]",
     "       nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope session --session-id ID [--workspace WORKSPACE_NAME_OR_ID]",

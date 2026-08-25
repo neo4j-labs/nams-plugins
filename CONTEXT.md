@@ -71,7 +71,7 @@ The tool name, sanitized input, optional step identity, status, duration, and cl
 _Avoid_: Raw tool transcript, inferred tool activity
 
 **Operational Trace**:
-A safe, tool-linked summary of observable agent activity, paired with sanitized tool metadata when available. It may be persisted as a NAMS reasoning step without preserving or reconstructing hidden reasoning.
+A safe, tool-linked summary of observable agent activity, paired with sanitized tool metadata when available. It may be persisted as a NAMS reasoning step without preserving or reconstructing hidden reasoning. Raw or summarized model reasoning is excluded.
 _Avoid_: Chain-of-thought, thinking trace, operational reasoning step
 
 **Exposed Thought Summary**:
@@ -262,12 +262,12 @@ _Avoid_: Per-session destination, historical workspace
 The source sessions still present in a harness's active or archived transcript storage. Deleted, expired, ephemeral, and otherwise unpersisted sessions are outside the available corpus.
 _Avoid_: Active sessions only, deleted history
 
-**Top-Level Session**:
-A user-facing harness session that owns one coherent conversation. Nested subagent transcripts do not become imported conversations; only delegated activity exposed by the top-level session belongs to its history.
-_Avoid_: Subagent conversation, recursive transcript import
+**Persisted Source Session**:
+Any independently persisted Claude or Codex JSONL transcript in the standard corpus whose first working directory belongs to the import root. Subagent, sidechain, fork, active, and archived classifications do not change eligibility; each matching file maps to its own imported conversation.
+_Avoid_: Top-level-only session, reconstructed parent history
 
 **Eligible Session Record**:
-A visible user message, visible assistant answer, or clearly exposed tool invocation and output from a top-level session. Hidden reasoning, system and developer instructions, compaction records, and ambiguous transcript shapes are not eligible.
+Only visible user and assistant text and clearly exposed tool activity are eligible. Hidden reasoning, system and developer instructions, compaction records, and ambiguous transcript shapes are not eligible.
 _Avoid_: Raw transcript record, every JSONL entry
 
 **Source Session Provenance**:
