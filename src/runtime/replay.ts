@@ -1,0 +1,261 @@
+import path from "node:path";
+import {
+  NamsClient,
+  NamsClientError,
+  NamsWorkspaceClient,
+  type AddMessageRequest,
+  type RecordToolCallRequest,
+  type WorkspaceListResponse,
+} from "../generated/nams-client.js";
+import type {
+  ReplayPlatform,
+  ReplayPlatformAdapter,
+  ReplayRecord,
+  ReplaySummary,
+  ReplayTranscript,
+} from "../interfaces.js";
+import {
+  loadNamsConnectionConfig,
+  type NamsRuntimeConfig,
+} from "./config.js";
+import {
+  serializeToolInput,
+  serializeToolOutput,
+} from "./memory-service.js";
+import { namsReplayProvenanceHeaders } from "./provenance.js";
+import { isDirectoryWithinImportRoot } from "./replay-files.js";
+import { validWorkspaces } from "./workspace-configuration.js";
+
+export interface RunReplayInput {
+  adapter: ReplayPlatformAdapter;
+  importRoot: string;
+  fetch?: typeof fetch;
+  sleep?: (delayMs: number) => Promise<void>;
+  onProgress?: (line: string) => void;
+}
+
+const retryDelayMs = 500;
+const maxReplayRetries = 2;
+
+export async function runReplay(input: RunReplayInput): Promise<ReplaySummary> {
+  const sleep = input.sleep ?? ((delayMs) => new Promise<void>((resolve) => setTimeout(resolve, delayMs)));
+  const importRoot = path.resolve(input.importRoot);
+  const platform = input.adapter.platform;
+
+  const config = await resolveReplayConfig(importRoot, input.adapter, input.fetch, sleep);
+  const client = new NamsClient({
+    apiKey: config.apiKey,
+    workspaceId: config.workspaceId,
+    baseUrl: config.baseUrl,
+    defaultHeaders: namsReplayProvenanceHeaders(platform),
+    ...(input.fetch !== undefined ? { fetch: input.fetch } : {}),
+  });
+  let transcriptPaths: string[];
+  try {
+    transcriptPaths = [...await input.adapter.discoverTranscripts()].sort();
+  } catch {
+    throw new Error(`Unable to discover ${platform} replay transcripts`);
+  }
+  const summary = emptySummary(transcriptPaths.length);
+
+  for (let index = 0; index < transcriptPaths.length; index += 1) {
+    const transcriptPath = transcriptPaths[index];
+    let transcript: ReplayTranscript;
+    try {
+      transcript = await input.adapter.readTranscript(transcriptPath);
+    } catch {
+      summary.failed += 1;
+      input.onProgress?.(progressLine(index, transcriptPaths.length, platform, path.basename(transcriptPath, ".jsonl"), "failed", "unreadable transcript"));
+      continue;
+    }
+
+    summary.malformedLines += transcript.malformedLineCount;
+    summary.unsupportedRecords += transcript.unsupportedRecordCount;
+    if (transcript.projectDirectory === undefined || !isDirectoryWithinImportRoot(importRoot, transcript.projectDirectory)) {
+      summary.skipped += 1;
+      input.onProgress?.(progressLine(index, transcriptPaths.length, platform, transcript.sourceSessionId, "skipped", "cwd outside import root or unusable"));
+      continue;
+    }
+    summary.matched += 1;
+    if (transcript.records.length === 0) {
+      summary.skipped += 1;
+      input.onProgress?.(progressLine(index, transcriptPaths.length, platform, transcript.sourceSessionId, "skipped", "zero eligible records"));
+      continue;
+    }
+
+    try {
+      const conversationId = await withReplayRetry(
+        async () => {
+          const response = await client.createConversation({
+            metadata: {
+              harness: platform,
+              projectDirectory: transcript.projectDirectory as string,
+              sourceSessionId: transcript.sourceSessionId,
+              importSource: "nams-hooks-replay",
+              ...(transcript.sourceStartedAt !== undefined ? { sourceStartedAt: transcript.sourceStartedAt } : {}),
+            },
+          });
+          if (response.id === undefined || response.id.trim() === "") {
+            throw new Error("NAMS conversation response did not include id");
+          }
+          return response.id;
+        },
+        sleep,
+      );
+      const counts = await importTimeline(client, conversationId, transcript.records, sleep, summary);
+      summary.imported += 1;
+      input.onProgress?.(progressLine(index, transcriptPaths.length, platform, transcript.sourceSessionId, "imported", `${counts.messages} messages, ${counts.toolCalls} tools`));
+    } catch {
+      summary.failed += 1;
+      input.onProgress?.(progressLine(index, transcriptPaths.length, platform, transcript.sourceSessionId, "failed", "NAMS write failed"));
+    }
+  }
+  return summary;
+}
+
+async function importTimeline(
+  client: NamsClient,
+  conversationId: string,
+  records: ReplayRecord[],
+  sleep: (delayMs: number) => Promise<void>,
+  summary: ReplaySummary,
+): Promise<{ messages: number; toolCalls: number }> {
+  let messages = 0;
+  let toolCalls = 0;
+  let pending: AddMessageRequest[] = [];
+  const flush = async (): Promise<void> => {
+    if (pending.length === 0) return;
+    const batch = pending;
+    pending = [];
+    await withReplayRetry(() => client.addMessagesBulk(conversationId, { messages: batch }), sleep);
+    messages += batch.length;
+    summary.messages += batch.length;
+  };
+
+  for (const record of records) {
+    if (record.kind === "message") {
+      pending.push({ role: record.role, content: record.content });
+      if (pending.length === 100) await flush();
+      continue;
+    }
+    await flush();
+    const stepResponse = await withReplayRetry(
+      () => client.recordReasoningStep({ conversationId, ...record.reasoningStep }),
+      sleep,
+    );
+    const stepId = stepResponse.id;
+    if (stepId === undefined || stepId.trim() === "") {
+      throw new Error("NAMS reasoning response did not include id");
+    }
+    const toolRequest: RecordToolCallRequest = {
+      stepId,
+      toolName: record.toolName,
+      input: serializeToolInput(record.input),
+      ...(record.output !== undefined ? { output: serializeToolOutput(record.output) } : {}),
+      ...(record.status !== undefined ? { status: record.status } : {}),
+      ...(record.durationMs !== undefined ? { durationMs: record.durationMs } : {}),
+    };
+    await withReplayRetry(() => client.recordToolCall(toolRequest), sleep);
+    toolCalls += 1;
+    summary.toolCalls += 1;
+  }
+  await flush();
+  return { messages, toolCalls };
+}
+
+async function withReplayRetry<T>(operation: () => Promise<T>, sleep: (delayMs: number) => Promise<void>): Promise<T> {
+  let retries = 0;
+  while (true) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!isRecoverableReplayError(error) || retries === maxReplayRetries) throw error;
+      retries += 1;
+      await sleep(retryDelayMs);
+    }
+  }
+}
+
+function isRecoverableReplayError(error: unknown): boolean {
+  if (error instanceof NamsClientError) {
+    return error.status === 408 || error.status === 429 || (error.status >= 500 && error.status <= 599);
+  }
+  if (error instanceof TypeError) return true;
+  if (!(error instanceof Error) || !("code" in error)) return false;
+  return new Set(["ECONNRESET", "ECONNREFUSED", "EHOSTUNREACH", "ENETUNREACH", "ETIMEDOUT", "EAI_AGAIN"]).has(String(error.code));
+}
+
+async function resolveReplayConfig(
+  importRoot: string,
+  adapter: ReplayPlatformAdapter,
+  fetchImpl: typeof fetch | undefined,
+  sleep: (delayMs: number) => Promise<void>,
+): Promise<NamsRuntimeConfig> {
+  const connection = await loadNamsConnectionConfig(importRoot, adapter.discoverConfig);
+  if (!connection.ok) {
+    throw new Error(`NAMS replay configuration unavailable: ${connection.reason}`);
+  }
+  if (connection.config.workspaceId !== undefined) {
+    return {
+      apiKey: connection.config.apiKey,
+      workspaceId: connection.config.workspaceId,
+      baseUrl: connection.config.baseUrl,
+    };
+  }
+  const client = new NamsWorkspaceClient({
+    apiKey: connection.config.apiKey,
+    baseUrl: connection.config.baseUrl,
+    defaultHeaders: namsReplayProvenanceHeaders(adapter.platform),
+    ...(fetchImpl !== undefined ? { fetch: fetchImpl } : {}),
+  });
+  let response: WorkspaceListResponse;
+  try {
+    response = await withReplayRetry(() => client.listMyWorkspaces(), sleep);
+  } catch {
+    throw new Error("NAMS workspace resolution failed for replay");
+  }
+  const workspaces = validWorkspaces(response.workspaces);
+  if (workspaces.length === 0) {
+    throw new Error("No NAMS workspace is available for replay");
+  }
+  if (workspaces.length !== 1) {
+    throw new Error("NAMS workspace selection is required before replay");
+  }
+  return {
+    apiKey: connection.config.apiKey,
+    workspaceId: workspaces[0].id,
+    baseUrl: connection.config.baseUrl,
+  };
+}
+
+function emptySummary(discovered: number): ReplaySummary {
+  return {
+    discovered,
+    matched: 0,
+    imported: 0,
+    skipped: 0,
+    failed: 0,
+    messages: 0,
+    toolCalls: 0,
+    malformedLines: 0,
+    unsupportedRecords: 0,
+  };
+}
+
+function progressLine(
+  index: number,
+  total: number,
+  platform: ReplayPlatform,
+  sourceSessionId: string,
+  status: "imported" | "skipped" | "failed",
+  detail: string,
+): string {
+  return `[${index + 1}/${total}] ${platform} ${sourceSessionId}: ${status} ${detail}`;
+}
+
+export function formatReplaySummary(platform: ReplayPlatform, summary: ReplaySummary): string {
+  return [
+    `Replay ${platform}: discovered ${summary.discovered}, matched ${summary.matched}, imported ${summary.imported}, skipped ${summary.skipped}, failed ${summary.failed};`,
+    `messages ${summary.messages}, tools ${summary.toolCalls}, malformed lines ${summary.malformedLines}, unsupported records ${summary.unsupportedRecords}.`,
+  ].join(" ");
+}

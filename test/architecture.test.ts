@@ -212,6 +212,22 @@ test("workspace adapter registry is static", async () => {
   }
 });
 
+test("replay adapter registry is static and limited to Claude and Codex", async () => {
+  const content = await readFile("src/platforms/index.ts", "utf8");
+  assert.equal(/\bimport\s*\(|\breaddir(?:Sync)?\b|\bdynamic\b/.test(content), false);
+  assert.match(content, /import\s+\{[^}]*\bclaudeReplayAdapter\b[^}]*\}\s+from\s+["']\.\/claude\/index\.js["']/);
+  assert.match(content, /import\s+\{[^}]*\bcodexReplayAdapter\b[^}]*\}\s+from\s+["']\.\/codex\/index\.js["']/);
+
+  const registry = content.match(
+    /const\s+replayAdapters:\s*Record<ReplayPlatform, ReplayPlatformAdapter>\s*=\s*\{([\s\S]*?)\n\};/,
+  );
+  assert.ok(registry);
+  assert.deepEqual(
+    [...registry[1].matchAll(/\b(claude|codex)\s*:/g)].map((match) => match[1]).sort(),
+    ["claude", "codex"],
+  );
+});
+
 test("workspace resolution runtime does not format platform hook output", async () => {
   const content = await readFile("src/runtime/workspace-resolution.ts", "utf8");
 

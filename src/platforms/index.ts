@@ -1,7 +1,13 @@
-import type { MemoryPlatformAdapter, Platform, WorkspacePlatformAdapter } from "../interfaces.js";
-import { claudeMemoryAdapter } from "./claude/index.js";
+import type {
+  MemoryPlatformAdapter,
+  Platform,
+  ReplayPlatform,
+  ReplayPlatformAdapter,
+  WorkspacePlatformAdapter,
+} from "../interfaces.js";
+import { claudeMemoryAdapter, claudeReplayAdapter } from "./claude/index.js";
 import { claudeWorkspaceAdapter } from "./claude/workspaces.js";
-import { codexMemoryAdapter } from "./codex/index.js";
+import { codexMemoryAdapter, codexReplayAdapter } from "./codex/index.js";
 import { codexWorkspaceAdapter } from "./codex/workspaces.js";
 import { geminiMemoryAdapter } from "./gemini/index.js";
 import { geminiWorkspaceAdapter } from "./gemini/workspaces.js";
@@ -28,4 +34,13 @@ const workspaceAdapters: Record<Platform, WorkspacePlatformAdapter> = {
 
 export function getWorkspacePlatformAdapter(platform: Platform): WorkspacePlatformAdapter {
   return workspaceAdapters[platform];
+}
+
+const replayAdapters: Record<ReplayPlatform, ReplayPlatformAdapter> = {
+  claude: claudeReplayAdapter,
+  codex: codexReplayAdapter,
+};
+
+export function getReplayPlatformAdapter(platform: ReplayPlatform): ReplayPlatformAdapter {
+  return replayAdapters[platform];
 }

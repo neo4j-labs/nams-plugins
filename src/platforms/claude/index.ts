@@ -141,6 +141,8 @@ async function afterTool(invocation: HookInvocation<"AfterTool">): Promise<HookR
 
 export const claudeMemoryAdapter: Required<MemoryPlatformAdapter> = { startSession, beforeAgent, afterAgent, afterTool };
 
+export { claudeReplayAdapter } from "./replay.js";
+
 function allowOutput(additionalContext?: string): HookResult {
   return {
     stdout: {
