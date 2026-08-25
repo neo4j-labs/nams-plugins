@@ -104,8 +104,7 @@ jobs:
 
           git commit \
             --allow-empty \
-            -m "chore: publish ${RELEASE_REF} artifacts from ${RELEASE_SOURCE_SHA}" \
-            -m "Co-authored-by: Codex <codex@openai.com>"
+            -m "chore: publish ${RELEASE_REF} artifacts from ${RELEASE_SOURCE_SHA}"
           git push origin "HEAD:refs/heads/$RELEASE_REF"
 
           if [[ "$RELEASE_REF" == "latest" ]]; then
