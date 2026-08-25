@@ -63,7 +63,7 @@
 - Consumes: the existing `Platform` declarations, generated `AddMessageRequest`, `RecordStepRequest`, and `RecordToolCallRequest`, the existing `NamsConfigDiscovery` callback type, and Node path/filesystem built-ins.
 - Produces: `ReplayPlatform`, `ReplayRecord`, `ReplayToolRecord`, `ReplayTranscript`, `ReplayPlatformAdapter`, `ReplaySummary`, `discoverRegularJsonlFiles(roots)`, `normalizeAbsolutePath(value)`, and `isDirectoryWithinImportRoot(importRoot, candidate)`.
 
-- [ ] **Step 1: Write failing filesystem and containment tests**
+- [x] **Step 1: Write failing filesystem and containment tests**
 
 Create `test/replay-files.test.ts` with temporary roots that prove the root itself may resolve through a symlink, nested symlink entries are ignored, only regular `.jsonl` files are returned, missing roots are empty, results are lexically sorted, descendants match, and prefix siblings do not:
 
@@ -121,13 +121,13 @@ test("normalizes only usable absolute paths", () => {
 });
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `node --import=tsx --test test/replay-files.test.ts`
 
 Expected: FAIL because `src/runtime/replay-files.ts` and the replay contracts do not exist.
 
-- [ ] **Step 3: Add the shared replay contracts**
+- [x] **Step 3: Add the shared replay contracts**
 
 Add type-only imports at the top of `src/interfaces.ts`, then append these contracts. Keep `ReplayPlatform` separate from the broader live-hook `Platform` union. The normalized boundary deliberately reuses generated NAMS request fields: a message is an `AddMessageRequest` with a narrowed role, and the reasoning step is a `RecordStepRequest` without the conversation id that replay supplies later. The only replay-specific record interface is the tool record because transcript input/output are still raw values awaiting the existing sanitizer:
 
@@ -188,7 +188,7 @@ export interface ReplaySummary {
 
 Do not add `ReplayMessageRecord`, `ReplayOperationalTrace`, or `ReplayRunResult`. A parser-local source call id is pairing state, not part of the normalized replay record. `runReplay()` will return `ReplaySummary` directly and the CLI will derive its exit code from `summary.failed`.
 
-- [ ] **Step 4: Implement regular-file discovery and cwd containment**
+- [x] **Step 4: Implement regular-file discovery and cwd containment**
 
 Create `src/runtime/replay-files.ts`:
 
@@ -245,13 +245,13 @@ function isNodeError(error: unknown, code: string): boolean {
 }
 ```
 
-- [ ] **Step 5: Run the focused test**
+- [x] **Step 5: Run the focused test**
 
 Run: `node --import=tsx --test test/replay-files.test.ts`
 
 Expected: PASS with 3 tests.
 
-- [ ] **Step 6: Commit the shared contracts and filesystem seam**
+- [x] **Step 6: Commit the shared contracts and filesystem seam**
 
 ```bash
 git add src/interfaces.ts src/runtime/replay-files.ts test/replay-files.test.ts
@@ -269,7 +269,7 @@ git commit -m "feat: add replay transcript contracts"
 - Consumes: existing `discoverClaudeNamsConfig`, `firstString()`, and `isPlainObject()` rather than adding equivalent helpers.
 - Produces: `claudeReplayAdapter`, `discoverClaudeReplayTranscripts(env)`, and `readClaudeReplayTranscript(transcriptPath)`.
 
-- [ ] **Step 1: Write failing Claude discovery and normalization tests**
+- [x] **Step 1: Write failing Claude discovery and normalization tests**
 
 Create `test/claude/claude-replay.test.ts`. Use `CLAUDE_CONFIG_DIR` in a passed environment object, not the process environment. The main fixture must include an initial cwd, user text, assistant text, thinking, a `tool_use`, a matching `tool_result`, a malformed line, an orphan result, and a later cwd:
 
@@ -296,8 +296,8 @@ test("discovers Claude project and subagent JSONL files from CLAUDE_CONFIG_DIR",
     await writeFile(path.join(project, "session-1", "subagents", "agent-a.jsonl"), "{}\n", "utf8");
     await writeFile(defaultTranscript, "{}\n", "utf8");
     assert.deepEqual(await discoverClaudeReplayTranscripts({ CLAUDE_CONFIG_DIR: fixture }), [
-      path.join(project, "session-1", "subagents", "agent-a.jsonl"),
       path.join(project, "session-1.jsonl"),
+      path.join(project, "session-1", "subagents", "agent-a.jsonl"),
     ]);
     assert.deepEqual(await discoverClaudeReplayTranscripts({ HOME: path.join(fixture, "home") }), [defaultTranscript]);
     assert.equal(claudeReplayAdapter.platform, "claude");
@@ -390,13 +390,13 @@ test("the first Claude cwd occurrence is authoritative even when unusable", asyn
 });
 ```
 
-- [ ] **Step 2: Run the Claude tests to verify they fail**
+- [x] **Step 2: Run the Claude tests to verify they fail**
 
 Run: `node --import=tsx --test test/claude/claude-replay.test.ts`
 
 Expected: FAIL because `src/platforms/claude/replay.ts` does not exist.
 
-- [ ] **Step 3: Implement Claude replay discovery and normalization**
+- [x] **Step 3: Implement Claude replay discovery and normalization**
 
 Create `src/platforms/claude/replay.ts` with these exact rules:
 
@@ -545,13 +545,13 @@ function finiteNumber(...values: unknown[]): number | undefined {
 
 While implementing, keep top-level `toolUseResult` and all thinking/system/summary shapes out of normalization; only canonical `message.content` blocks participate. An unmatched invocation remains in `records` without output, while an orphan result is counted and ignored.
 
-- [ ] **Step 4: Run the Claude tests**
+- [x] **Step 4: Run the Claude tests**
 
 Run: `node --import=tsx --test test/claude/claude-replay.test.ts`
 
 Expected: PASS with 3 tests.
 
-- [ ] **Step 5: Commit the Claude replay reader**
+- [x] **Step 5: Commit the Claude replay reader**
 
 ```bash
 git add src/platforms/claude/replay.ts test/claude/claude-replay.test.ts
@@ -569,7 +569,7 @@ git commit -m "feat: normalize Claude session history"
 - Consumes: existing `firstString()` and `isPlainObject()` rather than adding parser-local equivalents.
 - Produces: `codexReplayAdapter`, `discoverCodexReplayTranscripts(env)`, and `readCodexReplayTranscript(transcriptPath)` without changing `src/platforms/codex/transcript.ts` or its live behavior.
 
-- [ ] **Step 1: Write failing Codex discovery and normalization tests**
+- [x] **Step 1: Write failing Codex discovery and normalization tests**
 
 Create `test/codex/codex-replay.test.ts`. Cover `CODEX_HOME/sessions`, `CODEX_HOME/archived_sessions`, nested subagent rollouts, canonical response items, explicit call-id output pairing, hosted tool calls, mirror `event_msg` exclusion, reasoning/compaction exclusion, malformed lines, and a relative first cwd:
 
@@ -723,13 +723,13 @@ test("normalizes remaining canonical Codex tool shapes and ignores orphan output
 });
 ```
 
-- [ ] **Step 2: Run the Codex tests to verify they fail**
+- [x] **Step 2: Run the Codex tests to verify they fail**
 
 Run: `node --import=tsx --test test/codex/codex-replay.test.ts`
 
 Expected: FAIL because `src/platforms/codex/replay.ts` does not exist.
 
-- [ ] **Step 3: Implement Codex replay discovery and normalization**
+- [x] **Step 3: Implement Codex replay discovery and normalization**
 
 Create `src/platforms/codex/replay.ts`. Use the replay-only parser below; do not modify or import the conservative live `readCodexTranscript()` implementation:
 
@@ -975,19 +975,19 @@ function finiteNumber(...values: unknown[]): number | undefined {
 
 The finite-number helper above is the only duration source; do not derive duration from timestamps or `event_msg` mirrors.
 
-- [ ] **Step 4: Run the Codex tests**
+- [x] **Step 4: Run the Codex tests**
 
 Run: `node --import=tsx --test test/codex/codex-replay.test.ts`
 
 Expected: PASS with 4 tests.
 
-- [ ] **Step 5: Run existing live Codex transcript tests**
+- [x] **Step 5: Run existing live Codex transcript tests**
 
 Run: `node --import=tsx --test test/codex/codex-transcript.test.ts test/codex/codex-memory-flow.test.ts`
 
 Expected: PASS; replay did not change the live fallback parser or adapter behavior.
 
-- [ ] **Step 6: Commit the Codex replay reader**
+- [x] **Step 6: Commit the Codex replay reader**
 
 ```bash
 git add src/platforms/codex/replay.ts test/codex/codex-replay.test.ts
@@ -1004,7 +1004,7 @@ git commit -m "feat: normalize Codex rollout history"
 - Consumes: the existing live provenance behavior and `ReplayPlatform`.
 - Produces: `namsReplayProvenanceHeaders()` only. Do not modify `src/runtime/memory-service.ts`, its types, or its tests.
 
-- [ ] **Step 1: Write the failing replay provenance test**
+- [x] **Step 1: Write the failing replay provenance test**
 
 Create `test/provenance.test.ts`:
 
@@ -1021,13 +1021,13 @@ test("replay provenance identifies the command without simulating a hook event",
 });
 ```
 
-- [ ] **Step 2: Run the provenance test to verify it fails**
+- [x] **Step 2: Run the provenance test to verify it fails**
 
 Run: `node --import=tsx --test test/provenance.test.ts`
 
 Expected: FAIL because `namsReplayProvenanceHeaders()` does not exist.
 
-- [ ] **Step 3: Add replay command provenance while preserving live headers**
+- [x] **Step 3: Add replay command provenance while preserving live headers**
 
 Refactor `src/runtime/provenance.ts` only enough to share the non-secret base headers:
 
@@ -1058,13 +1058,13 @@ function baseProvenanceHeaders(harness: string): Record<string, string> {
 }
 ```
 
-- [ ] **Step 4: Run provenance and live memory regression tests**
+- [x] **Step 4: Run provenance and live memory regression tests**
 
 Run: `node --import=tsx --test test/provenance.test.ts test/memory-service.test.ts test/claude/claude-memory-flow.test.ts test/codex/codex-memory-flow.test.ts`
 
 Expected: PASS; existing live hook headers and memory-service behavior are unchanged.
 
-- [ ] **Step 5: Commit the focused provenance change**
+- [x] **Step 5: Commit the focused provenance change**
 
 ```bash
 git add src/runtime/provenance.ts test/provenance.test.ts
@@ -1086,7 +1086,7 @@ git commit -m "feat: add replay request provenance"
 - Consumes: `claudeReplayAdapter`, `codexReplayAdapter`, the adapter-owned optional `NamsConfigDiscovery`, existing `loadNamsConnectionConfig()` unchanged, `validWorkspaces()`, generated NAMS request/client types, existing `serializeToolInput()`/`serializeToolOutput()`, replay provenance, and Task 1 cwd containment.
 - Produces: `getReplayPlatformAdapter()`, `runReplay(): Promise<ReplaySummary>`, `formatReplaySummary()`, and the complete request ordering/failure policy. The retry classifier and write helpers remain private to `src/runtime/replay.ts`.
 
-- [ ] **Step 1: Add a bulk-message helper to the existing NAMS test mock**
+- [x] **Step 1: Add a bulk-message helper to the existing NAMS test mock**
 
 Extend `NamsFetchMock` in `test/support/nams-fetch-mock.ts` with:
 
@@ -1102,7 +1102,7 @@ bulkMessages(response = { messages: [] }, status = 201, conversationId = "conver
 },
 ```
 
-- [ ] **Step 2: Write failing runtime tests for one-time resolution and timeline writes**
+- [x] **Step 2: Write failing runtime tests for one-time resolution and timeline writes**
 
 Create `test/replay-runtime.test.ts` with an in-memory `ReplayPlatformAdapter`. Isolate the existing process-environment-based configuration rather than changing `src/runtime/config.ts`: each test creates a temporary `HOME`, saves the relevant environment variables, sets `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL`, and restores them in `finally`. Keep these tests non-concurrent.
 
@@ -1389,13 +1389,13 @@ assert.equal(
 
 These tests cover one-time configuration, bulk boundaries, direct generated request bodies, sanitization reuse, eligibility skips, read isolation, retry classes and limits, tool-step retry granularity, partial writes, empty discovery, workspace resolution, progress redaction, and stable summary formatting.
 
-- [ ] **Step 3: Run the runtime tests to verify they fail**
+- [x] **Step 3: Run the runtime tests to verify they fail**
 
 Run: `node --import=tsx --test test/replay-runtime.test.ts`
 
 Expected: FAIL because the replay registry/runtime do not exist. Tests set and restore the three existing `NAMS_*` process variables around each run, following `test/runtime-config.test.ts`; do not add environment injection to production configuration APIs.
 
-- [ ] **Step 4: Export replay adapters through the existing platform entrypoints and add the static registry**
+- [x] **Step 4: Export replay adapters through the existing platform entrypoints and add the static registry**
 
 Add these replay-only re-exports to the platform entrypoints so `src/platforms/index.ts` remains the only consumer of concrete platform entrypoints:
 
@@ -1440,7 +1440,7 @@ test("replay adapter registry is static and limited to Claude and Codex", async 
 });
 ```
 
-- [ ] **Step 5: Implement replay orchestration and retry policy directly on the generated client**
+- [x] **Step 5: Implement replay orchestration and retry policy directly on the generated client**
 
 Create `src/runtime/replay.ts` with these imports and the input interface. The exported function implementations immediately below provide the public signatures:
 
@@ -1717,13 +1717,13 @@ export function formatReplaySummary(platform: ReplayPlatform, summary: ReplaySum
 }
 ```
 
-- [ ] **Step 6: Run runtime, config, memory, and architecture tests**
+- [x] **Step 6: Run runtime, config, memory, and architecture tests**
 
 Run: `node --import=tsx --test test/replay-runtime.test.ts test/runtime-config.test.ts test/memory-service.test.ts test/architecture.test.ts`
 
 Expected: PASS; replay uses the current configuration and sanitization behavior without changing either module.
 
-- [ ] **Step 7: Commit the replay runtime**
+- [x] **Step 7: Commit the replay runtime**
 
 ```bash
 git add src/platforms/claude/index.ts src/platforms/codex/index.ts src/platforms/index.ts src/runtime/replay.ts test/replay-runtime.test.ts test/architecture.test.ts test/support/nams-fetch-mock.ts
@@ -1741,7 +1741,7 @@ git commit -m "feat: orchestrate sequential session replay"
 - Consumes: `replayPlatforms`, `getReplayPlatformAdapter()`, `runReplay()`, and `formatReplaySummary()`.
 - Produces: the public `nams-hooks replay <claude|codex> [--working-dir PATH]` command and final user-visible behavior.
 
-- [ ] **Step 1: Write failing CLI replay tests**
+- [x] **Step 1: Write failing CLI replay tests**
 
 Create `test/cli-replay.test.ts` using `node:http.createServer`, the compiled `.build/tsc/cli.js`, temporary `HOME`, and a temporary Claude/Codex corpus. Start the file with these complete helpers:
 
@@ -1934,13 +1934,13 @@ test("a missing transcript root is a successful zero import", async () => {
 
 The successful endpoint list in the first test also proves replay does not call conversation-context, entity-search, single-message, or workspace-list endpoints when a workspace is configured. Per-session partial failure and nonzero final exit are covered at the runtime boundary in Task 5, where the NAMS request sequence is deterministic.
 
-- [ ] **Step 2: Run the CLI tests to verify they fail**
+- [x] **Step 2: Run the CLI tests to verify they fail**
 
 Run: `npm run build && node --import=tsx --test test/cli-replay.test.ts`
 
 Expected: FAIL with replay usage/dispatch missing.
 
-- [ ] **Step 3: Add replay parsing and dispatch to the CLI gateway**
+- [x] **Step 3: Add replay parsing and dispatch to the CLI gateway**
 
 Modify `src/cli.ts` imports to add these replay dependencies. Merge the named imports into the existing blocks rather than duplicating module imports:
 
@@ -2014,13 +2014,13 @@ Usage: nams-hooks replay <claude|codex> [--working-dir PATH]
 
 Do not add a hook event or route replay through `routeEvent()`.
 
-- [ ] **Step 4: Run CLI and focused replay tests**
+- [x] **Step 4: Run CLI and focused replay tests**
 
 Run: `npm run build && node --import=tsx --test test/cli-replay.test.ts test/replay-files.test.ts test/replay-runtime.test.ts test/claude/claude-replay.test.ts test/codex/codex-replay.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 5: Update the domain language without adding documentation tests**
+- [x] **Step 5: Update the domain language without adding documentation tests**
 
 Edit `CONTEXT.md` so it no longer defines imports as top-level-only. Replace `Top-Level Session` with:
 
@@ -2032,13 +2032,13 @@ _Avoid_: Top-level-only session, reconstructed parent history
 
 Update `Eligible Session Record` to remove “from a top-level session” and state that only visible user/assistant text and clearly exposed tool activity are eligible. Keep `Operational Trace` explicit that raw/summarized model reasoning is excluded. Do not add a test that reads or asserts `CONTEXT.md`.
 
-- [ ] **Step 6: Run the complete repository verification**
+- [x] **Step 6: Run the complete repository verification**
 
 Run: `npm run check`
 
 Expected: OpenAPI generation/freshness, TypeScript build, test typecheck, rebuild, and the complete Node test suite all pass.
 
-- [ ] **Step 7: Inspect the final diff for scope and generated artifacts**
+- [x] **Step 7: Inspect the final diff for scope and generated artifacts**
 
 Run:
 
@@ -2050,7 +2050,7 @@ git diff -- src test CONTEXT.md
 
 Expected: no whitespace errors; only replay-related source/tests and `CONTEXT.md` are changed; `.build/`, `dist/`, `.nams/`, logs, state, credentials, and unrelated untracked files are absent from the staged feature diff.
 
-- [ ] **Step 8: Commit the public command and domain update**
+- [x] **Step 8: Commit the public command and domain update**
 
 ```bash
 git add src/cli.ts test/cli-replay.test.ts CONTEXT.md
