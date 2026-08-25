@@ -21,7 +21,7 @@
 - Never infer ownership from storage paths, Git, later cwd values, or raw string-prefix matching; an absent, relative, or otherwise unusable first cwd skips the transcript.
 - Create one NAMS conversation per matching transcript only when it contains at least one eligible normalized record.
 - Import visible user/assistant text and explicit tool activity only; exclude hidden or summarized reasoning, system/developer instructions, compaction, and ambiguous records.
-- Preserve source order, use `addMessagesBulk` for contiguous message batches of at most 100, and write operational reasoning plus tool calls through the generated client's existing endpoints.
+- Import each session in two passes: preserve message source order while coalescing all messages into `addMessagesBulk` batches of at most 100, then preserve tool source order while writing operational reasoning plus tool calls through the generated client's existing endpoints.
 - Sort transcript paths lexically and complete one transcript read/import before starting the next; read active files once without locking, stabilization, or a second pass.
 - Pair tool results only by explicit call id, keep unmatched invocations without output, and ignore orphan outputs without adjacency guesses.
 - Skip malformed lines and count malformed/unsupported records; an unreadable or failed transcript does not prevent later transcripts from running.
@@ -1191,7 +1191,7 @@ function transcript(
 const noSleep = async (): Promise<void> => undefined;
 ```
 
-The primary test exposes matching sessions in reverse discovery order plus one out-of-scope session. It proves that the adapter-owned configuration discovery runs exactly once, sessions run lexically and sequentially, source order is preserved across bulk-message/tool boundaries, and no recall endpoint is called:
+The primary test exposes matching sessions in reverse discovery order plus one out-of-scope session. It proves that the adapter-owned configuration discovery runs exactly once, sessions run lexically and sequentially, message and tool order are each preserved across the two import passes, and no recall endpoint is called:
 
 ```ts
 test("resolves once and writes matching sessions sequentially in source order", async () => {
@@ -1305,8 +1305,8 @@ Add focused tests for the following behavior. Exercise retry only through `runRe
 
 | Test | Required assertions |
 |---|---|
-| 101 contiguous messages | Bulk bodies have lengths `[100, 1]`; summary has `messages: 101`. |
-| Message/tool/message order | The first message bulk completes before reasoning/tool requests and the trailing bulk follows them. |
+| 101 messages | Bulk bodies have lengths `[100, 1]`; summary has `messages: 101`. |
+| Message/tool/message order | The two messages coalesce into one bulk before reasoning/tool requests while message order and tool order are preserved independently. |
 | Sanitization parity | Tool input strips nested output-like fields and is capped exactly like `serializeToolInput()`; explicit output equals `serializeToolOutput()` and is not capped. |
 | Missing tool output | The `RecordToolCallRequest` omits `output` instead of sending an empty string. |
 | Missing/relative cwd, outside prefix sibling, empty records | All skip; only the eligible-empty transcript increments `matched`; no conversation is created. |
@@ -1585,12 +1585,14 @@ async function importTimeline(
   };
 
   for (const record of records) {
-    if (record.kind === "message") {
-      pending.push({ role: record.role, content: record.content });
-      if (pending.length === 100) await flush();
-      continue;
-    }
-    await flush();
+    if (record.kind !== "message") continue;
+    pending.push({ role: record.role, content: record.content });
+    if (pending.length === 100) await flush();
+  }
+  await flush();
+
+  for (const record of records) {
+    if (record.kind === "message") continue;
     const stepResponse = await withReplayRetry(
       () => client.recordReasoningStep({ conversationId, ...record.reasoningStep }),
       sleep,
@@ -1611,7 +1613,6 @@ async function importTimeline(
     toolCalls += 1;
     summary.toolCalls += 1;
   }
-  await flush();
   return { messages, toolCalls };
 }
 

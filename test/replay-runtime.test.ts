@@ -202,7 +202,7 @@ test("resolves once and writes matching sessions sequentially in source order", 
     assert.deepEqual(
       nams.requestBodies("addMessagesBulk")
         .map((body) => body.messages.map((message: { content: string }) => message.content)),
-      [["one", "two"], ["three"], ["z"]],
+      [["one", "two", "three"], ["z"]],
     );
     assert.deepEqual(nams.requestBodies("addReasoningStep"), [{
       conversationId: "conversation-1",
@@ -242,7 +242,7 @@ test("chunks 101 contiguous messages into batches of 100 and one", async () => {
   });
 });
 
-test("flushes message batches around tools in timeline order", async () => {
+test("imports all messages before tools while preserving each stream order", async () => {
   await withNamsEnvironment(async () => {
     const nams = createNamsFetchMock().createConversation().bulkMessages().reasoningStep().toolCall();
     const progress: string[] = [];
@@ -273,15 +273,17 @@ test("flushes message batches around tools in timeline order", async () => {
         "/v1/conversations/conversation-1/messages/bulk",
         "/v1/reasoning/steps",
         "/v1/reasoning/tool-calls",
-        "/v1/conversations/conversation-1/messages/bulk",
       ],
+    );
+    assert.deepEqual(
+      nams.requestBodies("addMessagesBulk")[0].messages.map((message: { content: string }) => message.content),
+      ["before", "after"],
     );
     assert.deepEqual(progress.filter((line) => line.startsWith("  - ")), [
       "  - POST /v1/conversations",
       "  - POST /v1/conversations/{id}/messages/bulk",
       "  - POST /v1/reasoning/steps",
       "  - POST /v1/reasoning/tool-calls",
-      "  - POST /v1/conversations/{id}/messages/bulk",
     ]);
   });
 });

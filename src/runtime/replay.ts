@@ -187,12 +187,14 @@ async function importTimeline(
   };
 
   for (const record of records) {
-    if (record.kind === "message") {
-      pending.push({ role: record.role, content: record.content });
-      if (pending.length === 100) await flush();
-      continue;
-    }
-    await flush();
+    if (record.kind !== "message") continue;
+    pending.push({ role: record.role, content: record.content });
+    if (pending.length === 100) await flush();
+  }
+  await flush();
+
+  for (const record of records) {
+    if (record.kind === "message") continue;
     const stepId = await withReplayWrite(
       async () => {
         const response = await client.recordReasoningStep({ conversationId, ...record.reasoningStep });
@@ -216,7 +218,6 @@ async function importTimeline(
     toolCalls += 1;
     summary.toolCalls += 1;
   }
-  await flush();
   return { messages, toolCalls };
 }
 
