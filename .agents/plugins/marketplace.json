@@ -1,0 +1,38 @@
+{
+  "name": "nams-plugins",
+  "metadata": {
+    "description": "Neo4j Agent Memory Service hooks for Codex.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "nams-hooks",
+      "source": {
+        "source": "local",
+        "path": "./plugins/codex-nams-hooks"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
+      },
+      "interface": {
+        "displayName": "NAMS Hooks"
+      },
+      "description": "Persistent Neo4j Agent Memory Service hooks for Codex.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Neo4j Labs"
+      },
+      "repository": "https://github.com/neo4j-labs/nams-plugins",
+      "license": "Apache-2.0",
+      "keywords": [
+        "memory",
+        "context",
+        "persistence",
+        "neo4j",
+        "nams"
+      ],
+      "category": "Productivity"
+    }
+  ]
+}
