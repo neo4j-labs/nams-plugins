@@ -187,11 +187,14 @@ Dependency policy:
 
 Branch model:
 
-- `devel`: main source branch containing TypeScript source, templates, docs, the pinned OpenAPI spec, the custom generator, and committed generated TypeScript client source.
-- `latest`: generated stable release/distribution branch containing the validated marketplace release artifacts from `dist-marketplace/` built from `devel`.
-- `dist/<source-branch>`: generated preview release/distribution branch containing the same validated marketplace release artifacts built from a non-`devel` source branch. Nested source branch names are preserved, so `feature/foo` publishes to `dist/feature/foo`.
+- devel: main source branch containing TypeScript source, templates, docs, the pinned OpenAPI spec, the custom generator, and committed generated TypeScript client source.
+- latest: generated stable plugin marketplace branch containing validated dist-marketplace/ artifacts built from devel.
+- dist/<source-branch>: generated preview plugin marketplace branch containing validated dist-marketplace/ artifacts built from a non-devel source branch. Nested source branch names are preserved, so feature/foo publishes to dist/feature/foo.
+- dist/bin/<source-branch>: generated npm/npx distribution branch containing validated dist/ artifacts built from any source branch, including devel. Nested names are preserved, so feature/foo publishes to dist/bin/feature/foo.
 
-On source branches, `dist/`, `dist-marketplace/`, and `dist-local/` are generated and ignored. `npm run dist` builds all three trees through the split projection scripts: `build-dist-npm.mjs`, `build-dist-marketplace.mjs`, and `build-dist-local.mjs`, with shared helpers in `build-dist-common.mjs`. `dist/` is the npm package artifact. `dist-marketplace/` is the self-contained marketplace release tree for Gemini, Claude Code, Codex, and OpenCode and is the only tree published to generated release branches. `dist-local/` contains project-local configurations that call an installed `nams-hooks` executable. `dist/` and `dist-local/` are generated and verified on source branches but are not published to `latest` or `dist/<source-branch>`.
+The dist/bin/** namespace is reserved for npm distribution branches. Source branches named bin or bin/** are not supported because their plugin marketplace target would collide with an npm distribution target.
+
+On source branches, dist/, dist-marketplace/, and dist-local/ are generated and ignored. npm run dist builds all three trees through the split projection scripts: build-dist-npm.mjs, build-dist-marketplace.mjs, and build-dist-local.mjs, with shared helpers in build-dist-common.mjs. dist/ is the npm package artifact and is published to dist/bin/<source-branch>. dist-marketplace/ is the self-contained plugin marketplace release tree for Gemini, Claude Code, Codex, and OpenCode and is published to latest or dist/<source-branch>. dist-local/ contains project-local configurations that call an installed nams-hooks executable and remains a source-branch verification artifact only.
 
 ```text
 dist/
@@ -317,28 +320,33 @@ OpenCode marketplace distribution is self-contained under `dist-marketplace/plug
 
 Manual or CI release flow:
 
-1. Work on `devel` or another source branch.
-2. Run `npm run openapi:fetch` when the NAMS contract needs refreshing.
-3. Run `npm run openapi:generate`.
-4. Commit `docs/nams-openapi.json` and `src/generated/nams-client.ts` if they changed.
+1. Work on devel or another source branch.
+2. Run npm run openapi:fetch when the NAMS contract needs refreshing.
+3. Run npm run openapi:generate.
+4. Commit docs/nams-openapi.json and src/generated/nams-client.ts if they changed.
 5. Run package verification.
-6. Run release preparation to create the marketplace release tree from `dist-marketplace/`.
-7. Replace the target generated branch contents with the validated `dist-marketplace/` release tree: `latest` for `devel`, or `dist/<source-branch>` for another source branch.
-8. Commit the marketplace release artifact on the target generated branch.
-9. When the target is `latest`, force-update the `latest` tag and recreate the GitHub Release named `latest`.
+6. Run release preparation to create the npm, marketplace, and local verification trees.
+7. Replace the plugin target branch with validated dist-marketplace/ contents: latest for devel, or dist/<source-branch> for another source branch.
+8. Replace dist/bin/<source-branch> with the validated dist/ contents for every source branch, including devel.
+9. Commit each generated artifact tree on its target branch.
+10. When the plugin target is latest, force-update the latest tag and recreate the GitHub Release named latest.
 
 Rules:
 
 - Generated release artifacts are produced from source branches; no hand edits.
-- Successful push-triggered Builds publish `devel` to `latest` and every other source branch to `dist/<source-branch>`.
+- Successful push-triggered Builds start two independent publishers: plugin marketplace artifacts go from devel to latest or from another source branch to dist/<source-branch>, while npm artifacts go from every source branch to dist/bin/<source-branch>.
 - Pull-request Builds never publish artifacts.
-- Generated `latest` and `dist/**` branches do not trigger Build or Release again.
-- A daily UTC cleanup removes generated `dist/**` branches whose tip commit is older than 30 days. The cleanup does not target `latest` or source branches and may also be run through manual dispatch.
-- The `latest` release tag and GitHub Release are created only from `latest`; preview branches do not create tags or GitHub Releases.
-- Gemini stable installs use `--ref latest`; preview validation may use the corresponding `dist/<source-branch>` ref.
-- Codex, Claude, Gemini, and OpenCode marketplace release artifacts are produced from the same validated source tree.
-- `dist/` and `dist-local/` are verification artifacts on source branches; they are not copied to generated release branches.
-- `npm run package:check` must verify all generated artifacts: npm package output in `dist/`, self-contained marketplace output in `dist-marketplace/`, local project configuration output in `dist-local/`, and npm dry-run package contents.
+- Generated latest and dist/** branches do not trigger Build or Release again.
+- The workflow_run publishers become active only after their workflow files are present on the default devel branch.
+- A daily UTC cleanup removes generated dist/** branches, including dist/bin/**, whose tip commit is older than 30 days. The cleanup does not target latest or source branches and may also be run through manual dispatch.
+- The latest release tag and GitHub Release are created only by the plugin marketplace publisher for latest.
+- Npm distribution branches do not create tags or GitHub Releases.
+- The dist/bin/** namespace is reserved for npm distribution artifacts; source branches named bin or bin/** are not supported.
+- Gemini stable installs use --ref latest; plugin preview validation uses the corresponding dist/<source-branch> ref.
+- The package rooted at dist/bin/<source-branch> is the npx-consumable npm distribution for that source branch.
+- Codex, Claude, Gemini, and OpenCode plugin marketplace artifacts are produced from the same validated dist-marketplace/ tree.
+- dist-local/ remains a verification artifact on source branches and is not copied to generated release branches.
+- npm run package:check must verify all generated artifacts: npm package output in dist/, self-contained marketplace output in dist-marketplace/, local project configuration output in dist-local/, and npm dry-run package contents.
 
 ## Configuration
 
@@ -705,4 +713,4 @@ Approved decisions from brainstorming:
 - Rely on NAMS async entity extraction from stored messages.
 - Use TypeScript for source and release vanilla JavaScript.
 - Use a custom generated `NamsClient` for REST calls.
-- Use `devel` as the main source branch; publish its validated `dist-marketplace/` artifacts to `latest`, and publish non-`devel` source branch artifacts to `dist/<source-branch>`. Keep `dist/` and `dist-local/` as generated verification artifacts on source branches.
+- Use devel as the main source branch. Publish validated dist-marketplace/ artifacts to latest from devel and to dist/<source-branch> from non-devel source branches. Publish validated dist/ npm artifacts from every source branch to dist/bin/<source-branch>. Keep dist-local/ as a generated verification artifact on source branches.
