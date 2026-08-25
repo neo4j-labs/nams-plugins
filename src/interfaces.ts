@@ -1,3 +1,10 @@
+import type {
+  AddMessageRequest,
+  RecordStepRequest,
+  RecordToolCallRequest,
+} from "./generated/nams-client.js";
+import type { NamsConfigDiscovery } from "./runtime/config.js";
+
 export const platforms = ["gemini", "claude", "codex", "opencode"] as const;
 export type Platform = (typeof platforms)[number];
 
@@ -46,3 +53,48 @@ export interface WorkspacePlatformAdapter {
   customCommand?(invocation: WorkspaceHookInvocation<"CustomCommand">): Promise<HookResult>;
 }
 
+export const replayPlatforms = ["claude", "codex"] as const;
+export type ReplayPlatform = (typeof replayPlatforms)[number];
+
+export interface ReplayToolRecord
+  extends Omit<RecordToolCallRequest, "input" | "output" | "stepId"> {
+  kind: "tool";
+  input: unknown;
+  output?: unknown;
+  reasoningStep: Omit<RecordStepRequest, "conversationId">;
+}
+
+export type ReplayRecord =
+  | (AddMessageRequest & {
+      kind: "message";
+      role: "user" | "assistant";
+    })
+  | ReplayToolRecord;
+
+export interface ReplayTranscript {
+  sourceSessionId: string;
+  projectDirectory?: string;
+  sourceStartedAt?: string;
+  records: ReplayRecord[];
+  malformedLineCount: number;
+  unsupportedRecordCount: number;
+}
+
+export interface ReplayPlatformAdapter {
+  platform: ReplayPlatform;
+  discoverConfig?: NamsConfigDiscovery;
+  discoverTranscripts(): Promise<string[]>;
+  readTranscript(transcriptPath: string): Promise<ReplayTranscript>;
+}
+
+export interface ReplaySummary {
+  discovered: number;
+  matched: number;
+  imported: number;
+  skipped: number;
+  failed: number;
+  messages: number;
+  toolCalls: number;
+  malformedLines: number;
+  unsupportedRecords: number;
+}
