@@ -515,6 +515,41 @@ test("reports redacted progress and formats a stable summary", async () => {
   });
 });
 
+test("reports sanitized HTTP details for failed NAMS writes", async () => {
+  await withNamsEnvironment(async () => {
+    let attempts = 0;
+    const nams = createNamsFetchMock().createConversation().bulkMessages(() => {
+      attempts += 1;
+      return {
+        status: 503,
+        body: { error: "server echoed sensitive body and key" },
+      };
+    });
+    const progress: string[] = [];
+
+    const summary = await runReplay({
+      adapter: adapter("codex", ["/secret/path.jsonl"], {
+        "/secret/path.jsonl": transcript("session-1", [{
+          kind: "message",
+          role: "user",
+          content: "sensitive body",
+        }]),
+      }),
+      importRoot: "/project",
+      fetch: nams.fetch,
+      sleep: noSleep,
+      onProgress: (line) => progress.push(line),
+    });
+
+    assert.equal(summary.failed, 1);
+    assert.equal(attempts, 3);
+    assert.deepEqual(progress, [
+      "[1/1] codex session-1: failed NAMS write failed; HTTP request addMessagesBulk POST /v1/conversations/{id}/messages/bulk (body redacted); attempts 3; NAMS responses HTTP 503, HTTP 503, HTTP 503 (bodies redacted)",
+    ]);
+    assert.doesNotMatch(progress[0], /sensitive body|key|\/secret\//);
+  });
+});
+
 test("retries recoverable HTTP failures twice after 500 ms", async () => {
   await withNamsEnvironment(async () => {
     for (const status of [408, 429, 500, 503, 599]) {

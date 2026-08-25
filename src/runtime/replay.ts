@@ -4,6 +4,7 @@ import {
   NamsClientError,
   NamsWorkspaceClient,
   type AddMessageRequest,
+  type NamsRequestEvent,
   type RecordToolCallRequest,
   type WorkspaceListResponse,
 } from "../generated/nams-client.js";
@@ -37,18 +38,37 @@ export interface RunReplayInput {
 const retryDelayMs = 500;
 const maxReplayRetries = 2;
 
+type ReplayHttpAttempt = Pick<NamsRequestEvent, "operation" | "method" | "path" | "status" | "ok">;
+
+class ReplayWriteFailure extends Error {
+  constructor(public readonly attempts: ReplayHttpAttempt[]) {
+    super("NAMS write failed");
+    this.name = "ReplayWriteFailure";
+  }
+}
+
 export async function runReplay(input: RunReplayInput): Promise<ReplaySummary> {
   const sleep = input.sleep ?? ((delayMs) => new Promise<void>((resolve) => setTimeout(resolve, delayMs)));
   const importRoot = path.resolve(input.importRoot);
   const platform = input.adapter.platform;
 
   const config = await resolveReplayConfig(importRoot, input.adapter, input.fetch, sleep);
+  const httpAttempts: ReplayHttpAttempt[] = [];
   const client = new NamsClient({
     apiKey: config.apiKey,
     workspaceId: config.workspaceId,
     baseUrl: config.baseUrl,
     defaultHeaders: namsReplayProvenanceHeaders(platform),
     ...(input.fetch !== undefined ? { fetch: input.fetch } : {}),
+    onRequest: (event) => {
+      httpAttempts.push({
+        operation: event.operation,
+        method: event.method,
+        path: event.path,
+        ok: event.ok,
+        ...(event.status !== undefined ? { status: event.status } : {}),
+      });
+    },
   });
   let transcriptPaths: string[];
   try {
@@ -84,7 +104,7 @@ export async function runReplay(input: RunReplayInput): Promise<ReplaySummary> {
     }
 
     try {
-      const conversationId = await withReplayRetry(
+      const conversationId = await withReplayWrite(
         async () => {
           const response = await client.createConversation({
             metadata: {
@@ -101,13 +121,14 @@ export async function runReplay(input: RunReplayInput): Promise<ReplaySummary> {
           return response.id;
         },
         sleep,
+        httpAttempts,
       );
-      const counts = await importTimeline(client, conversationId, transcript.records, sleep, summary);
+      const counts = await importTimeline(client, conversationId, transcript.records, sleep, summary, httpAttempts);
       summary.imported += 1;
       input.onProgress?.(progressLine(index, transcriptPaths.length, platform, transcript.sourceSessionId, "imported", `${counts.messages} messages, ${counts.toolCalls} tools`));
-    } catch {
+    } catch (error) {
       summary.failed += 1;
-      input.onProgress?.(progressLine(index, transcriptPaths.length, platform, transcript.sourceSessionId, "failed", "NAMS write failed"));
+      input.onProgress?.(progressLine(index, transcriptPaths.length, platform, transcript.sourceSessionId, "failed", formatReplayWriteFailure(error)));
     }
   }
   return summary;
@@ -119,6 +140,7 @@ async function importTimeline(
   records: ReplayRecord[],
   sleep: (delayMs: number) => Promise<void>,
   summary: ReplaySummary,
+  httpAttempts: ReplayHttpAttempt[],
 ): Promise<{ messages: number; toolCalls: number }> {
   let messages = 0;
   let toolCalls = 0;
@@ -127,7 +149,7 @@ async function importTimeline(
     if (pending.length === 0) return;
     const batch = pending;
     pending = [];
-    await withReplayRetry(() => client.addMessagesBulk(conversationId, { messages: batch }), sleep);
+    await withReplayWrite(() => client.addMessagesBulk(conversationId, { messages: batch }), sleep, httpAttempts);
     messages += batch.length;
     summary.messages += batch.length;
   };
@@ -139,14 +161,17 @@ async function importTimeline(
       continue;
     }
     await flush();
-    const stepResponse = await withReplayRetry(
-      () => client.recordReasoningStep({ conversationId, ...record.reasoningStep }),
+    const stepId = await withReplayWrite(
+      async () => {
+        const response = await client.recordReasoningStep({ conversationId, ...record.reasoningStep });
+        if (response.id === undefined || response.id.trim() === "") {
+          throw new Error("NAMS reasoning response did not include id");
+        }
+        return response.id;
+      },
       sleep,
+      httpAttempts,
     );
-    const stepId = stepResponse.id;
-    if (stepId === undefined || stepId.trim() === "") {
-      throw new Error("NAMS reasoning response did not include id");
-    }
     const toolRequest: RecordToolCallRequest = {
       stepId,
       toolName: record.toolName,
@@ -155,12 +180,27 @@ async function importTimeline(
       ...(record.status !== undefined ? { status: record.status } : {}),
       ...(record.durationMs !== undefined ? { durationMs: record.durationMs } : {}),
     };
-    await withReplayRetry(() => client.recordToolCall(toolRequest), sleep);
+    await withReplayWrite(() => client.recordToolCall(toolRequest), sleep, httpAttempts);
     toolCalls += 1;
     summary.toolCalls += 1;
   }
   await flush();
   return { messages, toolCalls };
+}
+
+async function withReplayWrite<T>(
+  operation: () => Promise<T>,
+  sleep: (delayMs: number) => Promise<void>,
+  httpAttempts: ReplayHttpAttempt[],
+): Promise<T> {
+  const firstAttempt = httpAttempts.length;
+  try {
+    const result = await withReplayRetry(operation, sleep);
+    httpAttempts.splice(firstAttempt);
+    return result;
+  } catch {
+    throw new ReplayWriteFailure(httpAttempts.splice(firstAttempt));
+  }
 }
 
 async function withReplayRetry<T>(operation: () => Promise<T>, sleep: (delayMs: number) => Promise<void>): Promise<T> {
@@ -174,6 +214,25 @@ async function withReplayRetry<T>(operation: () => Promise<T>, sleep: (delayMs: 
       await sleep(retryDelayMs);
     }
   }
+}
+
+function formatReplayWriteFailure(error: unknown): string {
+  const detail = "NAMS write failed";
+  if (!(error instanceof ReplayWriteFailure) || error.attempts.length === 0) return detail;
+
+  const request = error.attempts.at(-1) as ReplayHttpAttempt;
+  const responses = error.attempts.map((attempt) =>
+    attempt.status === undefined ? "no HTTP response" : `HTTP ${attempt.status}`
+  );
+  const responseLabel = responses.length === 1 ? "NAMS response" : "NAMS responses";
+  const bodyLabel = responses.length === 1 ? "body redacted" : "bodies redacted";
+  const validationFailure = request.ok ? "; response validation failed" : "";
+  return [
+    detail,
+    `HTTP request ${request.operation} ${request.method} ${request.path} (body redacted)`,
+    `attempts ${error.attempts.length}`,
+    `${responseLabel} ${responses.join(", ")} (${bodyLabel})${validationFailure}`,
+  ].join("; ");
 }
 
 function isRecoverableReplayError(error: unknown): boolean {
