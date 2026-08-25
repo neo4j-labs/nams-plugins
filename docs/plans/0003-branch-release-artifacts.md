@@ -303,7 +303,7 @@ git commit -m "ci: publish artifacts per source branch"
 - Consumes: the branch behavior implemented in Task 2.
 - Produces: architectural and agent guidance that distinguishes stable `latest` publishing from branch preview publishing.
 
-- [ ] **Step 1: Expand the design document branch model**
+- [x] **Step 1: Expand the design document branch model**
 
 In `docs/superpowers/specs/2026-05-10-nams-hooks-design.md`, replace the Branch model list with:
 
@@ -321,7 +321,7 @@ Replace the sentence beginning `On devel` immediately after that list with:
 On source branches, `dist/`, `dist-marketplace/`, and `dist-local/` are generated and ignored. `npm run dist` builds all three trees through the split projection scripts: `build-dist-npm.mjs`, `build-dist-marketplace.mjs`, and `build-dist-local.mjs`, with shared helpers in `build-dist-common.mjs`. `dist/` is the npm package artifact. `dist-marketplace/` is the self-contained marketplace release tree for Gemini, Claude Code, Codex, and OpenCode and is the only tree published to generated release branches. `dist-local/` contains project-local configurations that call an installed `nams-hooks` executable. `dist/` and `dist-local/` are generated and verified on source branches but are not published to `latest` or `dist/<source-branch>`.
 ```
 
-- [ ] **Step 2: Expand the manual and CI release rules**
+- [x] **Step 2: Expand the manual and CI release rules**
 
 In the same design document, replace the `Manual or CI release flow` list and its following `Rules` list with:
 
@@ -357,7 +357,7 @@ Replace the final approval-record branch decision with:
 - Use `devel` as the main source branch; publish its validated `dist-marketplace/` artifacts to `latest`, and publish non-`devel` source branch artifacts to `dist/<source-branch>`. Keep `dist/` and `dist-local/` as generated verification artifacts on source branches.
 ```
 
-- [ ] **Step 3: Align repository agent guidance**
+- [x] **Step 3: Align repository agent guidance**
 
 In `AGENTS.md`, replace the `Build And Distribution` bullet list with:
 
@@ -379,7 +379,7 @@ In `AGENTS.md`, replace the `Build And Distribution` bullet list with:
 - Only `devel` publishing updates the `latest` tag and GitHub Release; preview `dist/<branch>` publishing updates a branch only.
 ```
 
-- [ ] **Step 4: Verify the complete change**
+- [x] **Step 4: Verify the complete change**
 
 Run:
 
@@ -391,7 +391,7 @@ git status --short
 
 Expected: `npm run check` passes, `git diff --check` reports no errors, and status lists only the intended workflow, test, design, agent-guidance, and plan changes plus any pre-existing unrelated user files.
 
-- [ ] **Step 5: Commit the release-model documentation**
+- [x] **Step 5: Commit the release-model documentation**
 
 ```bash
 git add AGENTS.md docs/superpowers/specs/2026-05-10-nams-hooks-design.md docs/plans/0003-branch-release-artifacts.md
