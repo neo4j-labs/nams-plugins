@@ -483,10 +483,21 @@ jobs:
         run: |
           set -euo pipefail
 
-          if ! git ls-remote --exit-code --heads origin 'refs/heads/dist/*' >/dev/null; then
-            echo "No dist preview branches found."
-            exit 0
-          fi
+          ls_remote_status=0
+          git ls-remote --exit-code --heads origin 'refs/heads/dist/*' >/dev/null || ls_remote_status=$?
+
+          case "$ls_remote_status" in
+            0)
+              ;;
+            2)
+              echo "No dist preview branches found."
+              exit 0
+              ;;
+            *)
+              echo "::error::git ls-remote failed with status ${ls_remote_status}." >&2
+              exit "$ls_remote_status"
+              ;;
+          esac
 
           git fetch --no-tags --prune --depth=1 origin \
             '+refs/heads/dist/*:refs/remotes/origin/dist/*'
@@ -512,7 +523,7 @@ jobs:
           )
 ```
 
-The non-round cron minute avoids the most common top-of-hour scheduling load. `git ls-remote` makes an empty preview namespace a successful no-op. The fetch refspec and `for-each-ref` scope ensure the deletion loop cannot enumerate `latest` or ordinary source branches. The explicit force-with-lease SHA prevents cleanup from deleting a preview branch that a concurrent release refreshed after cleanup fetched it.
+The non-round cron minute avoids the most common top-of-hour scheduling load. `git ls-remote --exit-code` returns status 2 only when the preview namespace is empty, which makes that case a successful no-op; every other nonzero status is reported as a GitHub Actions error and preserves its original failure status. The fetch refspec and `for-each-ref` scope ensure the deletion loop cannot enumerate `latest` or ordinary source branches. The explicit force-with-lease SHA prevents cleanup from deleting a preview branch that a concurrent release refreshed after cleanup fetched it.
 
 - [x] **Step 4: Run the workflow contract tests to verify cleanup passes**
 

@@ -28,10 +28,21 @@ jobs:
         run: |
           set -euo pipefail
 
-          if ! git ls-remote --exit-code --heads origin 'refs/heads/dist/*' >/dev/null; then
-            echo "No dist preview branches found."
-            exit 0
-          fi
+          ls_remote_status=0
+          git ls-remote --exit-code --heads origin 'refs/heads/dist/*' >/dev/null || ls_remote_status=$?
+
+          case "$ls_remote_status" in
+            0)
+              ;;
+            2)
+              echo "No dist preview branches found."
+              exit 0
+              ;;
+            *)
+              echo "::error::git ls-remote failed with status ${ls_remote_status}." >&2
+              exit "$ls_remote_status"
+              ;;
+          esac
 
           git fetch --no-tags --prune --depth=1 origin \
             '+refs/heads/dist/*:refs/remotes/origin/dist/*'

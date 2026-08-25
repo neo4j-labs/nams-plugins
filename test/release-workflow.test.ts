@@ -78,3 +78,12 @@ test("cleanup workflow deletes only dist previews older than 30 days on a daily 
   );
   assert.doesNotMatch(workflow, /refs\/heads\/latest/);
 });
+
+test("cleanup workflow treats only ls-remote status 2 as an empty preview namespace", async () => {
+  const workflow = await readFile(".github/workflows/cleanup.yml", "utf8");
+
+  assert.match(
+    workflow,
+    /ls_remote_status=0\n\s+git ls-remote --exit-code --heads origin 'refs\/heads\/dist\/\*' >\/dev\/null \|\| ls_remote_status=\$\?\n\n\s+case "\$ls_remote_status" in\n\s+0\)\n\s+;;\n\s+2\)\n\s+echo "No dist preview branches found\."\n\s+exit 0\n\s+;;\n\s+\*\)\n\s+echo "::error::git ls-remote failed with status \$\{ls_remote_status\}\." >&2\n\s+exit "\$ls_remote_status"\n\s+;;\n\s+esac/,
+  );
+});
