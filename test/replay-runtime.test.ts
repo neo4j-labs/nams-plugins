@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -79,6 +79,41 @@ function transcript(
 }
 
 const noSleep = async (): Promise<void> => undefined;
+
+test("reports replay configuration sources before transcript discovery", async () => {
+  await withNamsEnvironment(async () => {
+    const configDirectory = path.join(process.env.HOME as string, ".nams");
+    await mkdir(configDirectory, { recursive: true });
+    await writeFile(path.join(configDirectory, "config.json"), JSON.stringify({
+      apiKey: "global-key",
+      workspaceId: "global-workspace",
+      baseUrl: "https://memory.example.test",
+    }), "utf8");
+    const progress: string[] = [];
+
+    const summary = await runReplay({
+      adapter: {
+        platform: "codex",
+        async discoverTranscripts() {
+          assert.deepEqual(progress, [
+            "Replay codex: starting; {\"configSources\":{\"apiKey\":\"global:~/.nams/config.json\",\"workspaceId\":\"global:~/.nams/config.json\",\"baseUrl\":\"global:~/.nams/config.json\"}}",
+          ]);
+          return [];
+        },
+        async readTranscript() { throw new Error("not reached"); },
+      },
+      importRoot: "/project",
+      sleep: noSleep,
+      onProgress: (line) => progress.push(line),
+    });
+
+    assert.equal(summary.discovered, 0);
+  }, {
+    NAMS_API_KEY: undefined,
+    NAMS_WORKSPACE_ID: undefined,
+    NAMS_BASE_URL: undefined,
+  });
+});
 
 test("resolves once and writes matching sessions sequentially in source order", async () => {
   await withNamsEnvironment(async () => {
@@ -504,10 +539,13 @@ test("reports redacted progress and formats a stable summary", async () => {
       onProgress: (line) => progress.push(line),
     });
 
-    assert.deepEqual(progress, ["[1/1] claude session-1: imported 1 messages, 0 tools"]);
-    assert.equal(progress[0].includes("sensitive body"), false);
-    assert.equal(progress[0].includes("/secret/"), false);
-    assert.equal(progress[0].includes("key"), false);
+    assert.deepEqual(progress, [
+      "Replay claude: starting; {\"configSources\":{\"apiKey\":\"env:NAMS_API_KEY\",\"workspaceId\":\"env:NAMS_WORKSPACE_ID\",\"baseUrl\":\"env:NAMS_BASE_URL\"}}",
+      "[1/1] claude session-1: imported 1 messages, 0 tools",
+    ]);
+    assert.equal(progress[1].includes("sensitive body"), false);
+    assert.equal(progress[1].includes("/secret/"), false);
+    assert.equal(progress[1].includes("key"), false);
     assert.equal(
       formatReplaySummary("claude", summary),
       "Replay claude: discovered 1, matched 1, imported 1, skipped 0, failed 0; messages 1, tools 0, malformed lines 0, unsupported records 0.",
@@ -515,14 +553,18 @@ test("reports redacted progress and formats a stable summary", async () => {
   });
 });
 
-test("reports sanitized HTTP details for failed NAMS writes", async () => {
+test("reports NAMS failure request and response bodies while sanitizing credentials", async () => {
   await withNamsEnvironment(async () => {
     let attempts = 0;
     const nams = createNamsFetchMock().createConversation().bulkMessages(() => {
       attempts += 1;
       return {
         status: 503,
-        body: { error: "server echoed sensitive body and key" },
+        body: {
+          error: "database unavailable",
+          requestId: "nams-503",
+          apiKey: "super-secret-api-key",
+        },
       };
     });
     const progress: string[] = [];
@@ -544,10 +586,12 @@ test("reports sanitized HTTP details for failed NAMS writes", async () => {
     assert.equal(summary.failed, 1);
     assert.equal(attempts, 3);
     assert.deepEqual(progress, [
-      "[1/1] codex session-1: failed NAMS write failed; HTTP request addMessagesBulk POST /v1/conversations/{id}/messages/bulk (body redacted); attempts 3; NAMS responses HTTP 503, HTTP 503, HTTP 503 (bodies redacted)",
+      "Replay codex: starting; {\"configSources\":{\"apiKey\":\"env:NAMS_API_KEY\",\"workspaceId\":\"env:NAMS_WORKSPACE_ID\",\"baseUrl\":\"env:NAMS_BASE_URL\"}}",
+      "[1/1] codex session-1: failed NAMS write failed; HTTP request addMessagesBulk POST /v1/conversations/{id}/messages/bulk; request body {\"messages\":[{\"role\":\"user\",\"content\":\"sensitive body\"}]}; attempts 3; NAMS responses HTTP 503, HTTP 503, HTTP 503; NAMS response body {\"error\":\"database unavailable\",\"requestId\":\"nams-503\",\"apiKey\":\"[REDACTED]\"}",
     ]);
-    assert.doesNotMatch(progress[0], /sensitive body|key|\/secret\//);
-  });
+    assert.match(progress[1], /sensitive body|database unavailable|nams-503/);
+    assert.doesNotMatch(progress[1], /super-secret-api-key|\/secret\//);
+  }, { NAMS_API_KEY: "super-secret-api-key" });
 });
 
 test("retries recoverable HTTP failures twice after 500 ms", async () => {

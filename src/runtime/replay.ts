@@ -17,6 +17,7 @@ import type {
 } from "../interfaces.js";
 import {
   loadNamsConnectionConfig,
+  type NamsConfigSources,
   type NamsRuntimeConfig,
 } from "./config.js";
 import {
@@ -37,8 +38,31 @@ export interface RunReplayInput {
 
 const retryDelayMs = 500;
 const maxReplayRetries = 2;
+const namsCredentialFields = new Set([
+  "authorization",
+  "apikey",
+  "xapikey",
+  "token",
+  "accesstoken",
+  "refreshtoken",
+  "secret",
+  "password",
+  "passphrase",
+  "cookie",
+  "setcookie",
+]);
 
-type ReplayHttpAttempt = Pick<NamsRequestEvent, "operation" | "method" | "path" | "status" | "ok">;
+type ReplayHttpAttempt = Pick<NamsRequestEvent, "operation" | "method" | "path" | "status" | "ok"> & {
+  requestBodyPresent: boolean;
+  requestBody?: unknown;
+  responseReceived: boolean;
+  responseBody?: unknown;
+};
+
+interface ResolvedReplayConfig {
+  config: NamsRuntimeConfig;
+  sources: { [Key in keyof NamsConfigSources]: string };
+}
 
 class ReplayWriteFailure extends Error {
   constructor(public readonly attempts: ReplayHttpAttempt[]) {
@@ -52,7 +76,9 @@ export async function runReplay(input: RunReplayInput): Promise<ReplaySummary> {
   const importRoot = path.resolve(input.importRoot);
   const platform = input.adapter.platform;
 
-  const config = await resolveReplayConfig(importRoot, input.adapter, input.fetch, sleep);
+  const resolvedConfig = await resolveReplayConfig(importRoot, input.adapter, input.fetch, sleep);
+  const config = resolvedConfig.config;
+  input.onProgress?.(`Replay ${platform}: starting; ${JSON.stringify({ configSources: resolvedConfig.sources })}`);
   const httpAttempts: ReplayHttpAttempt[] = [];
   const client = new NamsClient({
     apiKey: config.apiKey,
@@ -67,6 +93,10 @@ export async function runReplay(input: RunReplayInput): Promise<ReplaySummary> {
         path: event.path,
         ok: event.ok,
         ...(event.status !== undefined ? { status: event.status } : {}),
+        requestBodyPresent: event.request.body !== undefined,
+        ...(event.request.body !== undefined ? { requestBody: event.request.body } : {}),
+        responseReceived: event.response !== undefined,
+        ...(event.response?.body !== undefined ? { responseBody: event.response.body } : {}),
       });
     },
   });
@@ -128,7 +158,7 @@ export async function runReplay(input: RunReplayInput): Promise<ReplaySummary> {
       input.onProgress?.(progressLine(index, transcriptPaths.length, platform, transcript.sourceSessionId, "imported", `${counts.messages} messages, ${counts.toolCalls} tools`));
     } catch (error) {
       summary.failed += 1;
-      input.onProgress?.(progressLine(index, transcriptPaths.length, platform, transcript.sourceSessionId, "failed", formatReplayWriteFailure(error)));
+      input.onProgress?.(progressLine(index, transcriptPaths.length, platform, transcript.sourceSessionId, "failed", formatReplayWriteFailure(error, config.apiKey)));
     }
   }
   return summary;
@@ -216,7 +246,7 @@ async function withReplayRetry<T>(operation: () => Promise<T>, sleep: (delayMs: 
   }
 }
 
-function formatReplayWriteFailure(error: unknown): string {
+function formatReplayWriteFailure(error: unknown, apiKey: string): string {
   const detail = "NAMS write failed";
   if (!(error instanceof ReplayWriteFailure) || error.attempts.length === 0) return detail;
 
@@ -225,14 +255,54 @@ function formatReplayWriteFailure(error: unknown): string {
     attempt.status === undefined ? "no HTTP response" : `HTTP ${attempt.status}`
   );
   const responseLabel = responses.length === 1 ? "NAMS response" : "NAMS responses";
-  const bodyLabel = responses.length === 1 ? "body redacted" : "bodies redacted";
-  const validationFailure = request.ok ? "; response validation failed" : "";
-  return [
+  const parts = [
     detail,
-    `HTTP request ${request.operation} ${request.method} ${request.path} (body redacted)`,
-    `attempts ${error.attempts.length}`,
-    `${responseLabel} ${responses.join(", ")} (${bodyLabel})${validationFailure}`,
-  ].join("; ");
+    `HTTP request ${request.operation} ${request.method} ${request.path}`,
+  ];
+  if (request.requestBodyPresent) {
+    parts.push(`request body ${formatNamsBody(request.requestBody, apiKey)}`);
+  }
+  parts.push(`attempts ${error.attempts.length}`, `${responseLabel} ${responses.join(", ")}`);
+  if (request.responseReceived) {
+    parts.push(`NAMS response body ${formatNamsBody(request.responseBody, apiKey)}`);
+  }
+  if (request.ok) parts.push("response validation failed");
+  return parts.join("; ");
+}
+
+function formatNamsBody(body: unknown, apiKey: string): string {
+  if (body === undefined) return "<empty>";
+  try {
+    return JSON.stringify(redactNamsCredentials(body, apiKey, new WeakSet<object>())) ?? "<empty>";
+  } catch {
+    return JSON.stringify(redactCredentialText(String(body), apiKey));
+  }
+}
+
+function redactNamsCredentials(value: unknown, apiKey: string, seen: WeakSet<object>): unknown {
+  if (typeof value === "string") return redactCredentialText(value, apiKey);
+  if (value === null || typeof value !== "object") return value;
+  if (seen.has(value)) return "[Circular]";
+  seen.add(value);
+  if (Array.isArray(value)) {
+    return value.map((entry) => redactNamsCredentials(entry, apiKey, seen));
+  }
+  const result = Object.create(null) as Record<string, unknown>;
+  for (const [key, nestedValue] of Object.entries(value)) {
+    result[key] = isCredentialField(key)
+      ? "[REDACTED]"
+      : redactNamsCredentials(nestedValue, apiKey, seen);
+  }
+  return result;
+}
+
+function redactCredentialText(value: string, apiKey: string): string {
+  const withoutConfiguredKey = apiKey === "" ? value : value.split(apiKey).join("[REDACTED]");
+  return withoutConfiguredKey.replace(/\bBearer\s+[^\s"',}]+/gi, "Bearer [REDACTED]");
+}
+
+function isCredentialField(key: string): boolean {
+  return namsCredentialFields.has(key.replace(/[^a-zA-Z0-9]/g, "").toLowerCase());
 }
 
 function isRecoverableReplayError(error: unknown): boolean {
@@ -249,16 +319,19 @@ async function resolveReplayConfig(
   adapter: ReplayPlatformAdapter,
   fetchImpl: typeof fetch | undefined,
   sleep: (delayMs: number) => Promise<void>,
-): Promise<NamsRuntimeConfig> {
+): Promise<ResolvedReplayConfig> {
   const connection = await loadNamsConnectionConfig(importRoot, adapter.discoverConfig);
   if (!connection.ok) {
     throw new Error(`NAMS replay configuration unavailable: ${connection.reason}`);
   }
   if (connection.config.workspaceId !== undefined) {
     return {
-      apiKey: connection.config.apiKey,
-      workspaceId: connection.config.workspaceId,
-      baseUrl: connection.config.baseUrl,
+      config: {
+        apiKey: connection.config.apiKey,
+        workspaceId: connection.config.workspaceId,
+        baseUrl: connection.config.baseUrl,
+      },
+      sources: connection.sources,
     };
   }
   const client = new NamsWorkspaceClient({
@@ -281,9 +354,15 @@ async function resolveReplayConfig(
     throw new Error("NAMS workspace selection is required before replay");
   }
   return {
-    apiKey: connection.config.apiKey,
-    workspaceId: workspaces[0].id,
-    baseUrl: connection.config.baseUrl,
+    config: {
+      apiKey: connection.config.apiKey,
+      workspaceId: workspaces[0].id,
+      baseUrl: connection.config.baseUrl,
+    },
+    sources: {
+      ...connection.sources,
+      workspaceId: "nams:auto-selected-workspace",
+    },
   };
 }
 

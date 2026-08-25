@@ -29,7 +29,7 @@
 - A failed session retains successful partial writes, creates no rollback work, and makes the final exit status nonzero while replay continues with later sessions.
 - Do not deduplicate, checkpoint, roll back partial writes, write replay state/log files, set conversation titles, prompt for confirmation, or add a dry-run mode.
 - Conversation metadata is limited to existing `harness` and `projectDirectory`, required `sourceSessionId` and `importSource: "nams-hooks-replay"`, and optional explicit `sourceStartedAt`; use the first embedded session id or the `.jsonl` basename fallback, and never prefix content with source timestamps.
-- Send secret-free per-session progress to stderr and one human aggregate summary to stdout without transcript paths, credentials, or message/tool bodies.
+- Send replay progress to stderr and one human aggregate summary to stdout. The startup line includes only `configSources` labels. Failed NAMS writes include the HTTP operation, method, route template, request body, attempt statuses, and final response body; scrub configured API-key values, Bearer values, and credential-bearing fields. Successful and skipped progress remains free of transcript paths and message/tool bodies.
 - Runtime code and generated artifacts use Node built-ins only; add no runtime dependency and do not hand-edit `dist/`.
 - Tests use temporary directories, make no external network calls, leave no `.nams/` artifacts in the repository, and do not assert documentation content.
 - Preserve unrelated worktree changes and do not broaden Gemini, OpenCode, installers, release packaging, or live-hook behavior.
@@ -1316,7 +1316,7 @@ Add focused tests for the following behavior. Exercise retry only through `runRe
 | Reasoning response without id | Fails that session and never creates an unlinked tool call. |
 | Tool call transient failure | Reasoning is written once; only the failed tool request is retried. |
 | Partial write | A successful 100-message batch remains counted; a failed next batch stops that session; a later transcript imports. |
-| Progress/summary | Progress contains platform, source session id, status, and counts only; summary string is stable and body/path/key-free. |
+| Progress/summary | Startup progress reports `configSources` before discovery. Successful/skipped progress contains platform, source session id, status, and counts only. Failed NAMS writes report request/response bodies and HTTP attempt details while scrubbing credentials. The summary string remains stable. |
 
 Use this observable retry matrix, with a fresh fetch mock and attempt counter per row:
 
@@ -1387,7 +1387,7 @@ assert.equal(
 );
 ```
 
-These tests cover one-time configuration, bulk boundaries, direct generated request bodies, sanitization reuse, eligibility skips, read isolation, retry classes and limits, tool-step retry granularity, partial writes, empty discovery, workspace resolution, progress redaction, and stable summary formatting.
+These tests cover one-time configuration, configuration-source progress, bulk boundaries, direct generated request bodies, sanitization reuse, eligibility skips, read isolation, retry classes and limits, tool-step retry granularity, partial writes, empty discovery, workspace resolution, credential-safe failure diagnostics, and stable summary formatting.
 
 - [x] **Step 3: Run the runtime tests to verify they fail**
 
