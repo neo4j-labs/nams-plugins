@@ -187,10 +187,11 @@ Dependency policy:
 
 Branch model:
 
-- `devel`: source branch containing TypeScript source, templates, docs, the pinned OpenAPI spec, the custom generator, and committed generated TypeScript client source.
-- `latest`: generated release/distribution branch containing the validated marketplace release artifacts from `dist-marketplace/`.
+- `devel`: main source branch containing TypeScript source, templates, docs, the pinned OpenAPI spec, the custom generator, and committed generated TypeScript client source.
+- `latest`: generated stable release/distribution branch containing the validated marketplace release artifacts from `dist-marketplace/` built from `devel`.
+- `dist/<source-branch>`: generated preview release/distribution branch containing the same validated marketplace release artifacts built from a non-`devel` source branch. Nested source branch names are preserved, so `feature/foo` publishes to `dist/feature/foo`.
 
-On `devel`, `dist/`, `dist-marketplace/`, and `dist-local/` are generated and ignored. `npm run dist` builds all three trees through the split projection scripts: `build-dist-npm.mjs`, `build-dist-marketplace.mjs`, and `build-dist-local.mjs`, with shared helpers in `build-dist-common.mjs`. `dist/` is the npm package artifact. `dist-marketplace/` is the self-contained marketplace release tree for Gemini, Claude Code, Codex, and OpenCode and is the only tree published to `latest`. `dist-local/` contains project-local configurations that call an installed `nams-hooks` executable. `dist/` and `dist-local/` are generated and verified on `devel` but are not published to `latest`.
+On source branches, `dist/`, `dist-marketplace/`, and `dist-local/` are generated and ignored. `npm run dist` builds all three trees through the split projection scripts: `build-dist-npm.mjs`, `build-dist-marketplace.mjs`, and `build-dist-local.mjs`, with shared helpers in `build-dist-common.mjs`. `dist/` is the npm package artifact. `dist-marketplace/` is the self-contained marketplace release tree for Gemini, Claude Code, Codex, and OpenCode and is the only tree published to generated release branches. `dist-local/` contains project-local configurations that call an installed `nams-hooks` executable. `dist/` and `dist-local/` are generated and verified on source branches but are not published to `latest` or `dist/<source-branch>`.
 
 ```text
 dist/
@@ -316,23 +317,26 @@ OpenCode marketplace distribution is self-contained under `dist-marketplace/plug
 
 Manual or CI release flow:
 
-1. Work on `devel`.
+1. Work on `devel` or another source branch.
 2. Run `npm run openapi:fetch` when the NAMS contract needs refreshing.
 3. Run `npm run openapi:generate`.
 4. Commit `docs/nams-openapi.json` and `src/generated/nams-client.ts` if they changed.
 5. Run package verification.
 6. Run release preparation to create the marketplace release tree from `dist-marketplace/`.
-7. Replace `latest` contents with the validated `dist-marketplace/` release tree.
-8. Commit the marketplace release artifact on `latest`.
-9. Force-update the `latest` tag and recreate the GitHub Release named `latest`.
+7. Replace the target generated branch contents with the validated `dist-marketplace/` release tree: `latest` for `devel`, or `dist/<source-branch>` for another source branch.
+8. Commit the marketplace release artifact on the target generated branch.
+9. When the target is `latest`, force-update the `latest` tag and recreate the GitHub Release named `latest`.
 
 Rules:
 
-- Generated release artifacts are produced from `devel`; no hand edits.
-- The `latest` release tag is created from `latest`.
-- Gemini installs use `--ref latest`.
+- Generated release artifacts are produced from source branches; no hand edits.
+- Successful push-triggered Builds publish `devel` to `latest` and every other source branch to `dist/<source-branch>`.
+- Pull-request Builds never publish artifacts.
+- Generated `latest` and `dist/**` branches do not trigger Build or Release again.
+- The `latest` release tag and GitHub Release are created only from `latest`; preview branches do not create tags or GitHub Releases.
+- Gemini stable installs use `--ref latest`; preview validation may use the corresponding `dist/<source-branch>` ref.
 - Codex, Claude, Gemini, and OpenCode marketplace release artifacts are produced from the same validated source tree.
-- `dist/` and `dist-local/` are verification artifacts on `devel`; they are not copied to `latest`.
+- `dist/` and `dist-local/` are verification artifacts on source branches; they are not copied to generated release branches.
 - `npm run package:check` must verify all generated artifacts: npm package output in `dist/`, self-contained marketplace output in `dist-marketplace/`, local project configuration output in `dist-local/`, and npm dry-run package contents.
 
 ## Configuration
@@ -700,4 +704,4 @@ Approved decisions from brainstorming:
 - Rely on NAMS async entity extraction from stored messages.
 - Use TypeScript for source and release vanilla JavaScript.
 - Use a custom generated `NamsClient` for REST calls.
-- Use `devel` for source and generated TypeScript, and `latest` for validated marketplace release artifacts from `dist-marketplace/`; `dist/` and `dist-local/` remain generated verification artifacts on `devel`.
+- Use `devel` as the main source branch; publish its validated `dist-marketplace/` artifacts to `latest`, and publish non-`devel` source branch artifacts to `dist/<source-branch>`. Keep `dist/` and `dist-local/` as generated verification artifacts on source branches.
