@@ -1,18 +1,17 @@
 name: Release npm distribution
 
 on:
-  workflow_run:
-    workflows:
-      - Build
-    types:
-      - completed
+  push:
+    branches-ignore:
+      - latest
+      - "dist/**"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-npm-${{ github.event.workflow_run.head_branch || github.ref_name }}
+  group: release-npm-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -20,22 +19,18 @@ jobs:
     name: Publish generated npm distribution branch
     runs-on: ubuntu-latest
     if: >-
+      github.event_name == 'push' ||
       (github.event_name == 'workflow_dispatch' &&
        startsWith(github.ref, 'refs/heads/') &&
        github.ref != 'refs/heads/latest' &&
-       !startsWith(github.ref, 'refs/heads/dist/')) ||
-      (github.event_name == 'workflow_run' &&
-       github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push' &&
-       github.event.workflow_run.head_branch != 'latest' &&
-       !startsWith(github.event.workflow_run.head_branch, 'dist/'))
+       !startsWith(github.ref, 'refs/heads/dist/'))
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -55,8 +50,8 @@ jobs:
       - name: Publish npm dist branch
         shell: bash
         env:
-          RELEASE_SOURCE_BRANCH: ${{ github.event.workflow_run.head_branch || github.ref_name }}
-          RELEASE_SOURCE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          RELEASE_SOURCE_BRANCH: ${{ github.ref_name }}
+          RELEASE_SOURCE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
 
