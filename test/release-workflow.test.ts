@@ -56,3 +56,25 @@ test("release workflow publishes marketplace artifacts and reserves releases for
     /if \[\[ "\$RELEASE_REF" == "latest" \]\]; then\n\s+publish_release_tag\n\s+publish_github_release\n\s+fi/,
   );
 });
+
+test("cleanup workflow deletes only dist previews older than 30 days on a daily schedule", async () => {
+  const workflow = await readFile(".github/workflows/cleanup.yml", "utf8");
+
+  assert.match(workflow, /schedule:\n\s+- cron: "17 3 \* \* \*"/);
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /permissions:\n\s+contents: write/);
+  assert.match(workflow, /date -u -d '30 days ago' \+%s/);
+  assert.match(
+    workflow,
+    /\+refs\/heads\/dist\/\*:refs\/remotes\/origin\/dist\/\*/,
+  );
+  assert.match(
+    workflow,
+    /git for-each-ref --format='%\(refname:short\)%09%\(committerdate:unix\)%09%\(objectname\)' refs\/remotes\/origin\/dist\//,
+  );
+  assert.match(
+    workflow,
+    /--force-with-lease="refs\/heads\/\$branch:\$expected_sha" origin ":refs\/heads\/\$branch"/,
+  );
+  assert.doesNotMatch(workflow, /refs\/heads\/latest/);
+});

@@ -59,6 +59,7 @@ The runtime must not fetch OpenAPI specs, inspect schemas, or discover endpoints
 - `devel` publishes validated `dist-marketplace/` artifacts to the generated `latest` branch.
 - Every other source branch `<branch>` publishes validated `dist-marketplace/` artifacts to the generated `dist/<branch>` branch.
 - Generated `latest` and `dist/**` branches do not trigger another build or release.
+- GitHub Actions runs a daily cleanup that deletes generated `dist/**` branches whose tip commit is older than 30 days; it never targets `latest` or source branches.
 - `dist/`, `dist-marketplace/`, and `dist-local/` are generated and ignored on source branches.
 - `npm run build` compiles TypeScript into `.build/tsc` for local verification.
 - `npm run dist` creates npm, marketplace, and local projections under `dist/`, `dist-marketplace/`, and `dist-local/`.

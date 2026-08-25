@@ -1,0 +1,57 @@
+name: Cleanup stale preview branches
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cleanup-dist-branches
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    name: Delete stalled dist branches
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Delete preview branches older than 30 days
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if ! git ls-remote --exit-code --heads origin 'refs/heads/dist/*' >/dev/null; then
+            echo "No dist preview branches found."
+            exit 0
+          fi
+
+          git fetch --no-tags --prune --depth=1 origin \
+            '+refs/heads/dist/*:refs/remotes/origin/dist/*'
+
+          cutoff_epoch="$(date -u -d '30 days ago' +%s)"
+
+          while IFS=$'\t' read -r remote_ref commit_epoch expected_sha; do
+            if [[ -z "$remote_ref" || -z "$commit_epoch" || -z "$expected_sha" ]]; then
+              continue
+            fi
+
+            branch="${remote_ref#origin/}"
+            if (( commit_epoch < cutoff_epoch )); then
+              echo "Deleting stale preview branch $branch."
+              if ! git push --force-with-lease="refs/heads/$branch:$expected_sha" origin ":refs/heads/$branch"; then
+                echo "::warning::Skipped $branch because its remote tip changed or deletion was rejected."
+              fi
+            else
+              echo "Keeping active preview branch $branch."
+            fi
+          done < <(
+            git for-each-ref --format='%(refname:short)%09%(committerdate:unix)%09%(objectname)' refs/remotes/origin/dist/
+          )

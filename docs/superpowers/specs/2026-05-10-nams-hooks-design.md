@@ -333,6 +333,7 @@ Rules:
 - Successful push-triggered Builds publish `devel` to `latest` and every other source branch to `dist/<source-branch>`.
 - Pull-request Builds never publish artifacts.
 - Generated `latest` and `dist/**` branches do not trigger Build or Release again.
+- A daily UTC cleanup removes generated `dist/**` branches whose tip commit is older than 30 days. The cleanup does not target `latest` or source branches and may also be run through manual dispatch.
 - The `latest` release tag and GitHub Release are created only from `latest`; preview branches do not create tags or GitHub Releases.
 - Gemini stable installs use `--ref latest`; preview validation may use the corresponding `dist/<source-branch>` ref.
 - Codex, Claude, Gemini, and OpenCode marketplace release artifacts are produced from the same validated source tree.

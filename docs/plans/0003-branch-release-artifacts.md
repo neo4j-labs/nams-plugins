@@ -410,7 +410,7 @@ git commit -m "docs: define branch release artifacts"
 - Consumes: remote branch tips under `refs/heads/dist/**` and their commit timestamps.
 - Produces: a daily UTC cleanup run that deletes only preview branches whose tip commit timestamp is strictly older than the 30-day cutoff; also supports manual dispatch.
 
-- [ ] **Step 1: Add a failing cleanup workflow contract test**
+- [x] **Step 1: Add a failing cleanup workflow contract test**
 
 Append this test to `test/release-workflow.test.ts`:
 
@@ -438,7 +438,7 @@ test("cleanup workflow deletes only dist previews older than 30 days on a daily 
 });
 ```
 
-- [ ] **Step 2: Run the cleanup contract test to verify it fails**
+- [x] **Step 2: Run the cleanup contract test to verify it fails**
 
 Run:
 
@@ -448,7 +448,7 @@ node --import=tsx --test test/release-workflow.test.ts
 
 Expected: FAIL with `ENOENT` for `.github/workflows/cleanup.yml` while the four release tests continue to pass.
 
-- [ ] **Step 3: Create the daily cleanup workflow**
+- [x] **Step 3: Create the daily cleanup workflow**
 
 Create `.github/workflows/cleanup.yml` with:
 
@@ -514,7 +514,7 @@ jobs:
 
 The non-round cron minute avoids the most common top-of-hour scheduling load. `git ls-remote` makes an empty preview namespace a successful no-op. The fetch refspec and `for-each-ref` scope ensure the deletion loop cannot enumerate `latest` or ordinary source branches. The explicit force-with-lease SHA prevents cleanup from deleting a preview branch that a concurrent release refreshed after cleanup fetched it.
 
-- [ ] **Step 4: Run the workflow contract tests to verify cleanup passes**
+- [x] **Step 4: Run the workflow contract tests to verify cleanup passes**
 
 Run:
 
@@ -524,7 +524,7 @@ node --import=tsx --test test/release-workflow.test.ts
 
 Expected: PASS with five passing workflow contract tests.
 
-- [ ] **Step 5: Document preview retention**
+- [x] **Step 5: Document preview retention**
 
 In the `Rules` list under `Manual or CI release flow` in `docs/superpowers/specs/2026-05-10-nams-hooks-design.md`, insert this bullet immediately after the rule excluding generated branches from Build and Release:
 
@@ -538,7 +538,7 @@ In the `Build And Distribution` section of `AGENTS.md`, insert this bullet immed
 - GitHub Actions runs a daily cleanup that deletes generated `dist/**` branches whose tip commit is older than 30 days; it never targets `latest` or source branches.
 ```
 
-- [ ] **Step 6: Verify the complete release and cleanup change**
+- [x] **Step 6: Verify the complete release and cleanup change**
 
 Run:
 
@@ -550,7 +550,7 @@ git status --short
 
 Expected: `npm run check` passes, `git diff --check` reports no errors, and status lists only the intended Build, Release, cleanup, test, design, agent-guidance, and plan changes plus any pre-existing unrelated user files.
 
-- [ ] **Step 7: Commit the cleanup workflow and retention policy**
+- [x] **Step 7: Commit the cleanup workflow and retention policy**
 
 ```bash
 git add .github/workflows/cleanup.yml test/release-workflow.test.ts AGENTS.md docs/superpowers/specs/2026-05-10-nams-hooks-design.md docs/plans/0003-branch-release-artifacts.md
