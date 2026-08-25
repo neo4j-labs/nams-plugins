@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -117,7 +117,7 @@ test("replay claude imports without reading stdin and writes no replay state or 
 
 test("replay defaults the import root to the child cwd", async () => {
   await withNamsServer(async (baseUrl) => {
-    const fixture = await mkdtemp(path.join(tmpdir(), "nams-cli-replay-"));
+    const fixture = await realpath(await mkdtemp(path.join(tmpdir(), "nams-cli-replay-")));
     try {
       const transcriptDir = path.join(fixture, "codex", "sessions", "2026", "08");
       await mkdir(transcriptDir, { recursive: true });
