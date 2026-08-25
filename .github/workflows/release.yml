@@ -6,24 +6,29 @@ on:
       - Build
     types:
       - completed
-    branches:
-      - devel
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: latest-release
+  group: release-${{ github.event.workflow_run.head_branch || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
   publish:
-    name: Publish generated latest branch
+    name: Publish generated release branch
     runs-on: ubuntu-latest
     if: >-
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/devel') ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'devel')
+      (github.event_name == 'workflow_dispatch' &&
+       startsWith(github.ref, 'refs/heads/') &&
+       github.ref != 'refs/heads/latest' &&
+       !startsWith(github.ref, 'refs/heads/dist/')) ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch != 'latest' &&
+       !startsWith(github.event.workflow_run.head_branch, 'dist/'))
 
     steps:
       - name: Check out repository
@@ -47,14 +52,20 @@ jobs:
       - name: Build and verify release artifacts
         run: npm run package:check
 
-      - name: Publish marketplace dist to latest branch
+      - name: Publish generated release branch
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_SOURCE_BRANCH: ${{ github.event.workflow_run.head_branch || github.ref_name }}
           RELEASE_SOURCE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
-          RELEASE_REF: latest
         run: |
           set -euo pipefail
+
+          if [[ "$RELEASE_SOURCE_BRANCH" == "devel" ]]; then
+            RELEASE_REF="latest"
+          else
+            RELEASE_REF="dist/$RELEASE_SOURCE_BRANCH"
+          fi
 
           release_tree="$(mktemp -d)"
           cp -R dist-marketplace/. "$release_tree"/
@@ -93,8 +104,11 @@ jobs:
 
           git commit \
             --allow-empty \
-            -m "chore: publish release artifacts from ${RELEASE_SOURCE_SHA}" \
+            -m "chore: publish ${RELEASE_REF} artifacts from ${RELEASE_SOURCE_SHA}" \
             -m "Co-authored-by: Codex <codex@openai.com>"
           git push origin "HEAD:refs/heads/$RELEASE_REF"
-          publish_release_tag
-          publish_github_release
+
+          if [[ "$RELEASE_REF" == "latest" ]]; then
+            publish_release_tag
+            publish_github_release
+          fi

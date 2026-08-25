@@ -3,8 +3,9 @@ name: Build
 on:
   pull_request:
   push:
-    branches:
-      - devel
+    branches-ignore:
+      - latest
+      - "dist/**"
   workflow_dispatch:
 
 permissions:
