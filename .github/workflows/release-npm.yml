@@ -1,0 +1,79 @@
+name: Release npm distribution
+
+on:
+  push:
+    branches-ignore:
+      - latest
+      - "dist/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-npm-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish generated npm distribution branch
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' &&
+       startsWith(github.ref, 'refs/heads/') &&
+       github.ref != 'refs/heads/latest' &&
+       !startsWith(github.ref, 'refs/heads/dist/'))
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run default checks
+        run: npm run check
+
+      - name: Build and verify release artifacts
+        run: npm run package:check
+
+      - name: Publish npm dist branch
+        shell: bash
+        env:
+          RELEASE_SOURCE_BRANCH: ${{ github.ref_name }}
+          RELEASE_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          RELEASE_REF="dist/bin/$RELEASE_SOURCE_BRANCH"
+          release_tree="$(mktemp -d)"
+          cp -R dist/. "$release_tree"/
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git fetch origin "refs/heads/$RELEASE_REF:refs/remotes/origin/$RELEASE_REF" || true
+          if git rev-parse --verify "origin/$RELEASE_REF" >/dev/null 2>&1; then
+            git switch --track -c "$RELEASE_REF" "origin/$RELEASE_REF"
+          else
+            git switch --orphan "$RELEASE_REF"
+          fi
+
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -R "$release_tree"/. .
+          git add -A
+
+          git commit \
+            --allow-empty \
+            -m "chore: publish $RELEASE_REF artifacts from $RELEASE_SOURCE_SHA"
+          git push origin "HEAD:refs/heads/$RELEASE_REF"
