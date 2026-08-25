@@ -245,6 +245,7 @@ test("chunks 101 contiguous messages into batches of 100 and one", async () => {
 test("flushes message batches around tools in timeline order", async () => {
   await withNamsEnvironment(async () => {
     const nams = createNamsFetchMock().createConversation().bulkMessages().reasoningStep().toolCall();
+    const progress: string[] = [];
 
     await runReplay({
       adapter: adapter("codex", ["/one.jsonl"], {
@@ -262,6 +263,7 @@ test("flushes message batches around tools in timeline order", async () => {
       importRoot: "/project",
       fetch: nams.fetch,
       sleep: noSleep,
+      onProgress: (line) => progress.push(line),
     });
 
     assert.deepEqual(
@@ -274,6 +276,13 @@ test("flushes message batches around tools in timeline order", async () => {
         "/v1/conversations/conversation-1/messages/bulk",
       ],
     );
+    assert.deepEqual(progress.filter((line) => line.startsWith("  - ")), [
+      "  - POST /v1/conversations",
+      "  - POST /v1/conversations/{id}/messages/bulk",
+      "  - POST /v1/reasoning/steps",
+      "  - POST /v1/reasoning/tool-calls",
+      "  - POST /v1/conversations/{id}/messages/bulk",
+    ]);
   });
 });
 
@@ -335,6 +344,7 @@ test("omits missing tool output", async () => {
 test("skips unusable cwd, prefix siblings, and eligible empty transcripts", async () => {
   await withNamsEnvironment(async () => {
     const nams = createNamsFetchMock();
+    const progress: string[] = [];
     const missing = transcript("missing", [{ kind: "message", role: "user", content: "one" }]);
     delete missing.projectDirectory;
 
@@ -348,6 +358,7 @@ test("skips unusable cwd, prefix siblings, and eligible empty transcripts", asyn
       importRoot: "/project",
       fetch: nams.fetch,
       sleep: noSleep,
+      onProgress: (line) => progress.push(line),
     });
 
     assert.deepEqual(summary, {
@@ -362,6 +373,7 @@ test("skips unusable cwd, prefix siblings, and eligible empty transcripts", asyn
       unsupportedRecords: 0,
     });
     assert.equal(nams.calls("createConversation").length, 0);
+    assert.equal(progress.some((line) => line.includes("processing...") || line.startsWith("  - ")), false);
   });
 });
 
@@ -541,11 +553,14 @@ test("reports redacted progress and formats a stable summary", async () => {
 
     assert.deepEqual(progress, [
       "Replay claude: starting; {\"configSources\":{\"apiKey\":\"env:NAMS_API_KEY\",\"workspaceId\":\"env:NAMS_WORKSPACE_ID\",\"baseUrl\":\"env:NAMS_BASE_URL\"}}",
+      "[1/1] claude session-1: processing...",
+      "  - POST /v1/conversations",
+      "  - POST /v1/conversations/{id}/messages/bulk",
       "[1/1] claude session-1: imported 1 messages, 0 tools",
     ]);
-    assert.equal(progress[1].includes("sensitive body"), false);
-    assert.equal(progress[1].includes("/secret/"), false);
-    assert.equal(progress[1].includes("key"), false);
+    assert.equal(progress[4].includes("sensitive body"), false);
+    assert.equal(progress[4].includes("/secret/"), false);
+    assert.equal(progress[4].includes("key"), false);
     assert.equal(
       formatReplaySummary("claude", summary),
       "Replay claude: discovered 1, matched 1, imported 1, skipped 0, failed 0; messages 1, tools 0, malformed lines 0, unsupported records 0.",
@@ -587,10 +602,15 @@ test("reports NAMS failure request and response bodies while sanitizing credenti
     assert.equal(attempts, 3);
     assert.deepEqual(progress, [
       "Replay codex: starting; {\"configSources\":{\"apiKey\":\"env:NAMS_API_KEY\",\"workspaceId\":\"env:NAMS_WORKSPACE_ID\",\"baseUrl\":\"env:NAMS_BASE_URL\"}}",
+      "[1/1] codex session-1: processing...",
+      "  - POST /v1/conversations",
+      "  - POST /v1/conversations/{id}/messages/bulk",
+      "  - POST /v1/conversations/{id}/messages/bulk",
+      "  - POST /v1/conversations/{id}/messages/bulk",
       "[1/1] codex session-1: failed NAMS write failed; HTTP request addMessagesBulk POST /v1/conversations/{id}/messages/bulk; request body {\"messages\":[{\"role\":\"user\",\"content\":\"sensitive body\"}]}; attempts 3; NAMS responses HTTP 503, HTTP 503, HTTP 503; NAMS response body {\"error\":\"database unavailable\",\"requestId\":\"nams-503\",\"apiKey\":\"[REDACTED]\"}",
     ]);
-    assert.match(progress[1], /sensitive body|database unavailable|nams-503/);
-    assert.doesNotMatch(progress[1], /super-secret-api-key|\/secret\//);
+    assert.match(progress[6], /sensitive body|database unavailable|nams-503/);
+    assert.doesNotMatch(progress[6], /super-secret-api-key|\/secret\//);
   }, { NAMS_API_KEY: "super-secret-api-key" });
 });
 

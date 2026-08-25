@@ -87,6 +87,7 @@ export async function runReplay(input: RunReplayInput): Promise<ReplaySummary> {
     defaultHeaders: namsReplayProvenanceHeaders(platform),
     ...(input.fetch !== undefined ? { fetch: input.fetch } : {}),
     onRequest: (event) => {
+      input.onProgress?.(`  - ${event.method} ${event.path}`);
       httpAttempts.push({
         operation: event.operation,
         method: event.method,
@@ -133,6 +134,7 @@ export async function runReplay(input: RunReplayInput): Promise<ReplaySummary> {
       continue;
     }
 
+    input.onProgress?.(`[${index + 1}/${transcriptPaths.length}] ${platform} ${transcript.sourceSessionId}: processing...`);
     try {
       const conversationId = await withReplayWrite(
         async () => {
