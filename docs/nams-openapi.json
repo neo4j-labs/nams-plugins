@@ -22,6 +22,14 @@
         },
         "revokedAt": {
           "type": "string"
+        },
+        "scopes": {
+          "description": "Scopes is the comma-separated scope string stored on the key. Empty for\nlegacy keys (which default to all scopes at validation).",
+          "type": "string"
+        },
+        "workspaceId": {
+          "description": "WorkspaceID is set for a Workspace key (data-plane, bound) and empty for\nan account-wide Admin key. The dashboard derives the type badge from it.",
+          "type": "string"
         }
       },
       "type": "object"
@@ -104,6 +112,9 @@
         "createdAt": {
           "type": "string"
         },
+        "firstMessageSnippet": {
+          "type": "string"
+        },
         "id": {
           "type": "string"
         },
@@ -115,6 +126,9 @@
             "type": "string"
           },
           "type": "object"
+        },
+        "title": {
+          "type": "string"
         },
         "updatedAt": {
           "type": "string"
@@ -302,8 +316,7 @@
       "properties": {
         "edges": {
           "items": {
-            "additionalProperties": true,
-            "type": "object"
+            "$ref": "#/definitions/handlers.graphEdge"
           },
           "type": "array"
         },
@@ -397,6 +410,72 @@
             "$ref": "#/definitions/handlers.WorkspaceAuthInfo"
           },
           "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.ExpandNode": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "labels": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "properties": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.ExpandRequest": {
+      "properties": {
+        "loadedIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "nodeId": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.ExpandResponse": {
+      "properties": {
+        "edges": {
+          "items": {
+            "$ref": "#/definitions/handlers.graphEdge"
+          },
+          "type": "array"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/definitions/handlers.ExpandNode"
+          },
+          "type": "array"
+        },
+        "truncated": {
+          "$ref": "#/definitions/handlers.ExpandTruncation"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.ExpandTruncation": {
+      "properties": {
+        "nodeId": {
+          "type": "string"
+        },
+        "shown": {
+          "type": "integer"
+        },
+        "total": {
+          "type": "integer"
         }
       },
       "type": "object"
@@ -895,6 +974,29 @@
       },
       "type": "object"
     },
+    "handlers.TenantQueryErrorResponse": {
+      "properties": {
+        "error": {
+          "enum": [
+            "database_unavailable",
+            "db_unreachable",
+            "cypher_error",
+            "internal"
+          ],
+          "example": "database_unavailable",
+          "type": "string"
+        },
+        "message": {
+          "example": "the workspace database is unreachable or has been removed; reprovision it or update the external connection",
+          "type": "string"
+        },
+        "workspaceId": {
+          "example": "b3f1c2d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "handlers.ToolCall": {
       "properties": {
         "createdAt": {
@@ -1283,16 +1385,36 @@
       ],
       "type": "object"
     },
-    "handlers.createAPIKeyRequest": {
+    "handlers.bulkReviewSkillsRequest": {
       "properties": {
-        "label": {
+        "decision": {
+          "description": "approve | reject",
           "type": "string"
         },
-        "scopes": {
+        "feedback": {
+          "type": "string"
+        },
+        "skillIds": {
           "items": {
             "type": "string"
           },
           "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.createAPIKeyRequest": {
+      "properties": {
+        "category": {
+          "description": "Category is \"workspace\" or \"admin\". Empty defaults to \"admin\" so the\nlegacy {label}-only body keeps minting account-wide keys.",
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "workspaceId": {
+          "description": "WorkspaceID is required for a workspace key and forbidden for an admin\nkey. Scopes are NOT accepted from the client: they are derived from the\ncategory to keep the data/control-plane boundary unforgeable.",
+          "type": "string"
         }
       },
       "required": [
@@ -1302,6 +1424,9 @@
     },
     "handlers.createAPIKeyResponse": {
       "properties": {
+        "category": {
+          "type": "string"
+        },
         "id": {
           "type": "string"
         },
@@ -1309,6 +1434,9 @@
           "type": "string"
         },
         "label": {
+          "type": "string"
+        },
+        "workspaceId": {
           "type": "string"
         }
       },
@@ -1574,6 +1702,57 @@
       },
       "type": "object"
     },
+    "handlers.generateSkillRequest": {
+      "properties": {
+        "nameHint": {
+          "type": "string"
+        },
+        "procedureFormat": {
+          "description": "Optional per-run override for the graph-vs-prose eval A/B: \"graph\"|\"prose\".",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/definitions/handlers.skillScope"
+        },
+        "skillId": {
+          "description": "re-distill target (new version)",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "handlers.graphEdge": {
+      "properties": {
+        "confidence": {
+          "type": "number"
+        },
+        "id": {
+          "type": "string"
+        },
+        "legacyType": {
+          "type": "string"
+        },
+        "method": {
+          "type": "string"
+        },
+        "predicate": {
+          "type": "string"
+        },
+        "sourceId": {
+          "type": "string"
+        },
+        "sourceMessageCount": {
+          "type": "integer"
+        },
+        "targetId": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "handlers.mergeEntitiesRequest": {
       "properties": {
         "targetId": {
@@ -1740,6 +1919,18 @@
       ],
       "type": "object"
     },
+    "handlers.reviewSkillRequest": {
+      "properties": {
+        "decision": {
+          "description": "approve | reject",
+          "type": "string"
+        },
+        "feedback": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "handlers.rotateAPIKeyResponse": {
       "properties": {
         "id": {
@@ -1783,6 +1974,45 @@
       "required": [
         "query"
       ],
+      "type": "object"
+    },
+    "handlers.skillScope": {
+      "properties": {
+        "conversationIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "entityId": {
+          "type": "string"
+        },
+        "focusEntityIds": {
+          "description": "narrows a re-distill to one community (F1/F2)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "from": {
+          "type": "string"
+        },
+        "nameHint": {
+          "type": "string"
+        },
+        "ontologyClass": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        }
+      },
       "type": "object"
     },
     "handlers.updateEntityRequest": {
@@ -1958,6 +2188,10 @@
         "batch_size": {
           "description": "BatchSize caps the per-transaction node count. 0 → default (1000).",
           "type": "integer"
+        },
+        "dedup_by_name": {
+          "description": "DedupByName runs a tiered duplicate-entity pass after the type mappings:\nsame-name + same-(canonical)-type entities are auto-merged; same-name +\ndifferent-type collisions are routed to HITL as pending SAME_AS pairs.\nTypically paired with property-keyed type-canonicalization mappings so the\ncasing-split duplicates collapse once their types agree.",
+          "type": "boolean"
         },
         "dry_run": {
           "type": "boolean"
@@ -2282,7 +2516,15 @@
         "from": {
           "type": "string"
         },
+        "match_by": {
+          "description": "MatchBy selects how nodes are matched for this mapping:\n  \"label\" (default) — MATCH (n:\u003cFrom\u003e); for renaming an existing type LABEL.\n  \"property\"        — MATCH (e:Entity) WHERE e.type = \u003cFrom\u003e; for backfilling\n                      legacy entities that carry only the :Entity label and a\n                      `type` property (no type label), e.g. canonicalizing\n                      \"tool\" → \"SoftwareTool\".",
+          "type": "string"
+        },
         "to": {
+          "type": "string"
+        },
+        "to_pole": {
+          "description": "ToPole is the canonical POLE base label (e.g. \"Object\") to also stamp on the\nnode in property mode, materializing the (:Entity:\u003cPole\u003e:\u003cTo\u003e) label scheme.\nOptional; ignored in label mode.",
           "type": "string"
         }
       },
@@ -2300,7 +2542,7 @@
       "type": "object"
     }
   },
-  "host": "nams.development.neo4jsandbox.com",
+  "host": "memory.neo4jlabs.com",
   "info": {
     "contact": {
       "name": "Neo4j DevRel",
@@ -2316,7 +2558,7 @@
   "paths": {
     "/.well-known/jwks.json": {
       "get": {
-        "description": "**Auth service base URL:** `https://nams.development.neo4jsandbox.com`\n\nReturns the public RSA key(s) used to verify NAMS JWTs. Used by other services for token validation.",
+        "description": "**Auth service base URL:** `https://memory.neo4jlabs.com`\n\nReturns the public RSA key(s) used to verify NAMS JWTs. Used by other services for token validation.",
         "produces": [
           "application/json"
         ],
@@ -2337,7 +2579,7 @@
     },
     "/v1/auth/api-keys": {
       "get": {
-        "description": "**Auth service base URL:** `https://nams.development.neo4jsandbox.com`\n\nList API keys owned by the authenticated user. Raw key values are never returned - only metadata (ID, label, created/revoked/expiry timestamps).",
+        "description": "**Auth service base URL:** `https://memory.neo4jlabs.com`\n\nList API keys owned by the authenticated user. Raw key values are never returned - only metadata (ID, label, created/revoked/expiry timestamps). Auth: requires a user token or an Admin API key (workspace:admin); workspace-bound data keys are rejected with 403.",
         "produces": [
           "application/json"
         ],
@@ -2350,6 +2592,12 @@
           },
           "401": {
             "description": "No user in token",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "403": {
+            "description": "Requires a user token or an Admin API key",
             "schema": {
               "$ref": "#/definitions/handlers.ErrorResponse"
             }
@@ -2375,10 +2623,10 @@
         "consumes": [
           "application/json"
         ],
-        "description": "**Auth service base URL:** `https://nams.development.neo4jsandbox.com`\n\nGenerate a new API key owned by the authenticated user. The raw key is returned to the caller immediately and additionally stored encrypted-at-rest so it can be revealed again from the dashboard. It is bcrypt-validated on every request. Scopes default to all if omitted.",
+        "description": "**Auth service base URL:** `https://memory.neo4jlabs.com`\n\nGenerate a new API key owned by the authenticated user. The category selects the key's privilege and binding: \"workspace\" requires a workspaceId and produces a data-plane key bound to that workspace (scopes derived server-side, never workspace:admin); \"admin\" forbids workspaceId and produces an account-wide key with full scopes. Category defaults to \"admin\" when omitted. The raw key is returned once and also stored encrypted-at-rest for later reveal; it is bcrypt-validated on every request. Auth: requires a user token or an Admin API key (workspace:admin); workspace-bound data keys are rejected with 403.",
         "parameters": [
           {
-            "description": "Label and optional scopes",
+            "description": "Label, category, and optional workspaceId",
             "in": "body",
             "name": "body",
             "required": true,
@@ -2409,6 +2657,12 @@
               "$ref": "#/definitions/handlers.ErrorResponse"
             }
           },
+          "403": {
+            "description": "Requires a user token or an Admin API key",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
           "500": {
             "description": "Internal error",
             "schema": {
@@ -2429,7 +2683,7 @@
     },
     "/v1/auth/api-keys/{id}": {
       "delete": {
-        "description": "**Auth service base URL:** `https://nams.development.neo4jsandbox.com`\n\nRevoke an API key by ID. The key is immediately invalidated - any active JWTs issued from it are blocklisted. This action is irreversible. Owner-only: only the user who owns the key can revoke it. Non-owners receive 404 (indistinguishable from a missing key) to prevent key-id enumeration.",
+        "description": "**Auth service base URL:** `https://memory.neo4jlabs.com`\n\nRevoke an API key by ID. The key is immediately invalidated - any active JWTs issued from it are blocklisted. This action is irreversible. Owner-only: only the user who owns the key can revoke it. Non-owners receive 404 (indistinguishable from a missing key) to prevent key-id enumeration. Auth: requires a user token or an Admin API key (workspace:admin); workspace-bound data keys are rejected with 403.",
         "parameters": [
           {
             "description": "API key ID",
@@ -2451,6 +2705,12 @@
           },
           "401": {
             "description": "No user in token",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "403": {
+            "description": "Requires a user token or an Admin API key",
             "schema": {
               "$ref": "#/definitions/handlers.ErrorResponse"
             }
@@ -2481,7 +2741,7 @@
     },
     "/v1/auth/api-keys/{id}/reveal": {
       "get": {
-        "description": "**Auth service base URL:** `https://nams.development.neo4jsandbox.com`\n\nReturns the decrypted raw API key value for keys created with encrypted storage. Owner-only: only the user who owns the key can reveal it. Non-owners receive 404 (indistinguishable from a missing key) to prevent credential disclosure and key-id enumeration. Returns 410 if the key was revoked or predates encrypted storage.",
+        "description": "**Auth service base URL:** `https://memory.neo4jlabs.com`\n\nReturns the decrypted raw API key value for keys created with encrypted storage. Owner-only: only the user who owns the key can reveal it. Non-owners receive 404 (indistinguishable from a missing key) to prevent credential disclosure and key-id enumeration. Returns 410 if the key was revoked or predates encrypted storage. Auth: requires a user token or an Admin API key (workspace:admin); workspace-bound data keys are rejected with 403.",
         "parameters": [
           {
             "description": "API key ID",
@@ -2503,6 +2763,12 @@
           },
           "401": {
             "description": "No user in token",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "403": {
+            "description": "Requires a user token or an Admin API key",
             "schema": {
               "$ref": "#/definitions/handlers.ErrorResponse"
             }
@@ -2539,7 +2805,7 @@
     },
     "/v1/auth/api-keys/{id}/rotate": {
       "post": {
-        "description": "**Auth service base URL:** `https://nams.development.neo4jsandbox.com`\n\nMint a new API key inheriting the old key's label and scopes, and atomically revoke the old one. The new raw key is returned exactly once in the response (and is also persisted encrypted-at-rest so it can be revealed again later). Owner-only: only the user who owns the key can rotate it. Non-owners receive 404 (indistinguishable from a missing key) to prevent key-id enumeration.",
+        "description": "**Auth service base URL:** `https://memory.neo4jlabs.com`\n\nMint a new API key inheriting the old key's label and scopes, and atomically revoke the old one. The new raw key is returned exactly once in the response (and is also persisted encrypted-at-rest so it can be revealed again later). Owner-only: only the user who owns the key can rotate it. Non-owners receive 404 (indistinguishable from a missing key) to prevent key-id enumeration. Auth: requires a user token or an Admin API key (workspace:admin); workspace-bound data keys are rejected with 403.",
         "parameters": [
           {
             "description": "API key ID to rotate",
@@ -2561,6 +2827,12 @@
           },
           "401": {
             "description": "No user in token",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "403": {
+            "description": "Requires a user token or an Admin API key",
             "schema": {
               "$ref": "#/definitions/handlers.ErrorResponse"
             }
@@ -2597,7 +2869,7 @@
     },
     "/v1/auth/exchange": {
       "post": {
-        "description": "**Auth service base URL:** `https://nams.development.neo4jsandbox.com`\n\nValidate an Auth0 Bearer token via JWKS and return per-workspace NAMS JWTs. Automatically provisions a default workspace for first-time users. Returns an array of {workspace_id, token} pairs - one per workspace the user belongs to.",
+        "description": "**Auth service base URL:** `https://memory.neo4jlabs.com`\n\nValidate an Auth0 Bearer token via JWKS and return per-workspace NAMS JWTs. Automatically provisions a default workspace for first-time users. Returns an array of {workspace_id, token} pairs - one per workspace the user belongs to.",
         "parameters": [
           {
             "description": "Auth0 Bearer token",
@@ -2647,7 +2919,7 @@
         "consumes": [
           "application/json"
         ],
-        "description": "**Auth service base URL:** `https://nams.development.neo4jsandbox.com`\n\nHandles OAuth2 authorization code flow. Exchanges the provider code for user info and returns a NAMS JWT. Currently returns 501 - implementation pending.",
+        "description": "**Auth service base URL:** `https://memory.neo4jlabs.com`\n\nHandles OAuth2 authorization code flow. Exchanges the provider code for user info and returns a NAMS JWT. Currently returns 501 - implementation pending.",
         "parameters": [
           {
             "description": "OAuth provider and authorization code",
@@ -2688,7 +2960,7 @@
         "consumes": [
           "application/json"
         ],
-        "description": "**Auth service base URL:** `https://nams.development.neo4jsandbox.com`\n\nExchange a refresh token for a new access token and rotated refresh token.",
+        "description": "**Auth service base URL:** `https://memory.neo4jlabs.com`\n\nExchange a refresh token for a new access token and rotated refresh token.",
         "parameters": [
           {
             "description": "Refresh token",
@@ -2737,7 +3009,15 @@
     },
     "/v1/conversations": {
       "get": {
-        "description": "List all conversations for the workspace. Returns metadata only (no messages).",
+        "description": "List conversations for the workspace, newest first. Returns metadata only (no message bodies), plus a display title and firstMessageSnippet per conversation. The title is read from the conversation's metadata \"title\" key (set metadata.title at creation to give a conversation a display name); firstMessageSnippet is the first message's content truncated to 120 characters. Both are empty strings when unset.",
+        "parameters": [
+          {
+            "description": "Max conversations to return (1-200, default 50)",
+            "in": "query",
+            "name": "limit",
+            "type": "integer"
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -2748,10 +3028,28 @@
               "$ref": "#/definitions/handlers.ConversationsResponse"
             }
           },
-          "500": {
-            "description": "Internal error",
+          "404": {
+            "description": "Workspace not found",
             "schema": {
               "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "409": {
+            "description": "Workspace database removed (database_unavailable) - reprovision or update the external connection",
+            "schema": {
+              "$ref": "#/definitions/handlers.TenantQueryErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error (cypher_error or internal)",
+            "schema": {
+              "$ref": "#/definitions/handlers.TenantQueryErrorResponse"
+            }
+          },
+          "503": {
+            "description": "Workspace database unreachable (db_unreachable); also returned as {error: workspace_not_provisioned, status, statusMessage} while the workspace is provisioning",
+            "schema": {
+              "$ref": "#/definitions/handlers.TenantQueryErrorResponse"
             }
           }
         },
@@ -3121,6 +3419,12 @@
               "$ref": "#/definitions/handlers.ErrorResponse"
             }
           },
+          "404": {
+            "description": "Conversation not found",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
           "500": {
             "description": "Internal error",
             "schema": {
@@ -3304,10 +3608,28 @@
               "$ref": "#/definitions/handlers.EntitiesResponse"
             }
           },
-          "500": {
-            "description": "Internal error",
+          "404": {
+            "description": "Workspace not found",
             "schema": {
               "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "409": {
+            "description": "Workspace database removed (database_unavailable) - reprovision or update the external connection",
+            "schema": {
+              "$ref": "#/definitions/handlers.TenantQueryErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error (cypher_error or internal)",
+            "schema": {
+              "$ref": "#/definitions/handlers.TenantQueryErrorResponse"
+            }
+          },
+          "503": {
+            "description": "Workspace database unreachable (db_unreachable); also returned as {error: workspace_not_provisioned, status, statusMessage} while the workspace is provisioning",
+            "schema": {
+              "$ref": "#/definitions/handlers.TenantQueryErrorResponse"
             }
           }
         },
@@ -3371,6 +3693,61 @@
         ]
       }
     },
+    "/v1/entities/count": {
+      "get": {
+        "description": "Returns the count of canonical (non-merged) entities in the workspace. A cheap signal the Memory Browser polls to surface a \"new entities available\" refresh affordance without re-fetching the full graph.",
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns count",
+            "schema": {
+              "type": "object"
+            }
+          },
+          "400": {
+            "description": "Missing workspace_id",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "404": {
+            "description": "Workspace not found",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "409": {
+            "description": "Workspace database removed (database_unavailable) - reprovision or update the external connection",
+            "schema": {
+              "$ref": "#/definitions/handlers.TenantQueryErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error (cypher_error or internal)",
+            "schema": {
+              "$ref": "#/definitions/handlers.TenantQueryErrorResponse"
+            }
+          },
+          "503": {
+            "description": "Workspace database unreachable (db_unreachable); also returned as {error: workspace_not_provisioned, status, statusMessage} while the workspace is provisioning",
+            "schema": {
+              "$ref": "#/definitions/handlers.TenantQueryErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Count entities",
+        "tags": [
+          "Entities"
+        ]
+      }
+    },
     "/v1/entities/graph": {
       "get": {
         "description": "Get the full entity graph with nodes and edges for visualization. Used by the Memory Browser in the dashboard.",
@@ -3384,10 +3761,28 @@
               "$ref": "#/definitions/handlers.EntityGraphResponse"
             }
           },
-          "500": {
-            "description": "Internal error",
+          "404": {
+            "description": "Workspace not found",
             "schema": {
               "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "409": {
+            "description": "Workspace database removed (database_unavailable) - reprovision or update the external connection",
+            "schema": {
+              "$ref": "#/definitions/handlers.TenantQueryErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error (cypher_error or internal)",
+            "schema": {
+              "$ref": "#/definitions/handlers.TenantQueryErrorResponse"
+            }
+          },
+          "503": {
+            "description": "Workspace database unreachable (db_unreachable); also returned as {error: workspace_not_provisioned, status, statusMessage} while the workspace is provisioning",
+            "schema": {
+              "$ref": "#/definitions/handlers.TenantQueryErrorResponse"
             }
           }
         },
@@ -3731,6 +4126,12 @@
               "$ref": "#/definitions/handlers.ErrorResponse"
             }
           },
+          "404": {
+            "description": "Target entity not found",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
           "500": {
             "description": "Internal error",
             "schema": {
@@ -3838,6 +4239,57 @@
         "summary": "Feedback feature flag",
         "tags": [
           "Feedback"
+        ]
+      }
+    },
+    "/v1/graph/expand": {
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "description": "Returns the 1-hop neighborhood of a node plus the complete, canonical-resolved set of relationships among the resulting node set, for the Memory Browser. Provenance edges (MENTIONS/INFLUENCED) are included; merge plumbing (MERGED_REL/SAME_AS) is excluded. New neighbors are capped with loud truncation metadata.",
+        "parameters": [
+          {
+            "description": "nodeId to expand and the currently-loaded node ids",
+            "in": "body",
+            "name": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/handlers.ExpandRequest"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "Returns nodes, edges and truncated metadata",
+            "schema": {
+              "$ref": "#/definitions/handlers.ExpandResponse"
+            }
+          },
+          "400": {
+            "description": "Missing workspace_id or nodeId, or loadedIds exceeds cap",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Expand a graph node",
+        "tags": [
+          "Entities"
         ]
       }
     },
@@ -5064,6 +5516,30 @@
               "additionalProperties": true,
               "type": "object"
             }
+          },
+          "404": {
+            "description": "Workspace not found",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "409": {
+            "description": "Workspace database removed (database_unavailable) - reprovision or update the external connection",
+            "schema": {
+              "$ref": "#/definitions/handlers.TenantQueryErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error (cypher_error or internal)",
+            "schema": {
+              "$ref": "#/definitions/handlers.TenantQueryErrorResponse"
+            }
+          },
+          "503": {
+            "description": "Workspace database unreachable (db_unreachable); also returned as {error: workspace_not_provisioned, status, statusMessage} while the workspace is provisioning",
+            "schema": {
+              "$ref": "#/definitions/handlers.TenantQueryErrorResponse"
+            }
           }
         },
         "security": [
@@ -5088,6 +5564,30 @@
             "schema": {
               "additionalProperties": true,
               "type": "object"
+            }
+          },
+          "404": {
+            "description": "Workspace not found",
+            "schema": {
+              "$ref": "#/definitions/handlers.ErrorResponse"
+            }
+          },
+          "409": {
+            "description": "Workspace database removed (database_unavailable) - reprovision or update the external connection",
+            "schema": {
+              "$ref": "#/definitions/handlers.TenantQueryErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal error (cypher_error or internal)",
+            "schema": {
+              "$ref": "#/definitions/handlers.TenantQueryErrorResponse"
+            }
+          },
+          "503": {
+            "description": "Workspace database unreachable (db_unreachable); also returned as {error: workspace_not_provisioned, status, statusMessage} while the workspace is provisioning",
+            "schema": {
+              "$ref": "#/definitions/handlers.TenantQueryErrorResponse"
             }
           }
         },
@@ -5148,9 +5648,636 @@
         ]
       }
     },
+    "/v1/skills": {
+      "get": {
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List skills",
+        "tags": [
+          "Skills"
+        ]
+      }
+    },
+    "/v1/skills/capabilities": {
+      "get": {
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Report enabled skill features and gate thresholds",
+        "tags": [
+          "Skills"
+        ]
+      }
+    },
+    "/v1/skills/generate": {
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "parameters": [
+          {
+            "description": "Scope to distill",
+            "in": "body",
+            "name": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/handlers.generateSkillRequest"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "202": {
+            "description": "Run enqueued; returns runId",
+            "schema": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Generate a skill from workspace memory",
+        "tags": [
+          "Skills"
+        ]
+      }
+    },
+    "/v1/skills/governance": {
+      "get": {
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Audit the skill corpus (governance)",
+        "tags": [
+          "Skills"
+        ]
+      }
+    },
+    "/v1/skills/published": {
+      "get": {
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Discover published skills (workspace-scoped)",
+        "tags": [
+          "Skills"
+        ]
+      }
+    },
+    "/v1/skills/review/bulk": {
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "parameters": [
+          {
+            "description": "Skill IDs plus one shared decision",
+            "in": "body",
+            "name": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/handlers.bulkReviewSkillsRequest"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Bulk-review skills (approve/reject up to 100 in one call)",
+        "tags": [
+          "Skills"
+        ]
+      }
+    },
+    "/v1/skills/runs/{id}": {
+      "get": {
+        "parameters": [
+          {
+            "description": "Run ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get distillation run status",
+        "tags": [
+          "Skills"
+        ]
+      }
+    },
+    "/v1/skills/{id}": {
+      "get": {
+        "parameters": [
+          {
+            "description": "Skill ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get a skill and its versions",
+        "tags": [
+          "Skills"
+        ]
+      }
+    },
+    "/v1/skills/{id}/download": {
+      "get": {
+        "parameters": [
+          {
+            "description": "Skill ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/zip"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "type": "file"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Download a skill package (zip)",
+        "tags": [
+          "Skills"
+        ]
+      }
+    },
+    "/v1/skills/{id}/drift": {
+      "get": {
+        "parameters": [
+          {
+            "description": "Skill ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Detect skill provenance drift",
+        "tags": [
+          "Skills"
+        ]
+      }
+    },
+    "/v1/skills/{id}/edit": {
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "parameters": [
+          {
+            "description": "Skill ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Validate a proposed skill edit (dry run)",
+        "tags": [
+          "Skills"
+        ]
+      }
+    },
+    "/v1/skills/{id}/edit/commit": {
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "parameters": [
+          {
+            "description": "Skill ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "202": {
+            "description": "Edit enqueued; returns runId",
+            "schema": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          },
+          "400": {
+            "description": "invalid edit",
+            "schema": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Commit a validated skill edit as a new in_review version",
+        "tags": [
+          "Skills"
+        ]
+      }
+    },
+    "/v1/skills/{id}/explain-provenance": {
+      "get": {
+        "parameters": [
+          {
+            "description": "Skill ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Explain a skill's provenance",
+        "tags": [
+          "Skills"
+        ]
+      }
+    },
+    "/v1/skills/{id}/extract-subprocedure": {
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "parameters": [
+          {
+            "description": "Skill ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "202": {
+            "description": "Extraction enqueued; returns runId",
+            "schema": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Extract steps into a reusable sub-procedure skill",
+        "tags": [
+          "Skills"
+        ]
+      }
+    },
+    "/v1/skills/{id}/publish": {
+      "post": {
+        "parameters": [
+          {
+            "description": "Skill ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          },
+          "409": {
+            "description": "not approved",
+            "schema": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Publish a skill",
+        "tags": [
+          "Skills"
+        ]
+      }
+    },
+    "/v1/skills/{id}/review": {
+      "post": {
+        "consumes": [
+          "application/json"
+        ],
+        "parameters": [
+          {
+            "description": "Skill ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "Review decision",
+            "in": "body",
+            "name": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/handlers.reviewSkillRequest"
+            }
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Review a skill (approve/reject)",
+        "tags": [
+          "Skills"
+        ]
+      }
+    },
+    "/v1/skills/{id}/steps/{stepId}/repair": {
+      "post": {
+        "parameters": [
+          {
+            "description": "Skill ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "description": "Step ID",
+            "in": "path",
+            "name": "stepId",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "202": {
+            "description": "Repair enqueued; returns runId",
+            "schema": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Repair one drifted step of a skill",
+        "tags": [
+          "Skills"
+        ]
+      }
+    },
+    "/v1/skills/{id}/verify": {
+      "get": {
+        "parameters": [
+          {
+            "description": "Skill ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Verify a skill version's attestation",
+        "tags": [
+          "Skills"
+        ]
+      }
+    },
     "/v1/users/me/workspaces": {
       "get": {
-        "description": "List all workspaces the authenticated user is a member of.",
+        "description": "List the workspaces the authenticated user is a member of. A workspace-bound API key returns only its bound workspace; an admin key or user token returns all. Requires no workspace:admin scope.",
         "produces": [
           "application/json"
         ],
