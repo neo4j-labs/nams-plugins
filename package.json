@@ -18,6 +18,7 @@
     "test:typecheck": "tsc -p tsconfig.test.json",
     "test": "npm run build && node --import=tsx --test test/*.test.ts test/**/*.test.ts",
     "check": "npm run openapi:generate && npm run build && npm run test:typecheck && npm test",
+    "prepack": "npm run dist:npm",
     "dist:npm": "npm run build && node scripts/build-dist-npm.mjs",
     "dist:marketplace": "npm run build && node scripts/build-dist-marketplace.mjs",
     "dist:local": "npm run build && node scripts/build-dist-local.mjs",
