@@ -552,6 +552,24 @@ OpenCode:
 - `experimental.text.complete` persists exposed assistant text best-effort.
 - `tool.execute.after` persists sanitized tool metadata and exposed tool output.
 
+### Codex Session History Import
+
+`nams-hooks replay codex [--working-dir PATH]` performs one offline best-effort import. Replay is Codex-only; Claude replay is not supported, while Claude live hooks and distribution remain unchanged.
+
+The importer discovers regular JSONL files beneath `CODEX_HOME/sessions` and `CODEX_HOME/archived_sessions`, or the corresponding `~/.codex` directories. It filters each rollout stream by the first usable absolute `session_meta.payload.cwd` and includes the stream when that directory equals the import root or is below it. Every matching root and subagent stream with the same `session_meta.payload.session_id` contributes to one NAMS conversation during that run. `payload.id` is only the session fallback when `session_id` is absent and is otherwise available as a thread identity. Conflicting project directories in one grouped session stop collection.
+
+Completed `event_msg` `UserMessage` items from the root stream are the human message source. Completed root `AgentMessage` items are the assistant message source. Response-role user records, system/developer input, subagent assistant messages, compaction, and hidden reasoning are excluded from the canonical conversation stream.
+
+A `response_item.reasoning` record is an Agent Step boundary only. The importer isolates open steps by source session, thread, and turn; closes a step at the next reasoning boundary in that stream; discards boundaries with no tool calls; and creates a safe fallback step if a call precedes reasoning. It never stores reasoning summaries or `encrypted_content`.
+
+Response-level `custom_tool_call` and `function_call` wrappers are the canonical tool records. Calls and outputs pair by explicit `call_id` within the same session, thread, and turn. Every matching output record and every exposed textual output part is appended in source order and concatenated once. Nested command, file-change, collaboration, and subagent event items are not emitted as duplicate calls. Status and duration are recorded only when the rollout exposes defensible evidence compatible with the NAMS contract.
+
+The filtered corpus is assembled in memory. Before the first NAMS request, the importer writes the complete logical operation sequence to `outbox.jsonl` inside a unique directory created under the OS temporary directory. The directory uses mode `0700` and the file uses `0600`. Replay never reads or writes live `SessionState`, `.nams/state/`, or `.nams/logs/`, and it persists no cursor, checkpoint, sent marker, deduplication key, conversation mapping, or Agent Step mapping.
+
+The sender validates the whole outbox, resolves NAMS configuration and one destination workspace, and sends records sequentially. It performs no retry and stops on the first configuration, validation, transport, HTTP, or response error. Remote conversation and step IDs exist only in process memory. A `finally` cleanup removes the temporary outbox after handled success or failure; an abrupt termination may leave it for OS cleanup.
+
+Restarting rediscovers the corpus, recreates the outbox, creates new NAMS conversations, and starts from the beginning. Duplicate writes and partial or orphaned conversations from a prior failed run are acceptable. This is best-effort, at-least-once delivery when the operator restarts after failure, not exactly-once or resumable delivery.
+
 ## Duplicate Suppression
 
 Hooks may replay or expose the same text through multiple events. The runtime uses SHA-256 hashes stored in session state to suppress duplicate user and assistant messages.

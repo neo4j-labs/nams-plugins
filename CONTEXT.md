@@ -236,40 +236,56 @@ _Avoid_: npm package artifact, local configuration artifact
 The project-shaped configuration projection that relies on an installed `nams-hooks` executable and does not bundle runtime code.
 _Avoid_: Marketplace artifact, source template
 
-### Session History Import
+### Codex Session History Import
 
-**Session History Import**:
-A one-off, offline ingestion of persisted agent-harness session records into NAMS. It includes safely exposed conversation, tool, and operational trace data supported by the live integration, without running or resuming agents, models, or tools, recalling memory, or simulating hooks.
-_Avoid_: Rerun, agent replay
+**Codex Session History Import**:
+A one-off, offline ingestion of matching Codex rollout files into NAMS. It never runs or resumes an agent, model, or tool, recalls memory, or simulates a hook.
+_Avoid_: Agent replay, Claude history import
 
-**Imported Conversation**:
-A NAMS conversation representing exactly one persisted source session, with that session's eligible records retained as one coherent history.
-_Avoid_: Project history conversation, combined session history
+**Imported Codex Conversation**:
+One NAMS conversation representing every matching root and subagent rollout stream with the same Codex `session_id` during one import run.
+_Avoid_: Per-file conversation, durable replay conversation
 
-**Session Working Directory**:
-The first absolute working directory exposed by a persisted source session. Later records do not redefine session ownership and need not repeat this value; a missing or unusable first value leaves the session outside any import scope.
-_Avoid_: Per-message working directory
+**Rollout Working Directory**:
+The first usable absolute `session_meta.payload.cwd` in one rollout stream. It determines import-root eligibility and must agree across all streams grouped into one imported Codex conversation.
+_Avoid_: Per-message working directory, later cwd override
 
 **Import Root**:
-The selected working directory that scopes a session history import. Sessions rooted at this directory or beneath it belong to the import, including worktrees stored below it.
-_Avoid_: Exact-session directory
+The selected working directory that scopes a Codex session history import. Rollout streams rooted at this directory or beneath it belong to the import.
+_Avoid_: Exact-session directory, filename scope
 
 **Import Destination**:
-The single NAMS workspace selected for one session history import. It is resolved from the import root and receives every conversation produced by that import.
+The single NAMS workspace resolved once from the import root and used for every conversation produced by the run.
 _Avoid_: Per-session destination, historical workspace
 
-**Persisted Session Corpus**:
-The source sessions still present in a harness's active or archived transcript storage. Deleted, expired, ephemeral, and otherwise unpersisted sessions are outside the available corpus.
-_Avoid_: Active sessions only, deleted history
+**Codex Rollout Corpus**:
+The JSONL files still present beneath Codex active and archived session storage. Deleted, expired, ephemeral, and otherwise unpersisted activity is outside the available corpus.
+_Avoid_: Active sessions only, Claude transcripts
 
-**Persisted Source Session**:
-Any independently persisted Claude or Codex JSONL transcript in the standard corpus whose first working directory belongs to the import root. Subagent, sidechain, fork, active, and archived classifications do not change eligibility; each matching file maps to its own imported conversation.
-_Avoid_: Top-level-only session, reconstructed parent history
+**Rollout Stream**:
+One root or subagent Codex JSONL file contributing records to a source `session_id`.
+_Avoid_: Imported conversation, independent source session
 
-**Eligible Session Record**:
-Only visible user and assistant text and clearly exposed tool activity are eligible. Hidden reasoning, system and developer instructions, compaction records, and ambiguous transcript shapes are not eligible.
-_Avoid_: Raw transcript record, every JSONL entry
+**Source Turn**:
+A Codex `turn_id` scoped to one rollout stream. It prevents simultaneous root and subagent activity from sharing Agent Step state.
+_Avoid_: Global turn, NAMS conversation
+
+**Source Agent Step**:
+A tool-bearing interval opened by a persisted Codex `reasoning` response item and scoped by source session, thread, and turn. The reasoning item is a boundary only; its hidden or encrypted content is never memory.
+_Avoid_: Chain-of-thought, empty reasoning interval
+
+**Eligible Codex Replay Record**:
+A completed human user message, completed root-assistant message, response-level custom or function call, or matching exposed output. Injected response-role user content, hidden reasoning, system/developer instructions, compaction, and nested duplicate tool representations are ineligible.
+_Avoid_: Every JSONL entry, inferred tool activity
+
+**Temporary Replay Outbox**:
+A complete private JSONL projection of logical NAMS writes for one run, stored in a unique OS temporary directory and removed after a handled success or failure.
+_Avoid_: Session state, checkpoint, durable queue
+
+**Best-Effort Replay Delivery**:
+Sequential fail-fast sending with no retry, checkpoint, persistent ID mapping, or deduplication. Restarting rebuilds the outbox and starts from the beginning, so duplicates and partial prior conversations are acceptable.
+_Avoid_: Exactly-once delivery, resumable replay
 
 **Source Session Provenance**:
-The available harness, source session identity, session working directory, and source start time associated with an imported conversation. It preserves origin without treating NAMS insertion timestamps as historical timestamps.
+The Codex harness, source `session_id`, rollout working directory, and optional source start time stored on an imported conversation. NAMS insertion timestamps are not treated as historical source timestamps.
 _Avoid_: Import timestamp as session time, inferred source time
