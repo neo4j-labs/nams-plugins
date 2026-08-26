@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { HookInvocation, ReplayPlatform } from "../interfaces.js";
+import type { HookInvocation } from "../interfaces.js";
 
 function readPackageVersion(): string {
   let dir = path.dirname(fileURLToPath(import.meta.url));
@@ -31,9 +31,9 @@ export function namsProvenanceHeaders(invocation: HookInvocation): Record<string
   };
 }
 
-export function namsReplayProvenanceHeaders(platform: ReplayPlatform): Record<string, string> {
+export function namsReplayProvenanceHeaders(): Record<string, string> {
   return {
-    ...baseProvenanceHeaders(platform),
+    ...baseProvenanceHeaders("codex"),
     "X-NAMS-Hooks-Command": "replay",
   };
 }

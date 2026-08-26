@@ -84,7 +84,7 @@ export async function runReplay(input: RunReplayInput): Promise<ReplaySummary> {
     apiKey: config.apiKey,
     workspaceId: config.workspaceId,
     baseUrl: config.baseUrl,
-    defaultHeaders: namsReplayProvenanceHeaders(platform),
+    defaultHeaders: namsReplayProvenanceHeaders(),
     ...(input.fetch !== undefined ? { fetch: input.fetch } : {}),
     onRequest: (event) => {
       input.onProgress?.(`  - ${event.method} ${event.path}`);
@@ -340,7 +340,7 @@ async function resolveReplayConfig(
   const client = new NamsWorkspaceClient({
     apiKey: connection.config.apiKey,
     baseUrl: connection.config.baseUrl,
-    defaultHeaders: namsReplayProvenanceHeaders(adapter.platform),
+    defaultHeaders: namsReplayProvenanceHeaders(),
     ...(fetchImpl !== undefined ? { fetch: fetchImpl } : {}),
   });
   let response: WorkspaceListResponse;
