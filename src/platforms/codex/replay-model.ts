@@ -55,10 +55,16 @@ export interface CodexReplayCollection {
   unsupportedRecords: number;
 }
 
+export interface CodexReplayFileProgress {
+  path: string;
+  status: "imported" | "skipped";
+}
+
 export interface CollectCodexReplayInput {
   importRoot: string;
   transcriptPaths?: string[];
   env?: NodeJS.ProcessEnv;
+  onFileProcessed?: (event: CodexReplayFileProgress) => void;
 }
 
 export type CodexReplayOutboxRecord =

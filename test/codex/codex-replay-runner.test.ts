@@ -16,12 +16,16 @@ import { withNamsReplayEnvironment } from "../support/nams-replay-environment.js
 async function writeRunnerRollouts(fixture: string): Promise<{
   project: string;
   temporaryRoot: string;
+  rootPath: string;
+  childPath: string;
+  skippedPath: string;
 }> {
   const project = path.join(fixture, "project");
   const temporaryRoot = path.join(fixture, "outboxes");
   const sessionsRoot = path.join(process.env.CODEX_HOME as string, "sessions", "2026", "08");
   const rootPath = path.join(sessionsRoot, "root.jsonl");
   const childPath = path.join(sessionsRoot, "subagents", "child.jsonl");
+  const skippedPath = path.join(sessionsRoot, "outside.jsonl");
   await mkdir(path.dirname(childPath), { recursive: true });
   await mkdir(project, { recursive: true });
   await mkdir(temporaryRoot, { recursive: true });
@@ -61,28 +65,43 @@ async function writeRunnerRollouts(fixture: string): Promise<{
       threadSource: "subagent",
     }),
   ]), "utf8");
-  return { project, temporaryRoot };
+  await writeFile(skippedPath, jsonl([
+    sessionMeta({
+      sessionId: "outside-session",
+      cwd: path.join(fixture, "outside-project"),
+      threadSource: "user",
+    }),
+  ]), "utf8");
+  return { project, temporaryRoot, rootPath, childPath, skippedPath };
 }
 
 test("imports one grouped session and cleans the successful outbox", async () => {
   await withNamsReplayEnvironment(async (fixture) => {
-    const { project, temporaryRoot } = await writeRunnerRollouts(fixture);
+    const {
+      project,
+      temporaryRoot,
+      rootPath,
+      childPath,
+      skippedPath,
+    } = await writeRunnerRollouts(fixture);
     const nams = createNamsFetchMock()
       .createConversation()
       .message()
       .reasoningStep()
       .toolCall();
 
+    const progress: string[] = [];
     const summary = await runCodexReplay({
       importRoot: project,
       temporaryRoot,
       fetch: nams.fetch,
+      onProgress: (line) => progress.push(line),
     });
 
     assert.deepEqual(summary, {
-      discoveredFiles: 2,
+      discoveredFiles: 3,
       matchedFiles: 2,
-      skippedFiles: 0,
+      skippedFiles: 1,
       sessions: 1,
       conversations: 1,
       messages: 1,
@@ -91,6 +110,18 @@ test("imports one grouped session and cleans the successful outbox", async () =>
       malformedLines: 0,
       unsupportedRecords: 0,
     });
+    assert.deepEqual(progress.slice(0, 3), [
+      `Codex replay file skipped: ${skippedPath}`,
+      `Codex replay file imported: ${rootPath}`,
+      `Codex replay file imported: ${childPath}`,
+    ]);
+    assert.equal(
+      progress[3].startsWith(
+        `Codex replay outbox: ${temporaryRoot}${path.sep}nams-hooks-codex-replay-`,
+      ),
+      true,
+    );
+    assert.equal(progress[3].endsWith(`${path.sep}outbox.jsonl`), true);
     assert.deepEqual(await readdir(temporaryRoot), []);
   });
 });

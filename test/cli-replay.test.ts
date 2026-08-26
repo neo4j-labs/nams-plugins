@@ -113,6 +113,7 @@ test("replay codex groups root and subagent files without reading stdin", async 
       const codexHome = path.join(fixture, "codex");
       const rootPath = path.join(codexHome, "sessions", "root.jsonl");
       const childPath = path.join(codexHome, "sessions", "subagents", "child.jsonl");
+      const outsidePath = path.join(codexHome, "sessions", "outside.jsonl");
       await mkdir(project, { recursive: true });
       await mkdir(path.dirname(childPath), { recursive: true });
       await writeFile(rootPath, jsonl([
@@ -151,6 +152,13 @@ test("replay codex groups root and subagent files without reading stdin", async 
           threadSource: "subagent",
         }),
       ]), "utf8");
+      await writeFile(outsidePath, jsonl([
+        sessionMeta({
+          sessionId: "outside-session",
+          cwd: path.join(fixture, "outside-project"),
+          threadSource: "user",
+        }),
+      ]), "utf8");
 
       const result = await runCli(
         ["replay", "codex", "--working-dir", project],
@@ -168,7 +176,7 @@ test("replay codex groups root and subagent files without reading stdin", async 
       assert.equal(result.code, 0, result.stderr);
       assert.match(
         result.stdout,
-        /Replay codex: discovered files 2, matched files 2, skipped files 0, sessions 1/,
+        /Replay codex: discovered files 3, matched files 2, skipped files 1, sessions 1/,
       );
       assert.deepEqual(requests.map((request) => request.path), [
         "/v1/conversations",
@@ -179,7 +187,13 @@ test("replay codex groups root and subagent files without reading stdin", async 
       assert.equal(requests[0].headers["x-nams-hooks-harness"], "codex");
       assert.equal(requests[0].headers["x-nams-hooks-command"], "replay");
       assert.equal(requests[0].headers["x-nams-hooks-event"], undefined);
-      assert.doesNotMatch(result.stderr, /outbox\.jsonl|nams-hooks-codex-replay-/);
+      assert.equal(result.stderr.includes(`Codex replay file imported: ${rootPath}\n`), true);
+      assert.equal(result.stderr.includes(`Codex replay file imported: ${childPath}\n`), true);
+      assert.equal(result.stderr.includes(`Codex replay file skipped: ${outsidePath}\n`), true);
+      assert.match(
+        result.stderr,
+        /Codex replay outbox: .*nams-hooks-codex-replay-.*[\\/]outbox\.jsonl/,
+      );
       await assert.rejects(access(path.join(home, ".nams", "state")), { code: "ENOENT" });
       await assert.rejects(access(path.join(home, ".nams", "logs")), { code: "ENOENT" });
     } finally {
@@ -246,6 +260,12 @@ test("a missing Codex transcript root is a successful zero import", async () => 
       });
       assert.equal(result.code, 0, result.stderr);
       assert.match(result.stdout, /discovered files 0, matched files 0, skipped files 0, sessions 0/);
+      const outboxPrefix = "Codex replay outbox: ";
+      const outboxLine = result.stderr
+        .split("\n")
+        .find((line) => line.startsWith(outboxPrefix));
+      assert.ok(outboxLine);
+      await assert.rejects(access(outboxLine.slice(outboxPrefix.length)), { code: "ENOENT" });
       assert.deepEqual(requests, []);
     } finally {
       await rm(fixture, { recursive: true, force: true });

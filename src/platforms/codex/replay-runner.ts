@@ -1,4 +1,5 @@
 import { collectCodexReplaySessions } from "./replay-collector.js";
+import type { CodexReplayFileProgress } from "./replay-model.js";
 import {
   createCodexReplayOutbox,
   removeCodexReplayOutbox,
@@ -32,12 +33,20 @@ export async function runCodexReplay(
   const collection = await collectCodexReplaySessions({
     importRoot: input.importRoot,
     ...(input.env !== undefined ? { env: input.env } : {}),
+    ...(input.onProgress !== undefined
+      ? {
+          onFileProcessed: (event: CodexReplayFileProgress) => {
+            input.onProgress?.(`Codex replay file ${event.status}: ${event.path}`);
+          },
+        }
+      : {}),
   });
   const outbox = await createCodexReplayOutbox({
     sessions: collection.sessions,
     ...(input.temporaryRoot !== undefined ? { temporaryRoot: input.temporaryRoot } : {}),
   });
   try {
+    input.onProgress?.(`Codex replay outbox: ${outbox.path}`);
     const sent = collection.sessions.length === 0
       ? { conversations: 0, messages: 0, reasoningSteps: 0, toolCalls: 0 }
       : await sendCodexReplayOutbox({

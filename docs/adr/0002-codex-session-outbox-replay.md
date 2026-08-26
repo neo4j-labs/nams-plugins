@@ -15,3 +15,5 @@ The importer assembles the filtered corpus in memory, then writes every logical 
 Restarting rebuilds the outbox from source and begins again. Duplicate and partial NAMS data are acceptable. Delivery is best-effort with at-least-once behavior when an operator restarts after failure.
 
 Claude replay is removed because the new outbox projection is defined only from observed Codex rollout identities and boundaries. Claude live hooks remain supported and are unaffected.
+
+Replay progress intentionally writes full processed rollout paths and their `imported` or `skipped` classification to stderr. After creating the private temporary outbox, it also writes the full outbox path before delivery begins. These paths are operator-visible diagnostics; the outbox still uses private permissions and is removed after a handled run, so the logged path may no longer exist when replay exits. Progress never includes rollout contents, outbox contents, tool inputs or outputs, or credentials.

@@ -98,6 +98,7 @@ export async function collectCodexReplaySessions(
       !isDirectoryWithinImportRoot(importRoot, metadata.projectDirectory)
     ) {
       skippedFiles += 1;
+      input.onFileProcessed?.({ path: transcriptPath, status: "skipped" });
       continue;
     }
 
@@ -137,6 +138,7 @@ export async function collectCodexReplaySessions(
     session.messages.push(...stream.messages);
     session.steps.push(...stream.steps);
     unsupportedRecords += stream.unsupportedRecords;
+    input.onFileProcessed?.({ path: transcriptPath, status: "imported" });
   }
 
   const sessions: CodexReplaySession[] = [...groups.values()]
