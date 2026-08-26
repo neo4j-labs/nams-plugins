@@ -1,4 +1,4 @@
-export const platforms = ["gemini", "claude", "codex", "opencode"] as const;
+export const platforms = ["gemini", "claude", "codex", "opencode", "antigravity"] as const;
 export type Platform = (typeof platforms)[number];
 
 export const hookEvents = ["SessionStart", "BeforeAgent", "AfterAgent", "AfterTool"] as const;
@@ -45,4 +45,3 @@ export interface WorkspacePlatformAdapter {
   commandExecuteBefore?(invocation: WorkspaceHookInvocation<"CommandExecuteBefore">): Promise<HookResult>;
   customCommand?(invocation: WorkspaceHookInvocation<"CustomCommand">): Promise<HookResult>;
 }
-

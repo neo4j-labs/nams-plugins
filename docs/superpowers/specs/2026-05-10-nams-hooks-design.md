@@ -6,7 +6,7 @@ Repository: nams-plugins
 
 ## Summary
 
-`nams-hooks` is a standalone Node.js integration layer that connects local agent harness hooks to the Neo4j Agent Memory Service (NAMS) REST API. Its hook runtime and generated release artifacts have zero runtime npm dependencies and use Node.js built-ins only, while the source repository may use dev-only build, generation, and test tooling. The first iteration supports macOS for Codex, Claude Code, Gemini CLI, and OpenCode. Gemini uses extension distribution. Claude Code can use a generated Claude plugin marketplace artifact, with project-level settings as a fallback path. Codex can use a generated repo marketplace plugin artifact, with project-level hooks as a fallback path. OpenCode can use a generated self-contained marketplace artifact, with a `dist-local/` project plugin as a fallback path. Runtime configuration, state, and logs live under user-level `~/.nams/`, with optional project overrides in `.nams/config.json`.
+`nams-hooks` is a standalone Node.js integration layer that connects local agent harness hooks to the Neo4j Agent Memory Service (NAMS) REST API. Its hook runtime and generated release artifacts have zero runtime npm dependencies and use Node.js built-ins only, while the source repository may use dev-only build, generation, and test tooling. The first iteration supports macOS for Codex, Claude Code, Gemini CLI, OpenCode, and generated Antigravity artifacts. Gemini uses extension distribution. Claude Code can use a generated Claude plugin marketplace artifact, with project-level settings as a fallback path. Codex can use a generated repo marketplace plugin artifact, with project-level hooks as a fallback path. OpenCode can use a generated self-contained marketplace artifact, with a `dist-local/` project plugin as a fallback path. Antigravity can use a generated project-local `.agents/plugins/nams-hooks/` plugin or a self-contained plugin under `dist-marketplace/antigravity/plugins/nams-hooks/`; `agy` 1.0.8 validation confirmed that `agy plugin install` places the plugin under `$HOME/.gemini/config/plugins/nams-hooks/`, while live hook memory behavior is still pending validation. Runtime configuration, state, and logs live under user-level `~/.nams/`, with optional project overrides in `.nams/config.json`.
 
 As of the umbrella rename, repository, npm package, and marketplace identity use
 `nams-plugins`; the hooks plugin and CLI executable remain `nams-hooks`.
@@ -22,11 +22,14 @@ The hook runner owns deterministic memory persistence. Agents receive recalled c
 - Gemini CLI hooks reference: `https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/writing-hooks.md`
 - Codex hooks behavior note: `https://github.com/openai/codex/issues/16486`
 - OpenCode plugin reference: `https://opencode.ai/docs/plugins`
+- Antigravity hooks reference: `https://antigravity.google/assets/docs/antigravity-2-0/hooks.md`
+- Antigravity plugin reference: `https://antigravity.google/assets/docs/antigravity-2-0/plugins.md`
+- Antigravity CLI plugin reference: `https://antigravity.google/assets/docs/cli/cli-plugins.md`
 
 ## Goals
 
 - Provide deterministic memory behavior through harness hooks and REST API calls.
-- Support Codex, Claude Code, Gemini CLI, and OpenCode memory flows on macOS in v1.
+- Support Codex, Claude Code, Gemini CLI, OpenCode, and generated Antigravity memory-flow artifacts on macOS in v1.
 - Keep runtime configuration, state, and logs under user-level `~/.nams/`, while preserving project-scoped harness installation and optional project config overrides.
 - Use plain Node.js built-in modules only in runtime code and generated release artifacts. No runtime npm dependencies.
 - Allow dev-only dependencies for TypeScript compilation, code generation, architecture checks, and test support when they do not create additional runtime package installation requirements or runtime imports.
@@ -57,6 +60,17 @@ nams-hooks run gemini --event SessionStart
 nams-hooks run opencode --event SessionStart
 ```
 
+Generated Antigravity templates are the exception for startup: Antigravity does
+not document a native startup or resume hook, so templates do not emit
+`SessionStart`. They route the documented native hook names into typed NAMS
+events:
+
+```bash
+nams-hooks run antigravity --event BeforeAgent
+nams-hooks run antigravity --event AfterAgent
+nams-hooks run antigravity --event AfterTool
+```
+
 The CLI entry point is a gateway. It parses the platform and typed event from arguments, reads hook JSON from `stdin` as an opaque object, resolves a platform adapter through a static registry, and calls the interface method for that event. The CLI must not interpret platform-specific payload fields such as session IDs, transcript paths, or event-name property variants. Those subtleties belong inside the platform adapter implementations.
 
 This approach avoids per-harness logic drift while still respecting each platform's hook event names and JSON shapes.
@@ -81,6 +95,7 @@ nams-hooks/
       logging.ts
     platforms/
       index.ts
+      antigravity/
       gemini/
       claude/
       codex/
@@ -88,6 +103,12 @@ nams-hooks/
   install.mjs
   templates/
     local/
+      antigravity/
+        .agents/
+          plugins/
+            nams-hooks/
+              plugin.json
+              hooks.json
       claude/
         .claude/
           settings.local.json
@@ -106,6 +127,11 @@ nams-hooks/
           plugins/
             nams-hooks.js
     marketplace/
+      antigravity/
+        plugins/
+          nams-hooks/
+            plugin.json
+            hooks.json
       claude/
         .claude-plugin/
           marketplace.json
@@ -145,6 +171,7 @@ Installed project layout:
 target-project/
   .nams/
     config.json        # optional project override
+  .agents/plugins/nams-hooks/
   .claude/settings.local.json
   .codex/hooks.json
   .opencode/plugins/nams-hooks.js
@@ -161,12 +188,14 @@ User runtime layout:
     claude/
     codex/
     opencode/
+    antigravity/
   state/
     gemini/
       session-<created-at>--<session-hash>.json
     claude/
     codex/
     opencode/
+    antigravity/
 ```
 
 Files created or touched by the runtime under `~/.nams/` use owner-only file permissions (`0600`). Runtime directories under `~/.nams/` use owner-only directory permissions (`0700`) so the owner can still traverse them. Project-local NAMS files, including `.nams/config.json`, follow the same `0600` file rule.
@@ -190,7 +219,7 @@ Branch model:
 - `devel`: source branch containing TypeScript source, templates, docs, the pinned OpenAPI spec, the custom generator, and committed generated TypeScript client source.
 - `latest`: generated release/distribution branch containing the validated marketplace release artifacts from `dist-marketplace/`.
 
-On `devel`, `dist/`, `dist-marketplace/`, and `dist-local/` are generated and ignored. `npm run dist` builds all three trees through the split projection scripts: `build-dist-npm.mjs`, `build-dist-marketplace.mjs`, and `build-dist-local.mjs`, with shared helpers in `build-dist-common.mjs`. `dist/` is the npm package artifact. `dist-marketplace/` is the self-contained marketplace release tree for Gemini, Claude Code, Codex, and OpenCode and is the only tree published to `latest`. `dist-local/` contains project-local configurations that call an installed `nams-hooks` executable. `dist/` and `dist-local/` are generated and verified on `devel` but are not published to `latest`.
+On `devel`, `dist/`, `dist-marketplace/`, and `dist-local/` are generated and ignored. `npm run dist` builds all three trees through the split projection scripts: `build-dist-npm.mjs`, `build-dist-marketplace.mjs`, and `build-dist-local.mjs`, with shared helpers in `build-dist-common.mjs`. `dist/` is the npm package artifact. `dist-marketplace/` is the self-contained marketplace or plugin release tree for Gemini, Claude Code, Codex, OpenCode, and Antigravity and is the only tree published to `latest`. `dist-local/` contains project-local configurations that call an installed `nams-hooks` executable. `dist/` and `dist-local/` are generated and verified on `devel` but are not published to `latest`.
 
 ```text
 dist/
@@ -203,6 +232,14 @@ dist/
   package.json
 
 dist-marketplace/
+  antigravity/
+    plugins/
+      nams-hooks/
+        plugin.json
+        hooks.json
+        package.json
+        bin/
+          cli.js
   .agents/
     plugins/
       marketplace.json
@@ -250,6 +287,12 @@ dist-marketplace/
         cli.js
 
 dist-local/
+  antigravity/
+    .agents/
+      plugins/
+        nams-hooks/
+          plugin.json
+          hooks.json
   claude/
     .claude/
       commands/
@@ -312,7 +355,13 @@ Codex users can add the generated release tree as a repo marketplace and install
 codex plugin marketplace add neo4j-labs/nams-plugins@latest
 ```
 
-OpenCode marketplace distribution is self-contained under `dist-marketplace/plugins/opencode-nams-hooks/`, with `nams-hooks.js` and bundled `bin/cli.js`. Local fallback/project configurations live under `dist-local/codex/.codex/`, `dist-local/claude/.claude/`, `dist-local/gemini/.gemini/`, and `dist-local/opencode/.opencode/`; those local artifacts call an installed `nams-hooks` executable.
+OpenCode marketplace distribution is self-contained under `dist-marketplace/plugins/opencode-nams-hooks/`, with `nams-hooks.js` and bundled `bin/cli.js`. Antigravity plugin distribution is self-contained under `dist-marketplace/antigravity/plugins/nams-hooks/`, with `plugin.json`, `hooks.json`, `package.json`, and bundled `bin/cli.js`. Antigravity marketplace hook commands use the install path validated by `agy plugin install`:
+
+```bash
+node "$HOME/.gemini/config/plugins/nams-hooks/bin/cli.js" run antigravity --event BeforeAgent
+```
+
+Antigravity local/project configuration is generated under `dist-local/antigravity/.agents/plugins/nams-hooks/` and calls an installed `nams-hooks` executable. Local fallback/project configurations also live under `dist-local/codex/.codex/`, `dist-local/claude/.claude/`, `dist-local/gemini/.gemini/`, and `dist-local/opencode/.opencode/`; those local artifacts call an installed `nams-hooks` executable.
 
 Manual or CI release flow:
 
@@ -331,7 +380,7 @@ Rules:
 - Generated release artifacts are produced from `devel`; no hand edits.
 - The `latest` release tag is created from `latest`.
 - Gemini installs use `--ref latest`.
-- Codex, Claude, Gemini, and OpenCode marketplace release artifacts are produced from the same validated source tree.
+- Codex, Claude, Gemini, OpenCode, and Antigravity marketplace or plugin release artifacts are produced from the same validated source tree.
 - `dist/` and `dist-local/` are verification artifacts on `devel`; they are not copied to `latest`.
 - `npm run package:check` must verify all generated artifacts: npm package output in `dist/`, self-contained marketplace output in `dist-marketplace/`, local project configuration output in `dist-local/`, and npm dry-run package contents.
 
@@ -358,7 +407,7 @@ Example:
 Platform-specific discovery:
 
 - Claude Code plugin installs discover `apiKey`, `workspaceId`, and `baseUrl` from Claude's plugin user configuration environment exports.
-- Codex, Gemini, and OpenCode currently provide no additional discovered configuration.
+- Codex, Gemini, OpenCode, and Antigravity currently provide no additional discovered configuration. Antigravity plugin templates do not declare native NAMS credential prompts.
 
 Claude plugin discovery sources:
 
@@ -376,7 +425,7 @@ Required:
 
 - `apiKey`, from either JSON config or `NAMS_API_KEY`.
 - `baseUrl`, from JSON config, Claude plugin user configuration, or `NAMS_BASE_URL`.
-- `workspaceId`, from JSON config, Claude plugin user configuration, or `NAMS_WORKSPACE_ID`, unless a harness-specific workspace-resolution phase selects one before memory starts.
+- `workspaceId`, from JSON config, Claude plugin user configuration, or `NAMS_WORKSPACE_ID`, unless a harness-specific workspace-resolution phase selects exactly one valid workspace before memory starts.
 
 Final environment overrides are limited to `NAMS_API_KEY`, `NAMS_WORKSPACE_ID` and `NAMS_BASE_URL` unless a future design explicitly adds more. The runtime records sanitized `configSources` diagnostics in the session log, for example `apiKey: "env:NAMS_API_KEY"`, `workspaceId: "env:NAMS_WORKSPACE_ID"`, `workspaceId: "platform:claude:CLAUDE_PLUGIN_OPTION_NAMS_WORKSPACE_ID"`, `baseUrl: "project:.nams/config.json"`, or `baseUrl: "missing"`. It never logs secret values or full config objects.
 
@@ -409,6 +458,7 @@ Session key strategy:
 - Claude Code: prefer `session_id`; retain `transcript_path` and `cwd` as supporting metadata.
 - Codex: prefer `session_id` when present; use `cwd` and payload metadata as fallback. The `doctor` command should report detected Codex hook support because this surface is still moving.
 - Gemini CLI: prefer a session field if present; otherwise use project path plus stable request metadata from hook payloads.
+- Antigravity: prefer `conversationId`; when absent, use a hash derived from `transcriptPath` and workspace roots. The project directory is the first `workspacePaths` entry, falling back to the hook process cwd.
 
 If no state exists on a user prompt event, the runtime creates a NAMS conversation and stores the mapping locally.
 
@@ -485,17 +535,34 @@ User prompt submit or before-agent:
 
 For Gemini CLI this context is returned as `hookSpecificOutput.additionalContext`, not as a top-level `additionalContext` field.
 
+For Antigravity, `PreInvocation` maps to NAMS `BeforeAgent`. The adapter reads
+the latest completed user prompt from `transcriptPath`, stores it once, recalls
+memory, and injects recalled context only through
+`injectSteps[].ephemeralMessage`.
+
 Tool completion:
 
 - Record tool metadata when the harness exposes a post-tool event.
 - Persist `toolName`, sanitized `input`, exposed `output`, optional `stepId`, status, and duration.
 - Create a safe operational reasoning step first when the harness exposes a tool event but does not expose a parent reasoning step.
 
+For Antigravity, `PostToolUse` with matcher `*` maps to NAMS `AfterTool`.
+Direct hook input provides `stepIdx` and common fields, but completed tool name,
+arguments, output, and duration are captured only when `transcriptPath` exposes
+them cleanly. The adapter no-ops when those details are unavailable or required
+configuration is missing, and it filters hidden reasoning or thought-shaped
+fields before storing tool input or output.
+
 Assistant complete or stop:
 
 - Store assistant response when available from hook payload or transcript.
 - Use local hashes to suppress duplicate assistant messages.
 - If response capture is not clean for a harness, skip it and log a diagnostic.
+
+For Antigravity, `PostInvocation` maps to NAMS `AfterAgent`. The adapter stores
+assistant text best-effort from transcript entries when cleanly exposed and
+uses duplicate suppression. Generated Antigravity templates do not route `Stop`
+by default.
 
 Session end:
 
@@ -539,6 +606,21 @@ OpenCode:
 - `experimental.text.complete` persists exposed assistant text best-effort.
 - `tool.execute.after` persists sanitized tool metadata and exposed tool output.
 
+Antigravity:
+
+- Generated Antigravity artifacts are in the v1 macOS support scope. `agy` 1.0.8 validates and installs the self-contained plugin under `$HOME/.gemini/config/plugins/nams-hooks/`; live hook memory behavior against Antigravity is still pending validation.
+- Use `dist-local/antigravity/.agents/plugins/nams-hooks/` for project-local installs that call an installed `nams-hooks` executable.
+- Use `dist-marketplace/antigravity/plugins/nams-hooks/` for the self-contained Antigravity plugin with bundled `bin/cli.js`.
+- Marketplace hook commands use `node "$HOME/.gemini/config/plugins/nams-hooks/bin/cli.js" run antigravity --event <event>`.
+- Native hook mapping is `PreInvocation` to NAMS `BeforeAgent`, `PostInvocation` to NAMS `AfterAgent`, and `PostToolUse` with matcher `*` to NAMS `AfterTool`.
+- Generated templates do not emit `SessionStart`, because Antigravity does not document a startup or resume hook, and do not emit `Stop` by default. State initializes lazily on the first memory hook.
+- `BeforeAgent` reads the latest user prompt from `transcriptPath`, stores it once, recalls memory, and injects context through `injectSteps[].ephemeralMessage` only.
+- `AfterAgent` stores assistant text best-effort from clean transcript entries, with duplicate suppression.
+- `AfterTool` stores tool name, sanitized input, optional step id, status, duration, and exposed output only when transcript details are cleanly exposed; it no-ops when details are unavailable or required configuration is missing, and filters hidden reasoning or thought-shaped fields.
+- Session identity prefers `conversationId` and falls back to a hash of `transcriptPath` and workspace roots. Project directory is the first `workspacePaths` entry, falling back to process cwd.
+- Configuration uses JSON config or `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL`. Antigravity templates do not declare native credential prompts. `apiKey` and `baseUrl` are required, and `workspaceId` can be auto-selected only when NAMS returns exactly one valid workspace.
+- Workspace selection uses `nams-hooks workspaces configure antigravity ...` for v1. No native `nams:workspace` command template is documented or generated yet.
+
 ## Duplicate Suppression
 
 Hooks may replay or expose the same text through multiple events. The runtime uses SHA-256 hashes stored in session state to suppress duplicate user and assistant messages.
@@ -575,14 +657,21 @@ Installer errors are stricter. The installer should refuse unsafe overwrites and
 - Files created or touched under global `~/.nams/` or project `.nams/` must be owner-readable and owner-writable only (`0600`); runtime-created directories use `0700`.
 - `.env` files are not supported by the target configuration model.
 - API keys are never printed to stdout or logs.
-- Tool outputs are not stored in v1.
+- Tool outputs are stored only when the harness exposes them cleanly through the documented platform contract; hidden or internal outputs are not scraped.
 - Tool inputs are serialized conservatively and capped.
 - Standard messages are persisted as authored because they are the canonical memory stream.
 - The hook runner writes only harness-specific JSON to stdout. Diagnostics go to logs or stderr depending on harness tolerance.
 
 ## Installer Behavior
 
-`nams-hooks install --harness claude,gemini,codex,opencode` installs into the current project by default.
+`nams-hooks install --harness claude,gemini,codex,opencode` installs into the
+current project by default where that installer path is supported. Antigravity
+v1 installation is represented by generated
+`dist-local/antigravity/.agents/plugins/nams-hooks/` and
+`dist-marketplace/antigravity/plugins/nams-hooks/` artifacts. Validate and
+install the marketplace plugin with `agy plugin validate` and
+`agy plugin install`; `agy` 1.0.8 installs it under
+`$HOME/.gemini/config/plugins/nams-hooks/`.
 
 The installer:
 
@@ -592,7 +681,8 @@ The installer:
 - ensures project `.nams/config.json` is gitignored
 - writes or merges harness hook configs
 - backs up existing config files before changing them
-- prints next steps for setting `apiKey`, `workspaceId`, `NAMS_API_KEY`, or `NAMS_WORKSPACE_ID`
+- prints next steps for setting `apiKey`, `workspaceId`, `baseUrl`,
+  `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, or `NAMS_BASE_URL`
 
 Future installer commands may include:
 
@@ -626,6 +716,7 @@ Fixture tests:
 - Gemini: `SessionStart`, `BeforeAgent`, `AfterTool`, `AfterAgent`
 - Codex: `SessionStart`, `UserPromptSubmit`, `Stop`, `PostToolUse`
 - OpenCode: `session.created`, `chat.message`, `experimental.chat.system.transform`, `experimental.text.complete`, `tool.execute.after`
+- Antigravity: `PreInvocation`, `PostInvocation`, `PostToolUse`
 
 ## Gateway Interfaces
 
@@ -680,6 +771,7 @@ Manual validation:
 - Gemini session identity may require fallback keys if the hook payload lacks a stable session ID.
 - Assistant response capture may be best-effort for some harness versions.
 - Prompt/context injection may be visible in some harness UIs even when intended as model context.
+- Antigravity generated support has validated plugin validation and install path resolution with `agy` 1.0.8, but live hook memory behavior still needs validation against a local Antigravity CLI or IDE install.
 - NAMS REST API shape may drift from the pinned OpenAPI copy. The build-time fetch and contract-test workflow should make drift explicit before release.
 - GitHub install from `latest` means any accidental unreleased commit to `latest` becomes installable immediately; branch protections should require release automation.
 
@@ -688,9 +780,9 @@ Manual validation:
 Approved decisions from brainstorming:
 
 - Standalone `nams-plugins` repo containing the `nams-hooks` runtime product.
-- First iteration: Codex, Claude Code, Gemini CLI, and OpenCode on macOS.
+- First iteration: Codex, Claude Code, Gemini CLI, OpenCode, and generated Antigravity artifacts on macOS.
 - User-level runtime state and logs under `~/.nams/`.
-- Codex, Claude Code, Gemini, and OpenCode use generated marketplace distribution for release artifacts, with `dist-local/` project-level configurations as fallbacks that call an installed `nams-hooks`.
+- Codex, Claude Code, Gemini, OpenCode, and Antigravity use generated marketplace or plugin distribution for release artifacts, with `dist-local/` project-level configurations as fallbacks that call an installed `nams-hooks`.
 - Plain Node.js with built-in modules only.
 - JSON configuration with global defaults in `~/.nams/config.json`, optional project overrides in `.nams/config.json`, and final environment overrides from `NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL`.
 - Deterministic REST writes from hook runner, not MCP-driven writes.

@@ -15,6 +15,7 @@ dev dependencies from this repository.
 - A NAMS API key, NAMS base URL, and workspace ID unless your harness path can
   auto-select a single available workspace
 - The platform CLI you want to test:
+  - Antigravity
   - Gemini CLI
   - Codex
   - Claude Code
@@ -99,10 +100,11 @@ The command creates three ignored trees:
 - `dist/`: npm-installable package output with `bin/cli.js` and
   `package.json`. Use this for `npm install -g ./dist`.
 - `dist-marketplace/`: self-contained marketplace output for Gemini,
-  Claude Code, Codex, and OpenCode. Marketplace hooks call bundled runtime
-  files under `dist-marketplace/plugins/<platform>-nams-hooks/bin/`.
+  Claude Code, Codex, OpenCode, and Antigravity. Most marketplace hooks call
+  bundled runtime files under `dist-marketplace/plugins/<platform>-nams-hooks/bin/`;
+  Antigravity uses `dist-marketplace/antigravity/plugins/nams-hooks/bin/`.
 - `dist-local/`: project-shaped local configuration output for Gemini,
-  Claude Code, Codex, and OpenCode. These files call an installed
+  Claude Code, Codex, OpenCode, and Antigravity. These files call an installed
   `nams-hooks` executable and do not include compiled runtime files.
 
 Use target-specific commands when you only need one tree:
@@ -126,6 +128,7 @@ ln -sF <repository-root-or-worktree>/dist-local/gemini/.gemini /path/to/project/
 ln -sF <repository-root-or-worktree>/dist-local/codex/.codex /path/to/project/.codex
 ln -sF <repository-root-or-worktree>/dist-local/claude/.claude /path/to/project/.claude
 ln -sF <repository-root-or-worktree>/dist-local/opencode/.opencode /path/to/project/.opencode
+ln -sF <repository-root-or-worktree>/dist-local/antigravity/.agents /path/to/project/.agents
 ```
 
 Only replace a target project folder when it is disposable. If the project
@@ -137,59 +140,112 @@ build scripts instead.
 
 ## New Platform Checklist
 
-Use this abstract checklist before adding support for another agent harness.
-For a task-by-task implementation plan, see
+Use this checklist before adding support for another agent harness. It is the
+high-level onboarding guide; the task-by-task plan lives in
 `docs/superpowers/plans/2026-06-09-new-platform-onboarding.md`.
 
-- Identify the platform id, supported OS scope, native hook lifecycle, install
-  model, configuration surface, and unsupported events before touching runtime
-  code.
-- Map native hook events to the typed NAMS lifecycle events:
-  `SessionStart`, `BeforeAgent`, `AfterAgent`, and `AfterTool`. Keep native
-  event names inside platform adapters and templates; CLI commands must pass
-  `--event <NAMS event>` explicitly.
-- Keep `src/cli.ts` as the platform-agnostic gateway. It should parse the
-  command, platform, typed event, and opaque stdin JSON only.
-- Add platform code under `src/platforms/<platform>/`, normally
-  `index.ts`, `payload.ts`, `workspaces.ts`, and `transcript.ts` only when a
-  documented transcript source is needed.
-- Add the platform id to `src/interfaces.ts` and statically register memory and
-  workspace adapters in `src/platforms/index.ts`.
-- Write parser and gateway tests first. Cover documented payload fields,
-  fallback project directory behavior, blank strings, unsupported aliases, and
-  the rule that payload event-name fields never drive routing.
-- Implement the adapter incrementally: log-only session start, before-agent
-  memory recall and prompt persistence, workspace resolution when supported,
-  best-effort assistant persistence, and tool metadata capture.
-- Store only exposed user messages, assistant responses, and operational tool
-  summaries. Do not infer hidden reasoning or scrape output from unsupported
-  harness fields.
-- Keep configuration, state, logging, duplicate suppression, workspace
-  resolution, and NAMS HTTP behavior in shared runtime modules unless the
-  platform contract truly requires a new adapter boundary.
-- Add templates only after the native install model and hook command shape are
-  known. Use `templates/local/<platform>/` for project-local config that calls
-  installed `nams-hooks`, `templates/marketplace/<platform>/` for
-  self-contained bundled-runtime artifacts, and `templates/<platform>/` only for
-  shared fragments.
-- Wire distribution through the split projection scripts. Local templates belong
-  in `scripts/build-dist-local.mjs` and generate under
-  `dist-local/<platform>/`; marketplace or extension templates belong in
-  `scripts/build-dist-marketplace.mjs` and generate under
-  `dist-marketplace/`. Leave `dist/` npm-only unless the package runtime shape
-  itself changes.
-- Extend `scripts/check-dist.mjs` to prove the generated files match the chosen
-  install model: marketplace commands use bundled runtime paths, local commands
-  use installed `nams-hooks`, `dist-local/` has no compiled runtime, `dist/`
-  stays npm-only, and OpenAPI artifacts are absent.
-- Update `README.md`, `INSTALL.md`, this guide, and
-  `docs/superpowers/specs/2026-05-10-nams-hooks-design.md` when the platform
-  becomes official. Create a dedicated design spec only for new architecture,
-  distribution, blocking behavior, workspace, or payload-source decisions.
-- Verify with targeted platform tests, `npm run check`, and
-  `npm run package:check` when templates or distribution checks changed. Manual
-  validation should use a throwaway project or temp HOME and must not write
-  `.nams/` artifacts into this repository.
+### Intake And Scope
+
+Start with the platform contract, not code. Record the stable platform id,
+supported OS scope, native hook lifecycle, session identity fields, project
+directory field, install model, configuration surface, stdout contract, and
+unsupported lifecycle events. Capture whether the platform exposes user prompts,
+assistant responses, tool completion metadata, safe context injection, and any
+documented transcript source.
+
+Map native hooks into the semantic NAMS lifecycle:
+`SessionStart`, `BeforeAgent`, `AfterAgent`, and `AfterTool`. Native event names
+belong in templates, payload parsers, tests, and platform-specific output only.
+The CLI command must always pass a typed `--event <NAMS event>` value, and
+runtime routing must never infer `invocation.event` from payload fields.
+
+### Runtime Boundaries
+
+Keep `src/cli.ts` as a gateway. It should parse the command, platform, typed
+event, and opaque stdin JSON, then dispatch through the static platform
+registry. Do not add platform payload parsing, OpenAPI handling, or dynamic
+adapter discovery to the CLI.
+
+Put platform-specific code under `src/platforms/<platform>/`. The normal shape
+is `index.ts` for memory orchestration, `payload.ts` for typed extraction from
+raw hook JSON, `workspaces.ts` for install-time workspace configuration and
+native workspace commands, and `transcript.ts` only when a documented transcript
+source is needed. Shared contracts stay in `src/interfaces.ts`, and concrete
+adapters are registered in `src/platforms/index.ts` as singleton exports.
+
+Keep configuration, state, logging, duplicate suppression, workspace
+resolution, NAMS HTTP behavior, hashing, and provenance in shared runtime
+modules. Add a new shared abstraction only when more than one platform needs
+it, or when it preserves a clear adapter boundary.
+
+### Memory Behavior
+
+Implement memory flow incrementally and test each stage. Start with a log-only
+`SessionStart` that initializes local state and session-scoped raw hook logs
+without creating a NAMS conversation. Then add `BeforeAgent` behavior that
+resolves workspace readiness, recalls memory, stores exposed user prompts once,
+and injects recalled context only through the platform's safe context channel.
+
+Assistant responses and tool metadata are best-effort. Store assistant text only
+when the platform exposes completed assistant content cleanly. Store tool name,
+sanitized input, exposed output, status, duration, and optional step id only
+when those fields are available through the documented platform contract. Never
+store hidden chain-of-thought, infer internal reasoning, or scrape unsupported
+payload fields.
+
+### Tests First
+
+Write parser and gateway tests before implementation. Cover documented payload
+fields, project-directory fallback, blank strings, unsupported aliases, typed
+event routing, and the rule that native payload event-name fields never drive
+routing. Add memory-flow tests with mocked NAMS calls for workspace selection,
+conversation creation, recall, user message persistence, assistant persistence,
+tool metadata, duplicate suppression, sanitized logs, and fail-open behavior.
+
+Keep tests under `node:test`, temp directories, and mocks. Tests must not touch
+repository `.nams/` state, make network calls, or assert README and docs prose
+unless the task explicitly targets documentation behavior.
+
+### Templates And Distribution
+
+Add templates only after the native install model and hook command shape are
+known. Use `templates/local/<platform>/` for project-local config that calls an
+installed `nams-hooks` executable. Use `templates/marketplace/<platform>/` for
+self-contained marketplace or extension artifacts that call bundled runtime
+files. Use `templates/<platform>/` only for fragments deliberately shared by
+both outputs.
+
+Wire generated artifacts through the split distribution scripts. Local
+templates belong in `scripts/build-dist-local.mjs` and generate under
+`dist-local/<platform>/`. Marketplace or extension templates belong in
+`scripts/build-dist-marketplace.mjs` and generate under `dist-marketplace/`.
+Leave `dist/` npm-only unless the package runtime shape itself changes.
+
+Extend `scripts/check-dist.mjs` for the chosen install model. Checks should
+prove marketplace commands use bundled runtime paths, local commands use
+installed `nams-hooks`, `dist-local/` has no compiled runtime, `dist/` stays
+npm-only, OpenAPI artifacts are absent, generated CLI files are executable, and
+plugin or extension metadata versions match `package.json`.
+
+### Documentation And Validation
+
+Update `README.md`, `INSTALL.md`, this guide, and
+`docs/superpowers/specs/2026-05-10-nams-hooks-design.md` when the platform
+becomes official. Create a dedicated platform design spec only when the platform
+introduces a new architecture, distribution model, blocking behavior, workspace
+interaction, configuration source, or payload source.
+
+Verify targeted platform tests first, then run `npm run check`. Run
+`npm run package:check` when templates, distribution scripts, package metadata,
+or distribution checks changed. Manual harness validation should use a
+throwaway project or temp HOME and must not write `.nams/` artifacts into this
+repository.
+
+Live validation in `live-tests/` is optional and outside the default Node
+verification path. Add it only when the platform can run non-interactively in
+Docker, credentials can be supplied safely, generated `dist/` and `dist-local/`
+artifacts can be consumed without rewriting hook commands, and the test can
+assert real NAMS persistence without becoming part of `npm run check`.
 
 ## Test Gemini CLI Locally
 
@@ -277,6 +333,69 @@ Start Codex from the target project and use `/hooks` to review and trust the new
 command hooks. Codex loads project-local `.codex/` configuration only after the
 project is trusted. If the project already has `.codex/` content, merge the
 generated hook and skill entries instead of replacing the folder.
+
+## Test Antigravity Artifacts Locally
+
+Build and verify the generated Antigravity artifacts:
+
+```bash
+npm run package:check
+```
+
+The project-local Antigravity plugin lives at:
+
+```text
+dist-local/antigravity/.agents/plugins/nams-hooks/
+```
+
+It calls an installed `nams-hooks` executable. For a disposable Antigravity test
+project, build and install the npm artifact, then link or copy the generated
+project-local plugin:
+
+```bash
+npm run dist:npm
+npm install -g ./dist
+npm run dist:local
+ln -sF <repository-root-or-worktree>/dist-local/antigravity/.agents /path/to/project/.agents
+```
+
+If the target project already has `.agents/` content, merge only
+`dist-local/antigravity/.agents/plugins/nams-hooks/` into
+`/path/to/project/.agents/plugins/nams-hooks/` instead of replacing the whole
+folder.
+
+The generated local hooks route:
+
+```bash
+nams-hooks run antigravity --event BeforeAgent
+nams-hooks run antigravity --event AfterAgent
+nams-hooks run antigravity --event AfterTool
+```
+
+The self-contained Antigravity CLI plugin is generated at:
+
+```text
+dist-marketplace/antigravity/plugins/nams-hooks/
+```
+
+Build and stage it at the Antigravity CLI plugin path used by the generated
+hook commands:
+
+```bash
+npm run dist:marketplace
+agy plugin validate dist-marketplace/antigravity/plugins/nams-hooks
+agy plugin install dist-marketplace/antigravity/plugins/nams-hooks
+```
+
+It bundles `bin/cli.js` and hook commands call that install location:
+
+```bash
+node "$HOME/.gemini/config/plugins/nams-hooks/bin/cli.js" run antigravity --event BeforeAgent
+```
+
+Manual validation with `agy` 1.0.8 confirmed `plugin validate` and `plugin
+install` place the plugin under `$HOME/.gemini/config/plugins/nams-hooks/` in a
+disposable HOME. Live hook memory behavior against Antigravity remains pending.
 
 ## Test Claude Code Locally
 

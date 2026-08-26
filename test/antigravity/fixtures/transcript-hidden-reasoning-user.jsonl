@@ -1,0 +1,2 @@
+{"id":"normal-user","role":"user","content":[{"type":"reasoning","text":"hidden reasoning part must not be read"},{"type":"thought","text":"hidden thought part must not be read"},{"type":"summary","text":"hidden summary part must not be read"},{"type":"text","text":"Visible user prompt."}],"status":"completed"}
+{"id":"hidden-user-record","role":"user","type":"reasoning","text":"hidden reasoning record must not be read","status":"completed"}

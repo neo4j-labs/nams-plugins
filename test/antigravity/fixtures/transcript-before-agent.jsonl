@@ -1,0 +1,4 @@
+{"id":"setup-1","role":"assistant","content":"I can help with that."}
+{"id":"user-1","role":"user","text":"Please remember that I prefer fixture-driven tests.","status":"completed"}
+{"id":"scratch-1","type":"reasoning","text":"hidden reasoning must not be read","status":"completed"}
+{"id":"draft-1","role":"user","message":"This draft should not be used.","status":"in_progress"}
