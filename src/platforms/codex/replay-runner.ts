@@ -1,3 +1,4 @@
+import path from "node:path";
 import { collectCodexReplaySessions } from "./replay-collector.js";
 import type { CodexReplayFileProgress } from "./replay-model.js";
 import {
@@ -43,7 +44,9 @@ export async function runCodexReplay(
   });
   const outbox = await createCodexReplayOutbox({
     sessions: collection.sessions,
-    ...(input.temporaryRoot !== undefined ? { temporaryRoot: input.temporaryRoot } : {}),
+    ...(input.temporaryRoot !== undefined
+      ? { temporaryRoot: path.resolve(input.temporaryRoot) }
+      : {}),
   });
   try {
     input.onProgress?.(`Codex replay outbox: ${outbox.path}`);

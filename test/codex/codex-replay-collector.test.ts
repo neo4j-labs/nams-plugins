@@ -216,6 +216,31 @@ test("does not replace the first absolute cwd when its metadata lacks session id
   }
 });
 
+test("reports an absolute path for an injected relative rollout path", async () => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "nams-codex-relative-path-"));
+  try {
+    const project = path.join(fixture, "project");
+    const rolloutPath = path.join(fixture, "sessions", "rollout.jsonl");
+    await mkdir(path.dirname(rolloutPath), { recursive: true });
+    await mkdir(project, { recursive: true });
+    await writeFile(rolloutPath, jsonl([
+      sessionMeta({ sessionId: "session-1", cwd: project, threadSource: "user" }),
+    ]), "utf8");
+    const progress: Array<{ path: string; status: "imported" | "skipped" }> = [];
+
+    const collection = await collectCodexReplaySessions({
+      importRoot: project,
+      transcriptPaths: [path.relative(process.cwd(), rolloutPath)],
+      onFileProcessed: (event) => progress.push(event),
+    });
+
+    assert.equal(collection.matchedFiles, 1);
+    assert.deepEqual(progress, [{ path: rolloutPath, status: "imported" }]);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
 async function withSingleRollout(
   recordsFor: (project: string) => RolloutRecord[],
   assertion: (

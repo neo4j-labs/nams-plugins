@@ -93,7 +93,7 @@ test("imports one grouped session and cleans the successful outbox", async () =>
     const progress: string[] = [];
     const summary = await runCodexReplay({
       importRoot: project,
-      temporaryRoot,
+      temporaryRoot: path.relative(process.cwd(), temporaryRoot),
       fetch: nams.fetch,
       onProgress: (line) => progress.push(line),
     });

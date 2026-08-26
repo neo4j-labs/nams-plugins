@@ -29,6 +29,7 @@
 - Modify: `src/platforms/codex/replay-model.ts`
 - Modify: `src/platforms/codex/replay-collector.ts`
 - Modify: `src/platforms/codex/replay-runner.ts`
+- Modify: `test/codex/codex-replay-collector.test.ts`
 - Modify: `test/codex/codex-replay-runner.test.ts`
 - Modify: `test/cli-replay.test.ts`
 - Modify: `docs/adr/0002-codex-session-outbox-replay.md`

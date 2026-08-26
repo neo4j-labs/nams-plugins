@@ -78,7 +78,7 @@ export async function collectCodexReplaySessions(
   try {
     transcriptPaths = [...(
       input.transcriptPaths ?? await discoverCodexRolloutPaths(input.env)
-    )].sort();
+    )].map((transcriptPath) => path.resolve(transcriptPath)).sort();
   } catch {
     throw new Error("Unable to discover Codex rollouts");
   }
