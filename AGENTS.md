@@ -57,6 +57,11 @@ The runtime must not fetch OpenAPI specs, inspect schemas, or discover endpoints
 
 - `devel` is the source branch.
 - `master` is the future generated release branch.
+- Keep distribution surfaces coherent across all available platforms:
+  - `dist/` contains the npm-installable `nams-hooks` runtime package.
+  - `dist-local/` contains local-installation artifacts for every supported platform.
+  - `dist-marketplace/` contains remote-installation artifacts for every supported platform.
+- When a platform gains an integration, update all applicable distribution surfaces in the same change. If an integration is intentionally unavailable for a surface, document the exception in the design and enforce the expected shape in distribution checks.
 - `dist/` is generated and ignored on `devel`.
 - `npm run build` compiles TypeScript into `.build/tsc` for local verification.
 - `npm run dist` creates a Gemini-linkable extension tree under `dist/`.

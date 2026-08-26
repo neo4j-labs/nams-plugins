@@ -33,6 +33,34 @@
         "nams"
       ],
       "category": "Productivity"
+    },
+    {
+      "name": "mcp",
+      "source": {
+        "source": "local",
+        "path": "./plugins/codex-nams-mcp"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
+      },
+      "interface": {
+        "displayName": "NAMS MCP"
+      },
+      "description": "OAuth-first Neo4j Agent Memory Service MCP tools for Codex.",
+      "version": "__PACKAGE_VERSION__",
+      "author": {
+        "name": "Neo4j Labs"
+      },
+      "repository": "https://github.com/neo4j-labs/nams-plugins",
+      "license": "__PACKAGE_LICENSE__",
+      "keywords": [
+        "memory",
+        "mcp",
+        "neo4j",
+        "nams"
+      ],
+      "category": "Productivity"
     }
   ]
 }

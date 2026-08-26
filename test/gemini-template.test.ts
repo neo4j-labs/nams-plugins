@@ -12,11 +12,14 @@ const execFileAsync = promisify(execFile);
 const marketplaceExtensionPath = path.join(repoRoot, "templates", "marketplace", "gemini", "gemini-extension.json");
 const marketplaceHooksPath = path.join(repoRoot, "templates", "marketplace", "gemini", "hooks", "hooks.json");
 const marketplaceCommandPath = path.join(repoRoot, "templates", "marketplace", "gemini", "commands", "nams", "workspace.toml");
+const marketplaceMcpExtensionPath = path.join(repoRoot, "templates", "marketplace", "gemini-mcp", "gemini-extension.json");
+const marketplaceMcpSettingsPath = path.join(repoRoot, "templates", "marketplace", "gemini-mcp", "settings.json");
 const marketplaceGeminiCliPath = "~/.gemini/extensions/nams-hooks/plugins/gemini-nams-hooks/bin/cli.js";
 const localGeminiRootPath = path.join(repoRoot, "templates", "local", "gemini", ".gemini");
 const localSettingsPath = path.join(localGeminiRootPath, "settings.json");
 const localCommandPath = path.join(localGeminiRootPath, "commands", "nams", "workspace.toml");
 const localExtensionPath = path.join(localGeminiRootPath, "extensions");
+const localMcpSettingsPath = path.join(repoRoot, "templates", "local", "gemini-mcp", ".gemini", "settings.json");
 
 test("Gemini extension template exposes NAMS environment settings in order", async () => {
   const template = JSON.parse(await readFile(marketplaceExtensionPath, "utf8"));
@@ -33,6 +36,37 @@ test("Gemini extension template exposes NAMS environment settings in order", asy
   assert.equal(settings[1].sensitive, false);
   assert.equal(settings[2].sensitive, false);
   assert.match(settings[1].description, /Optional/);
+});
+
+test("Gemini MCP marketplace template is separate from nams-hooks extension", async () => {
+  const extension = JSON.parse(await readFile(marketplaceMcpExtensionPath, "utf8"));
+  const settings = JSON.parse(await readFile(marketplaceMcpSettingsPath, "utf8"));
+
+  assert.equal(extension.name, "nams-mcp");
+  assert.equal(extension.version, "__PACKAGE_VERSION__");
+  assert.equal(extension.description, "OAuth-first Neo4j Agent Memory Service MCP tools for Gemini CLI.");
+  assert.equal(Object.hasOwn(extension, "settings"), false);
+  assert.deepEqual(settings, {
+    mcpServers: {
+      nams: {
+        httpUrl: "https://memory.neo4jlabs.com/mcp",
+      },
+    },
+  });
+  assert.doesNotMatch(JSON.stringify(settings), /NAMS_API_KEY|Authorization|Bearer|hooks|commands/);
+});
+
+test("Gemini MCP local template is a settings-only config fragment", async () => {
+  const settings = JSON.parse(await readFile(localMcpSettingsPath, "utf8"));
+
+  assert.deepEqual(settings, {
+    mcpServers: {
+      nams: {
+        httpUrl: "https://memory.neo4jlabs.com/mcp",
+      },
+    },
+  });
+  assert.doesNotMatch(JSON.stringify(settings), /NAMS_API_KEY|Authorization|Bearer|hooks|commands/);
 });
 
 test("Gemini hook template routes BeforeAgent through the memory hook only", async () => {
