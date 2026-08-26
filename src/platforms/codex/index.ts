@@ -29,7 +29,7 @@ import { formatWorkspaceSelectionNotice } from "../workspace-selection.js";
 import { parseCodexPayload } from "./payload.js";
 import { readCodexTranscript, type CodexTranscriptEntry } from "./transcript.js";
 
-export { codexReplayAdapter } from "./replay.js";
+export { runCodexReplay } from "./replay-runner.js";
 
 async function startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
     const payloadInfo = parseCodexPayload(invocation.rawPayload, invocation.processCwd);
