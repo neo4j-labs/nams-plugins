@@ -60,3 +60,46 @@ export interface CollectCodexReplayInput {
   transcriptPaths?: string[];
   env?: NodeJS.ProcessEnv;
 }
+
+export type CodexReplayOutboxRecord =
+  | {
+      kind: "conversation.create";
+      localConversationId: string;
+      sourceSessionId: string;
+      projectDirectory: string;
+      sourceStartedAt?: string;
+    }
+  | {
+      kind: "message.add";
+      localConversationId: string;
+      role: "user" | "assistant";
+      content: string;
+    }
+  | {
+      kind: "reasoningStep.create";
+      localConversationId: string;
+      localStepId: string;
+      reasoning: string;
+      actionTaken: string;
+      result?: string;
+    }
+  | {
+      kind: "toolCall.create";
+      localStepId: string;
+      toolName: string;
+      input: unknown;
+      output?: string;
+      status?: CodexReplayStatus;
+      durationMs?: number;
+    };
+
+export interface CodexReplayOutbox {
+  directory: string;
+  path: string;
+  recordCount: number;
+}
+
+export interface CreateCodexReplayOutboxInput {
+  sessions: CodexReplaySession[];
+  temporaryRoot?: string;
+}
