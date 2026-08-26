@@ -86,9 +86,7 @@ export async function sendCodexReplayOutbox(
     if (record.kind === "message.add") {
       const conversationId = conversationIds.get(record.localConversationId);
       if (conversationId === undefined) {
-        throw new Error(
-          `Codex replay outbox references an unknown conversation: ${record.localConversationId}`,
-        );
+        throw new Error("Codex replay outbox conversation reference became unavailable during delivery");
       }
       await namsRequest(() => client.addMessage(conversationId, {
         role: record.role,
@@ -101,9 +99,7 @@ export async function sendCodexReplayOutbox(
     if (record.kind === "reasoningStep.create") {
       const conversationId = conversationIds.get(record.localConversationId);
       if (conversationId === undefined) {
-        throw new Error(
-          `Codex replay outbox references an unknown conversation: ${record.localConversationId}`,
-        );
+        throw new Error("Codex replay outbox conversation reference became unavailable during delivery");
       }
       const response = await namsRequest(() => client.recordReasoningStep({
         conversationId,
@@ -122,9 +118,7 @@ export async function sendCodexReplayOutbox(
 
     const stepId = stepIds.get(record.localStepId);
     if (stepId === undefined) {
-      throw new Error(
-        `Codex replay outbox references an unknown reasoning step: ${record.localStepId}`,
-      );
+      throw new Error("Codex replay outbox reasoning step reference became unavailable during delivery");
     }
     const toolRequest: RecordToolCallRequest = {
       stepId,

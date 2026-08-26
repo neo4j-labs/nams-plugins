@@ -105,6 +105,7 @@ export async function readCodexReplayOutbox(
     throw new Error("Unable to read Codex replay outbox");
   }
   const records: CodexReplayOutboxRecord[] = [];
+  const recordLines: number[] = [];
   const lines = contents.split(/\r?\n/);
   for (let index = 0; index < lines.length; index += 1) {
     if (lines[index].trim() === "") continue;
@@ -112,11 +113,51 @@ export async function readCodexReplayOutbox(
       const parsed: unknown = JSON.parse(lines[index]);
       if (!isCodexReplayOutboxRecord(parsed)) throw new Error("invalid");
       records.push(parsed);
+      recordLines.push(index + 1);
     } catch {
       throw new Error(`Invalid Codex replay outbox record at line ${index + 1}`);
     }
   }
+  validateCodexReplayOutboxReferences(records, recordLines);
   return records;
+}
+
+function validateCodexReplayOutboxReferences(
+  records: CodexReplayOutboxRecord[],
+  recordLines: number[],
+): void {
+  const conversationIds = new Set<string>();
+  const stepIds = new Set<string>();
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index];
+    const line = recordLines[index];
+    if (record.kind === "conversation.create") {
+      if (conversationIds.has(record.localConversationId)) {
+        throw new Error(`Invalid Codex replay outbox conversation definition at line ${line}`);
+      }
+      conversationIds.add(record.localConversationId);
+      continue;
+    }
+    if (record.kind === "message.add") {
+      if (!conversationIds.has(record.localConversationId)) {
+        throw new Error(`Invalid Codex replay outbox conversation reference at line ${line}`);
+      }
+      continue;
+    }
+    if (record.kind === "reasoningStep.create") {
+      if (!conversationIds.has(record.localConversationId)) {
+        throw new Error(`Invalid Codex replay outbox conversation reference at line ${line}`);
+      }
+      if (stepIds.has(record.localStepId)) {
+        throw new Error(`Invalid Codex replay outbox reasoning step definition at line ${line}`);
+      }
+      stepIds.add(record.localStepId);
+      continue;
+    }
+    if (!stepIds.has(record.localStepId)) {
+      throw new Error(`Invalid Codex replay outbox reasoning step reference at line ${line}`);
+    }
+  }
 }
 
 export async function removeCodexReplayOutbox(

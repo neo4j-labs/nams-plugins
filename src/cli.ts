@@ -22,7 +22,7 @@ import {
 import {
   formatCodexReplaySummary,
   runCodexReplay,
-} from "./platforms/codex/replay-runner.js";
+} from "./platforms/codex/index.js";
 import { readJsonPayload } from "./runtime/stdin.js";
 
 type CliArgs =

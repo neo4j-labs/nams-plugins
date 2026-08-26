@@ -185,6 +185,37 @@ test("groups root and subagent rollouts by session and assembles tool-bearing st
   }
 });
 
+test("does not replace the first absolute cwd when its metadata lacks session identity", async () => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "nams-codex-collector-cwd-"));
+  try {
+    const project = path.join(fixture, "project");
+    const outsideProject = path.join(fixture, "outside");
+    const rolloutPath = path.join(fixture, "sessions", "rollout.jsonl");
+    await mkdir(path.dirname(rolloutPath), { recursive: true });
+    await mkdir(project, { recursive: true });
+    await writeFile(rolloutPath, jsonl([
+      {
+        timestamp: "2026-08-26T12:00:00.000Z",
+        ordinal: 0,
+        type: "session_meta",
+        payload: { cwd: outsideProject },
+      },
+      sessionMeta({ sessionId: "session-1", cwd: project, threadSource: "user" }),
+    ]), "utf8");
+
+    const collection = await collectCodexReplaySessions({
+      importRoot: project,
+      transcriptPaths: [rolloutPath],
+    });
+
+    assert.equal(collection.matchedFiles, 0);
+    assert.equal(collection.skippedFiles, 1);
+    assert.deepEqual(collection.sessions, []);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
 async function withSingleRollout(
   recordsFor: (project: string) => RolloutRecord[],
   assertion: (
@@ -294,6 +325,43 @@ test("creates one fallback step for calls before the first reasoning item", asyn
     );
     assert.equal(session.steps[0].toolCalls[0].status, "success");
     assert.equal(session.steps[0].toolCalls[1].status, undefined);
+  });
+});
+
+test("prefers explicit output duration over timestamps without replacing call duration", async () => {
+  await withSingleRollout((project) => [
+    sessionMeta({ sessionId: "session-1", cwd: project, threadSource: "user" }),
+    responseItem(1, "turn-1", {
+      type: "custom_tool_call",
+      call_id: "call-output-duration",
+      name: "exec",
+      input: "first command",
+    }),
+    responseItem(2, "turn-1", {
+      type: "custom_tool_call_output",
+      call_id: "call-output-duration",
+      output: "first output",
+      durationMs: 37,
+    }),
+    responseItem(3, "turn-1", {
+      type: "custom_tool_call",
+      call_id: "call-duration",
+      name: "exec",
+      input: "second command",
+      duration_ms: 11,
+    }),
+    responseItem(4, "turn-1", {
+      type: "custom_tool_call_output",
+      call_id: "call-duration",
+      output: "second output",
+      duration_ms: 99,
+    }),
+    taskComplete(5, "thread-1", "turn-1"),
+  ], (collection) => {
+    assert.deepEqual(
+      collection.sessions[0].steps[0].toolCalls.map((call) => call.durationMs),
+      [37, 11],
+    );
   });
 });
 

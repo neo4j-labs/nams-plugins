@@ -13,6 +13,17 @@ interface SourceFile {
   content: string;
 }
 
+const concreteAdapterPaths = new Set([
+  "src/platforms/gemini/index.ts",
+  "src/platforms/claude/index.ts",
+  "src/platforms/codex/index.ts",
+  "src/platforms/opencode/index.ts",
+  "src/platforms/gemini/workspaces.ts",
+  "src/platforms/claude/workspaces.ts",
+  "src/platforms/codex/workspaces.ts",
+  "src/platforms/opencode/workspaces.ts",
+]);
+
 async function readProjectFiles(folders: string[]): Promise<SourceFile[]> {
   const files: SourceFile[] = [];
   for (const folder of folders) {
@@ -67,18 +78,17 @@ function importedSourcePaths(filePath: string, content: string): string[] {
 }
 
 function importsConcreteAdapter(file: SourceFile): boolean {
-  const concreteAdapters = new Set([
-    "src/platforms/gemini/index.ts",
-    "src/platforms/claude/index.ts",
-    "src/platforms/codex/index.ts",
-    "src/platforms/opencode/index.ts",
-    "src/platforms/gemini/workspaces.ts",
-    "src/platforms/claude/workspaces.ts",
-    "src/platforms/codex/workspaces.ts",
-    "src/platforms/opencode/workspaces.ts",
-  ]);
+  return importedConcreteAdapterPaths(file).length > 0;
+}
 
-  return importedSourcePaths(file.path, file.content).some((importedPath) => concreteAdapters.has(importedPath));
+function importedConcreteAdapterPaths(file: SourceFile): string[] {
+  return importedSourcePaths(file.path, file.content)
+    .filter((importedPath) => concreteAdapterPaths.has(importedPath));
+}
+
+function importsOnlyCodexEntrypoint(file: SourceFile): boolean {
+  return importedConcreteAdapterPaths(file)
+    .every((importedPath) => importedPath === "src/platforms/codex/index.ts");
 }
 
 test("platform adapters do not import each other", async () => {
@@ -136,14 +146,16 @@ test("runtime and generated-client source do not hardcode production NAMS servic
   assert.deepEqual(violations, []);
 });
 
-test("only the platform registry imports all concrete adapters", async () => {
+test("only the platform registry and CLI gateway import concrete adapters", async () => {
   await assertNoViolations(
     projectFiles()
       .inFolder("src/**")
       .should()
       .adhereTo(
-        (file) => file.path === "src/platforms/index.ts" || !importsConcreteAdapter(file),
-        "Only src/platforms/index.ts may import concrete platform adapters",
+        (file) => file.path === "src/platforms/index.ts"
+          || (file.path === "src/cli.ts" && importsOnlyCodexEntrypoint(file))
+          || !importsConcreteAdapter(file),
+        "Only the platform registry and CLI gateway's Codex entrypoint may import concrete platform adapters",
       ),
   );
 });
@@ -216,11 +228,14 @@ test("replay is Codex-only and does not use the live adapter registry", async ()
   const platformIndex = await readFile("src/platforms/index.ts", "utf8");
   const claudeIndex = await readFile("src/platforms/claude/index.ts", "utf8");
   const codexIndex = await readFile("src/platforms/codex/index.ts", "utf8");
+  const cli = await readFile("src/cli.ts", "utf8");
   const interfaces = await readFile("src/interfaces.ts", "utf8");
 
   assert.doesNotMatch(platformIndex, /ReplayPlatform|ReplayPlatformAdapter|replayAdapters|claudeReplayAdapter|codexReplayAdapter/);
   assert.doesNotMatch(claudeIndex, /claudeReplayAdapter|\.\/replay\.js/);
-  assert.match(codexIndex, /export\s+\{\s*runCodexReplay\s*\}\s+from\s+["']\.\/replay-runner\.js["']/);
+  assert.match(codexIndex, /export\s+\{\s*formatCodexReplaySummary\s*,\s*runCodexReplay\s*,?\s*\}\s+from\s+["']\.\/replay-runner\.js["']/);
+  assert.match(cli, /import\s+\{\s*formatCodexReplaySummary\s*,\s*runCodexReplay\s*,?\s*\}\s+from\s+["']\.\/platforms\/codex\/index\.js["']/);
+  assert.doesNotMatch(cli, /\.\/platforms\/codex\/replay-runner\.js/);
   assert.doesNotMatch(interfaces, /ReplayPlatform|ReplayPlatformAdapter|ReplayTranscript|ReplayRecord/);
 });
 

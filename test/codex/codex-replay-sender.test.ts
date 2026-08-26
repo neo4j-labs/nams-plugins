@@ -202,3 +202,49 @@ test("validates the complete outbox before any remote request", async () => {
     assert.equal(nams.calls().length, 0);
   });
 });
+
+test("rejects late unknown references before any remote request", async (context) => {
+  await context.test("conversation reference", async () => {
+    await withNamsReplayEnvironment(async (fixture) => {
+      const nams = createNamsFetchMock().all({ error: "must not be called" }, 500);
+      const records: CodexReplayOutboxRecord[] = [
+        ...completeRecords(),
+        {
+          kind: "message.add",
+          localConversationId: "conversation:unknown-sensitive-id",
+          role: "assistant",
+          content: "must not be sent",
+        },
+      ];
+      const outboxPath = await writeOutbox(fixture, records);
+
+      await assert.rejects(
+        sendCodexReplayOutbox({ outboxPath, importRoot: "/project", fetch: nams.fetch }),
+        new Error("Invalid Codex replay outbox conversation reference at line 6"),
+      );
+      assert.equal(nams.calls().length, 0);
+    });
+  });
+
+  await context.test("reasoning step reference", async () => {
+    await withNamsReplayEnvironment(async (fixture) => {
+      const nams = createNamsFetchMock().all({ error: "must not be called" }, 500);
+      const records: CodexReplayOutboxRecord[] = [
+        ...completeRecords(),
+        {
+          kind: "toolCall.create",
+          localStepId: "step:unknown-sensitive-id",
+          toolName: "exec",
+          input: {},
+        },
+      ];
+      const outboxPath = await writeOutbox(fixture, records);
+
+      await assert.rejects(
+        sendCodexReplayOutbox({ outboxPath, importRoot: "/project", fetch: nams.fetch }),
+        new Error("Invalid Codex replay outbox reasoning step reference at line 6"),
+      );
+      assert.equal(nams.calls().length, 0);
+    });
+  });
+});

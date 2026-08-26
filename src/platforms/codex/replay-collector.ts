@@ -184,23 +184,30 @@ async function parseRollout(transcriptPath: string): Promise<ParsedRollout> {
 }
 
 function rolloutMetadata(records: Record<string, unknown>[]): SessionMetadata | undefined {
+  let sourceSessionId: string | undefined;
+  let fallbackSessionId: string | undefined;
+  let sourceThreadId: string | undefined;
+  let sourceStartedAt: string | undefined;
+  let projectDirectory: string | undefined;
+  let threadSource: string | undefined;
   for (const raw of records) {
     if (raw.type !== "session_meta" || !isPlainObject(raw.payload)) continue;
-    const sourceSessionId = firstString(raw.payload.session_id, raw.payload.id);
-    const projectDirectory = normalizeAbsolutePath(raw.payload.cwd);
-    if (sourceSessionId === undefined || projectDirectory === undefined) continue;
-    const sourceThreadId = firstString(raw.payload.id);
-    const sourceStartedAt = firstString(raw.payload.timestamp, raw.timestamp);
-    const threadSource = firstString(raw.payload.thread_source);
-    return {
-      sourceSessionId,
-      projectDirectory,
-      ...(sourceThreadId !== undefined ? { sourceThreadId } : {}),
-      ...(sourceStartedAt !== undefined ? { sourceStartedAt } : {}),
-      ...(threadSource !== undefined ? { threadSource } : {}),
-    };
+    projectDirectory ??= normalizeAbsolutePath(raw.payload.cwd);
+    sourceSessionId ??= firstString(raw.payload.session_id);
+    fallbackSessionId ??= firstString(raw.payload.id);
+    sourceThreadId ??= firstString(raw.payload.id);
+    sourceStartedAt ??= firstString(raw.payload.timestamp, raw.timestamp);
+    threadSource ??= firstString(raw.payload.thread_source);
   }
-  return undefined;
+  const resolvedSessionId = sourceSessionId ?? fallbackSessionId;
+  if (resolvedSessionId === undefined || projectDirectory === undefined) return undefined;
+  return {
+    sourceSessionId: resolvedSessionId,
+    projectDirectory,
+    ...(sourceThreadId !== undefined ? { sourceThreadId } : {}),
+    ...(sourceStartedAt !== undefined ? { sourceStartedAt } : {}),
+    ...(threadSource !== undefined ? { threadSource } : {}),
+  };
 }
 
 function rolloutThreadId(records: Record<string, unknown>[]): string | undefined {
@@ -349,6 +356,7 @@ function collectRolloutStream(
         ? customOutputParts(item.output)
         : [serializedOutput(item.output)];
       call.outputParts.push(...parts);
+      call.durationMs ??= finiteNumber(item.duration_ms, item.durationMs);
       call.lastOutputTimestampMs = timestampMilliseconds(timestamp)
         ?? call.lastOutputTimestampMs;
       continue;
