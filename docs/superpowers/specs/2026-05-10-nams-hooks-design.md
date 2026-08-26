@@ -558,7 +558,7 @@ OpenCode:
 
 The importer discovers regular JSONL files beneath `CODEX_HOME/sessions` and `CODEX_HOME/archived_sessions`, or the corresponding `~/.codex` directories. It filters each rollout stream by the first usable absolute `session_meta.payload.cwd` and includes the stream when that directory equals the import root or is below it. Every matching root and subagent stream with the same `session_meta.payload.session_id` contributes to one NAMS conversation during that run. `payload.id` is only the session fallback when `session_id` is absent and is otherwise available as a thread identity. Conflicting project directories in one grouped session stop collection.
 
-Completed `event_msg` `UserMessage` items from the root stream are the human message source. Completed root `AgentMessage` items are the assistant message source. Response-role user records, system/developer input, subagent assistant messages, compaction, and hidden reasoning are excluded from the canonical conversation stream.
+Root-stream `event_msg` records are the message source. Older Codex rollouts expose direct `user_message` and `agent_message` events with text in `payload.message`; newer rollouts expose completed `UserMessage` and `AgentMessage` items. Response-role user records, system/developer input, subagent assistant messages, compaction, and hidden reasoning are excluded from the canonical conversation stream.
 
 A `response_item.reasoning` record is an Agent Step boundary only. The importer isolates open steps by source session, thread, and turn; closes a step at the next reasoning boundary in that stream; discards boundaries with no tool calls; and creates a safe fallback step if a call precedes reasoning. It never stores reasoning summaries or `encrypted_content`.
 

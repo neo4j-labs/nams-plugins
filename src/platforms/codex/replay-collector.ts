@@ -258,6 +258,16 @@ function collectRolloutStream(
         if (turnId === currentTurnId) currentTurnId = undefined;
         continue;
       }
+      if (eventType === "user_message" || eventType === "agent_message") {
+        const message = legacyEventMessage(raw.payload, {
+          isRoot: identity.isRoot,
+          threadId: identity.threadId,
+          timestamp,
+          ordinal,
+        });
+        if (message !== undefined) messages.push(message);
+        continue;
+      }
       if (eventType === "item_completed") {
         const message = completedMessage(raw.payload, {
           isRoot: identity.isRoot,
@@ -425,6 +435,27 @@ function newStep(input: {
     actionTaken: "",
     toolCalls: [],
     commentary: [],
+  };
+}
+
+function legacyEventMessage(
+  payload: Record<string, unknown>,
+  stream: { isRoot: boolean; threadId: string; timestamp: string; ordinal: number },
+): CodexReplayMessage | undefined {
+  if (!stream.isRoot) return undefined;
+  const role = payload.type === "user_message"
+    ? "user"
+    : payload.type === "agent_message"
+      ? "assistant"
+      : undefined;
+  const content = firstString(payload.message);
+  if (role === undefined || content === undefined) return undefined;
+  return {
+    role,
+    content,
+    timestamp: stream.timestamp,
+    ordinal: stream.ordinal,
+    threadId: stream.threadId,
   };
 }
 

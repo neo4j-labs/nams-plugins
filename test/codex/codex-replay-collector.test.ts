@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { collectCodexReplaySessions } from "../../src/platforms/codex/replay-collector.js";
+import { codexReplayOutboxRecords } from "../../src/platforms/codex/replay-outbox.js";
 import {
   completedItem,
   jsonl,
@@ -236,6 +237,59 @@ test("reports an absolute path for an injected relative rollout path", async () 
 
     assert.equal(collection.matchedFiles, 1);
     assert.deepEqual(progress, [{ path: rolloutPath, status: "imported" }]);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("projects legacy root message events into outbox message records", async () => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "nams-codex-legacy-messages-"));
+  try {
+    const project = path.join(fixture, "project");
+    const rolloutPath = path.join(fixture, "sessions", "rollout.jsonl");
+    await mkdir(path.dirname(rolloutPath), { recursive: true });
+    await mkdir(project, { recursive: true });
+    await writeFile(rolloutPath, jsonl([
+      sessionMeta({ sessionId: "session-1", cwd: project, threadSource: "user" }),
+      {
+        timestamp: "2026-08-25T12:00:01.000Z",
+        ordinal: 1,
+        type: "event_msg",
+        payload: { type: "user_message", message: "Build it." },
+      },
+      {
+        timestamp: "2026-08-25T12:00:02.000Z",
+        ordinal: 2,
+        type: "event_msg",
+        payload: {
+          type: "agent_message",
+          message: "Implemented.",
+          phase: "final_answer",
+        },
+      },
+    ]), "utf8");
+
+    const collection = await collectCodexReplaySessions({
+      importRoot: project,
+      transcriptPaths: [rolloutPath],
+    });
+    const messageRecords = codexReplayOutboxRecords(collection.sessions)
+      .filter((record) => record.kind === "message.add");
+
+    assert.deepEqual(messageRecords, [
+      {
+        kind: "message.add",
+        localConversationId: "conversation:session-1",
+        role: "user",
+        content: "Build it.",
+      },
+      {
+        kind: "message.add",
+        localConversationId: "conversation:session-1",
+        role: "assistant",
+        content: "Implemented.",
+      },
+    ]);
   } finally {
     await rm(fixture, { recursive: true, force: true });
   }
