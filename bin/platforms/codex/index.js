@@ -8,7 +8,7 @@ import { loadEffectiveNamsConfigForMemory, resolveWorkspaceForMemory, } from "..
 import { formatWorkspaceSelectionNotice } from "../workspace-selection.js";
 import { parseCodexPayload } from "./payload.js";
 import { readCodexTranscript } from "./transcript.js";
-export { codexReplayAdapter } from "./replay.js";
+export { formatCodexReplaySummary, runCodexReplay, } from "./replay-runner.js";
 async function startSession(invocation) {
     const payloadInfo = parseCodexPayload(invocation.rawPayload, invocation.processCwd);
     return withHookSessionState(invocation, payloadInfo, async () => {

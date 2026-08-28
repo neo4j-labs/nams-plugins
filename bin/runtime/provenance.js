@@ -28,9 +28,15 @@ export function namsProvenanceHeaders(invocation) {
         "X-NAMS-Hooks-Event": invocation.event,
     };
 }
-export function namsReplayProvenanceHeaders(platform) {
+export function namsReplayProvenanceHeaders() {
     return {
-        ...baseProvenanceHeaders(platform),
+        ...baseProvenanceHeaders("codex"),
+        "X-NAMS-Hooks-Command": "replay",
+    };
+}
+export function namsClaudeReplayProvenanceHeaders() {
+    return {
+        ...baseProvenanceHeaders("claude"),
         "X-NAMS-Hooks-Command": "replay",
     };
 }
