@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import path from "node:path";
 import process from "node:process";
-import { hookEvents, platforms, replayPlatforms, workspaceHookEvents, } from "./interfaces.js";
-import { getMemoryPlatformAdapter, getReplayPlatformAdapter, getWorkspacePlatformAdapter, } from "./platforms/index.js";
-import { formatReplaySummary, runReplay } from "./runtime/replay.js";
+import { hookEvents, platforms, workspaceHookEvents, } from "./interfaces.js";
+import { getMemoryPlatformAdapter, getWorkspacePlatformAdapter, } from "./platforms/index.js";
+import { formatClaudeReplaySummary, runClaudeReplay, } from "./platforms/claude/index.js";
+import { formatCodexReplaySummary, runCodexReplay, } from "./platforms/codex/index.js";
 import { readJsonPayload } from "./runtime/stdin.js";
 async function main(argv) {
     const args = parseArgs(argv);
@@ -26,14 +27,20 @@ async function main(argv) {
     }
     if (args.command === "replay") {
         const importRoot = path.resolve(args.workingDirectory ?? process.cwd());
-        const adapter = getReplayPlatformAdapter(args.platform);
-        const summary = await runReplay({
+        if (args.platform === "codex") {
+            const summary = await runCodexReplay({
+                importRoot,
+                onProgress: (line) => process.stderr.write(`${line}\n`),
+            });
+            process.stdout.write(`${formatCodexReplaySummary(summary)}\n`);
+            return 0;
+        }
+        const summary = await runClaudeReplay({
             importRoot,
-            adapter,
             onProgress: (line) => process.stderr.write(`${line}\n`),
         });
-        process.stdout.write(`${formatReplaySummary(adapter.platform, summary)}\n`);
-        return summary.failed === 0 ? 0 : 1;
+        process.stdout.write(`${formatClaudeReplaySummary(summary)}\n`);
+        return 0;
     }
     const rawPayload = await readJsonPayload();
     const result = args.command === "run"
@@ -54,10 +61,14 @@ async function main(argv) {
 }
 function parseArgs(argv) {
     const [command, platformArg, eventFlag, eventArg] = argv;
-    if (command === "replay" && isReplayPlatform(platformArg)) {
+    if (command === "replay" && (platformArg === "claude" || platformArg === "codex")) {
         if (argv.length === 2)
             return { command: "replay", platform: platformArg };
-        if (argv.length === 4 && argv[2] === "--working-dir" && argv[3] !== undefined && argv[3].trim() !== "" && !argv[3].startsWith("--")) {
+        if (argv.length === 4
+            && argv[2] === "--working-dir"
+            && argv[3] !== undefined
+            && argv[3].trim() !== ""
+            && !argv[3].startsWith("--")) {
             return { command: "replay", platform: platformArg, workingDirectory: argv[3] };
         }
         return null;
@@ -101,9 +112,6 @@ function parseArgs(argv) {
 }
 function isPlatform(value) {
     return value !== undefined && platforms.includes(value);
-}
-function isReplayPlatform(value) {
-    return value !== undefined && replayPlatforms.includes(value);
 }
 function isHookEvent(value) {
     return value !== undefined && hookEvents.includes(value);

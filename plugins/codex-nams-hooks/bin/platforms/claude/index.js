@@ -6,6 +6,7 @@ import { loadEffectiveNamsConfigForMemory, resolveWorkspaceForMemory, } from "..
 import { formatWorkspaceSelectionNotice } from "../workspace-selection.js";
 import { discoverClaudeNamsConfig } from "./config.js";
 import { parseClaudePayload } from "./payload.js";
+export { formatClaudeReplaySummary, runClaudeReplay, } from "./replay-runner.js";
 async function startSession(invocation) {
     const payloadInfo = parseClaudePayload(invocation.rawPayload, invocation.processCwd);
     return withHookSessionState(invocation, payloadInfo, async () => allowOutput());
@@ -98,7 +99,6 @@ async function afterTool(invocation) {
     });
 }
 export const claudeMemoryAdapter = { startSession, beforeAgent, afterAgent, afterTool };
-export { claudeReplayAdapter } from "./replay.js";
 function allowOutput(additionalContext) {
     return {
         stdout: {

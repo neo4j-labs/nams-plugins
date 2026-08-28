@@ -7,4 +7,3 @@ export const workspaceHookEvents = [
     "CommandExecuteBefore",
     "CustomCommand",
 ];
-export const replayPlatforms = ["claude", "codex"];
