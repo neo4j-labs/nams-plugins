@@ -1,4 +1,8 @@
-import type { MemoryPlatformAdapter, Platform, WorkspacePlatformAdapter } from "../interfaces.js";
+import type {
+  MemoryPlatformAdapter,
+  Platform,
+  WorkspacePlatformAdapter,
+} from "../interfaces.js";
 import { claudeMemoryAdapter } from "./claude/index.js";
 import { claudeWorkspaceAdapter } from "./claude/workspaces.js";
 import { codexMemoryAdapter } from "./codex/index.js";

@@ -187,10 +187,14 @@ Dependency policy:
 
 Branch model:
 
-- `devel`: source branch containing TypeScript source, templates, docs, the pinned OpenAPI spec, the custom generator, and committed generated TypeScript client source.
-- `latest`: generated release/distribution branch containing the validated marketplace release artifacts from `dist-marketplace/`.
+- devel: main source branch containing TypeScript source, templates, docs, the pinned OpenAPI spec, the custom generator, and committed generated TypeScript client source.
+- latest: generated stable plugin marketplace branch containing validated dist-marketplace/ artifacts built from devel.
+- dist/<source-branch>: generated preview plugin marketplace branch containing validated dist-marketplace/ artifacts built from a non-devel source branch. Nested source branch names are preserved, so feature/foo publishes to dist/feature/foo.
+- dist/bin/<source-branch>: generated npm/npx distribution branch containing validated dist/ artifacts built from any source branch, including devel. Nested names are preserved, so feature/foo publishes to dist/bin/feature/foo.
 
-On `devel`, `dist/`, `dist-marketplace/`, and `dist-local/` are generated and ignored. `npm run dist` builds all three trees through the split projection scripts: `build-dist-npm.mjs`, `build-dist-marketplace.mjs`, and `build-dist-local.mjs`, with shared helpers in `build-dist-common.mjs`. `dist/` is the npm package artifact. `dist-marketplace/` is the self-contained marketplace release tree for Gemini, Claude Code, Codex, and OpenCode and is the only tree published to `latest`. `dist-local/` contains project-local configurations that call an installed `nams-hooks` executable. `dist/` and `dist-local/` are generated and verified on `devel` but are not published to `latest`.
+The dist/bin/** namespace is reserved for npm distribution branches. Source branches named bin or bin/** are not supported because their plugin marketplace target would collide with an npm distribution target.
+
+On source branches, dist/, dist-marketplace/, and dist-local/ are generated and ignored. npm run dist builds all three trees through the split projection scripts: build-dist-npm.mjs, build-dist-marketplace.mjs, and build-dist-local.mjs, with shared helpers in build-dist-common.mjs. dist/ is the npm package artifact and is published to dist/bin/<source-branch>. dist-marketplace/ is the self-contained plugin marketplace release tree for Gemini, Claude Code, Codex, and OpenCode and is published to latest or dist/<source-branch>. dist-local/ contains project-local configurations that call an installed nams-hooks executable and remains a source-branch verification artifact only.
 
 ```text
 dist/
@@ -316,24 +320,33 @@ OpenCode marketplace distribution is self-contained under `dist-marketplace/plug
 
 Manual or CI release flow:
 
-1. Work on `devel`.
-2. Run `npm run openapi:fetch` when the NAMS contract needs refreshing.
-3. Run `npm run openapi:generate`.
-4. Commit `docs/nams-openapi.json` and `src/generated/nams-client.ts` if they changed.
+1. Work on devel or another source branch.
+2. Run npm run openapi:fetch when the NAMS contract needs refreshing.
+3. Run npm run openapi:generate.
+4. Commit docs/nams-openapi.json and src/generated/nams-client.ts if they changed.
 5. Run package verification.
-6. Run release preparation to create the marketplace release tree from `dist-marketplace/`.
-7. Replace `latest` contents with the validated `dist-marketplace/` release tree.
-8. Commit the marketplace release artifact on `latest`.
-9. Force-update the `latest` tag and recreate the GitHub Release named `latest`.
+6. Run release preparation to create the npm, marketplace, and local verification trees.
+7. Replace the plugin target branch with validated dist-marketplace/ contents: latest for devel, or dist/<source-branch> for another source branch.
+8. Replace dist/bin/<source-branch> with the validated dist/ contents for every source branch, including devel.
+9. Commit each generated artifact tree on its target branch.
+10. When the plugin target is latest, force-update the latest tag and recreate the GitHub Release named latest.
 
 Rules:
 
-- Generated release artifacts are produced from `devel`; no hand edits.
-- The `latest` release tag is created from `latest`.
-- Gemini installs use `--ref latest`.
-- Codex, Claude, Gemini, and OpenCode marketplace release artifacts are produced from the same validated source tree.
-- `dist/` and `dist-local/` are verification artifacts on `devel`; they are not copied to `latest`.
-- `npm run package:check` must verify all generated artifacts: npm package output in `dist/`, self-contained marketplace output in `dist-marketplace/`, local project configuration output in `dist-local/`, and npm dry-run package contents.
+- Generated release artifacts are produced from source branches; no hand edits.
+- Successful push-triggered Builds start two independent publishers: plugin marketplace artifacts go from devel to latest or from another source branch to dist/<source-branch>, while npm artifacts go from every source branch to dist/bin/<source-branch>.
+- Pull-request Builds never publish artifacts.
+- Generated latest and dist/** branches do not trigger Build or Release again.
+- The workflow_run publishers become active only after their workflow files are present on the default devel branch.
+- A daily UTC cleanup removes generated dist/** branches, including dist/bin/**, whose tip commit is older than 30 days. The cleanup does not target latest or source branches and may also be run through manual dispatch.
+- The latest release tag and GitHub Release are created only by the plugin marketplace publisher for latest.
+- Npm distribution branches do not create tags or GitHub Releases.
+- The dist/bin/** namespace is reserved for npm distribution artifacts; source branches named bin or bin/** are not supported.
+- Gemini stable installs use --ref latest; plugin preview validation uses the corresponding dist/<source-branch> ref.
+- The package rooted at dist/bin/<source-branch> is the npx-consumable npm distribution for that source branch.
+- Codex, Claude, Gemini, and OpenCode plugin marketplace artifacts are produced from the same validated dist-marketplace/ tree.
+- dist-local/ remains a verification artifact on source branches and is not copied to generated release branches.
+- npm run package:check must verify all generated artifacts: npm package output in dist/, self-contained marketplace output in dist-marketplace/, local project configuration output in dist-local/, and npm dry-run package contents.
 
 ## Configuration
 
@@ -539,6 +552,48 @@ OpenCode:
 - `experimental.text.complete` persists exposed assistant text best-effort.
 - `tool.execute.after` persists sanitized tool metadata and exposed tool output.
 
+### Codex Session History Import
+
+`nams-hooks replay codex [--working-dir PATH]` performs one offline best-effort Codex import. This subsection and its implementation are Codex-specific. Claude replay is defined separately below and does not change or generalize the Codex collector, outbox, sender, or runner. Live hooks and distribution for both harnesses remain unchanged.
+
+The importer discovers regular JSONL files beneath `CODEX_HOME/sessions` and `CODEX_HOME/archived_sessions`, or the corresponding `~/.codex` directories. It filters each rollout stream by the first usable absolute `session_meta.payload.cwd` and includes the stream when that directory equals the import root or is below it. Every matching root and subagent stream with the same `session_meta.payload.session_id` contributes to one NAMS conversation during that run. `payload.id` is only the session fallback when `session_id` is absent and is otherwise available as a thread identity. Conflicting project directories in one grouped session stop collection.
+
+Root-stream `event_msg` records are the message source. Older Codex rollouts expose direct `user_message` and `agent_message` events with text in `payload.message`; newer rollouts expose completed `UserMessage` and `AgentMessage` items. Response-role user records, system/developer input, subagent assistant messages, compaction, and hidden reasoning are excluded from the canonical conversation stream.
+
+A `response_item.reasoning` record is an Agent Step boundary only. The importer isolates open steps by source session, thread, and turn; closes a step at the next reasoning boundary in that stream; discards boundaries with no tool calls; and creates a safe fallback step if a call precedes reasoning. It never stores reasoning summaries or `encrypted_content`.
+
+Response-level `custom_tool_call` and `function_call` wrappers are the canonical tool records. Calls and outputs pair by explicit `call_id` within the same session, thread, and turn. Every matching output record and every exposed textual output part is appended in source order and concatenated once. Nested command, file-change, collaboration, and subagent event items are not emitted as duplicate calls. Status and duration are recorded only when the rollout exposes defensible evidence compatible with the NAMS contract.
+
+The filtered corpus is assembled in memory. Before the first NAMS request, the importer writes the complete logical operation sequence to `outbox.jsonl` inside a unique directory created under the OS temporary directory. The directory uses mode `0700` and the file uses `0600`. Replay never reads or writes live `SessionState`, `.nams/state/`, or `.nams/logs/`, and it persists no cursor, checkpoint, sent marker, deduplication key, conversation mapping, or Agent Step mapping.
+
+Replay progress on stderr includes one full-path classification for every successfully processed rollout stream: `Codex replay file imported: <absolute path>` when the stream contributes to the normalized corpus, or `Codex replay file skipped: <absolute path>` when metadata or import-root filtering rejects it. After the private outbox is created, stderr also includes `Codex replay outbox: <absolute path>` before delivery. These operator-visible paths intentionally supersede the earlier path-redaction rule; no rollout contents, outbox contents, tool inputs or outputs, or credentials are printed. The aggregate success summary remains on stdout.
+
+The sender validates the whole outbox, resolves NAMS configuration and one destination workspace, and sends records sequentially. It performs no retry and stops on the first configuration, validation, transport, HTTP, or response error. Remote conversation and step IDs exist only in process memory. A `finally` cleanup removes the temporary outbox after handled success or failure; an abrupt termination may leave it for OS cleanup.
+
+Restarting rediscovers the corpus, recreates the outbox, creates new NAMS conversations, and starts from the beginning. Duplicate writes and partial or orphaned conversations from a prior failed run are acceptable. This is best-effort, at-least-once delivery when the operator restarts after failure, not exactly-once or resumable delivery.
+
+### Claude Session History Import
+
+`nams-hooks replay claude [--working-dir PATH]` performs one offline best-effort Claude import through platform-local modules under `src/platforms/claude/`. It does not use or generalize the Codex replay model, collector, outbox, sender, runner, fixtures, or test environment. The CLI dispatches directly to the concrete Claude runner.
+
+The importer discovers regular transcript JSONL beneath `CLAUDE_CONFIG_DIR/projects` or `~/.claude/projects`. It excludes subagent metadata, tool-result companions, and memory files from transcript discovery. It reads the selected corpus into memory, groups files by transcript `sessionId`, identifies the root and `agent:<agentId>` streams, and uses adjacent subagent metadata `toolUseId` only to link a sidechain to its parent `Agent` call. A session is eligible when the root stream's first usable absolute cwd equals the import root or is below it; later cwd values may move into descendants and need not equal the root cwd.
+
+For each stream, the importer follows `parentUuid` from the final UUID-bearing record to select the active spine. Only active root `user` records with `origin.kind:"human"` become user messages. Authored slash commands are normalized from their command name and arguments. Command expansion, local controls, task notifications, tool results, interruption notices, and sidechain prompts are excluded. Active root assistant text grouped by assistant `message.id` becomes the assistant message stream; sidechain assistant text is not flattened.
+
+An active assistant `message.id`, scoped by source session and stream, creates one Agent Step when the grouped response contains at least one `tool_use`. All calls in the response attach to that step. Visible text from the same response is the safe step summary; otherwise the importer uses a fixed operational fallback. Thinking, redacted thinking, signatures, and inferred chain-of-thought are never stored.
+
+Calls and direct results pair by `tool_use.id` and `tool_result.tool_use_id` within a session and stream, regardless of adjacency or graph branching. Every output record and every visible content item is appended in source order, including stable serialization of non-text items. Root task notifications attach their result and final status to the uniquely matching call through embedded `tool-use-id`; they never become user messages. Parent delegation calls and child-internal calls are both retained, while sidechain final responses are not duplicated as conversation or tool output.
+
+For a result with `toolUseResult.persistedOutputPath`, the importer resolves only its basename inside the selected session's local `tool-results/` directory, requires a non-symlink regular file and matching persisted size, and uses its complete contents instead of the preview. It never follows the original absolute path outside the selected corpus. Missing or invalid companions fall back to exposed result content and increment the unsupported count.
+
+Before the first NAMS request, Claude replay writes all logical operations to `outbox.jsonl` inside a unique `nams-hooks-claude-replay-*` directory under the OS temporary directory. The directory uses mode `0700` and the file uses `0600`. Claude replay never reads or writes live `SessionState`, `.nams/state/`, or `.nams/logs/`, and it persists no checkpoint, cursor, sent marker, deduplication key, conversation mapping, or Agent Step mapping.
+
+The Claude sender validates the entire outbox and all local references before configuration or network access, loads normal configuration plus Claude plugin configuration discovery, resolves one workspace, sends records sequentially, performs no retry, and stops on the first failure. Remote conversation and Agent Step IDs remain in process memory. A `finally` cleanup removes the temporary outbox after handled success or failure; abrupt termination may leave it for OS cleanup.
+
+Restarting rediscovers the Claude corpus, recreates the outbox, creates new NAMS conversations, and starts from the beginning. Duplicate writes and partial prior conversations are acceptable. Delivery is best-effort with at-least-once behavior when the operator restarts after failure.
+
+Claude progress on stderr emits `Claude replay file imported: <absolute path>`, `Claude replay file skipped: <absolute path>`, and `Claude replay outbox: <absolute path>`. The success summary remains on stdout. No transcript contents, outbox contents, tool inputs/outputs, or credentials are printed.
+
 ## Duplicate Suppression
 
 Hooks may replay or expose the same text through multiple events. The runtime uses SHA-256 hashes stored in session state to suppress duplicate user and assistant messages.
@@ -700,4 +755,4 @@ Approved decisions from brainstorming:
 - Rely on NAMS async entity extraction from stored messages.
 - Use TypeScript for source and release vanilla JavaScript.
 - Use a custom generated `NamsClient` for REST calls.
-- Use `devel` for source and generated TypeScript, and `latest` for validated marketplace release artifacts from `dist-marketplace/`; `dist/` and `dist-local/` remain generated verification artifacts on `devel`.
+- Use devel as the main source branch. Publish validated dist-marketplace/ artifacts to latest from devel and to dist/<source-branch> from non-devel source branches. Publish validated dist/ npm artifacts from every source branch to dist/bin/<source-branch>. Keep dist-local/ as a generated verification artifact on source branches.

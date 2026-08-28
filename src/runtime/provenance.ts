@@ -26,10 +26,30 @@ export const namsHooksVersion: string = readPackageVersion();
 
 export function namsProvenanceHeaders(invocation: HookInvocation): Record<string, string> {
   return {
-    "X-NAMS-Hooks-Harness": invocation.platform,
+    ...baseProvenanceHeaders(invocation.platform),
+    "X-NAMS-Hooks-Event": invocation.event,
+  };
+}
+
+export function namsReplayProvenanceHeaders(): Record<string, string> {
+  return {
+    ...baseProvenanceHeaders("codex"),
+    "X-NAMS-Hooks-Command": "replay",
+  };
+}
+
+export function namsClaudeReplayProvenanceHeaders(): Record<string, string> {
+  return {
+    ...baseProvenanceHeaders("claude"),
+    "X-NAMS-Hooks-Command": "replay",
+  };
+}
+
+function baseProvenanceHeaders(harness: string): Record<string, string> {
+  return {
+    "X-NAMS-Hooks-Harness": harness,
     "X-NAMS-Hooks-Version": namsHooksVersion,
     "X-NAMS-Hooks-Platform": process.platform,
     "X-NAMS-Hooks-Node-Version": process.version,
-    "X-NAMS-Hooks-Event": invocation.event,
   };
 }

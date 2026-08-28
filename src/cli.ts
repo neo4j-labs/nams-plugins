@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import path from "node:path";
 import process from "node:process";
 import {
   hookEvents,
@@ -14,12 +15,24 @@ import {
   type WorkspaceHookInvocation,
   type WorkspacePlatformAdapter,
 } from "./interfaces.js";
-import { getMemoryPlatformAdapter, getWorkspacePlatformAdapter } from "./platforms/index.js";
+import {
+  getMemoryPlatformAdapter,
+  getWorkspacePlatformAdapter,
+} from "./platforms/index.js";
+import {
+  formatClaudeReplaySummary,
+  runClaudeReplay,
+} from "./platforms/claude/index.js";
+import {
+  formatCodexReplaySummary,
+  runCodexReplay,
+} from "./platforms/codex/index.js";
 import { readJsonPayload } from "./runtime/stdin.js";
 
 type CliArgs =
   | { command: "run"; platform: Platform; event: HookEvent }
   | { command: "workspaces"; platform: Platform; event: WorkspaceHookEvent }
+  | { command: "replay"; platform: "claude" | "codex"; workingDirectory?: string }
   | {
       command: "workspace-configure";
       platform: Platform;
@@ -49,6 +62,24 @@ async function main(argv: string[]): Promise<number> {
     return writeWorkspaceConfigureResult(result);
   }
 
+  if (args.command === "replay") {
+    const importRoot = path.resolve(args.workingDirectory ?? process.cwd());
+    if (args.platform === "codex") {
+      const summary = await runCodexReplay({
+        importRoot,
+        onProgress: (line) => process.stderr.write(`${line}\n`),
+      });
+      process.stdout.write(`${formatCodexReplaySummary(summary)}\n`);
+      return 0;
+    }
+    const summary = await runClaudeReplay({
+      importRoot,
+      onProgress: (line) => process.stderr.write(`${line}\n`),
+    });
+    process.stdout.write(`${formatClaudeReplaySummary(summary)}\n`);
+    return 0;
+  }
+
   const rawPayload = await readJsonPayload();
   const result =
     args.command === "run"
@@ -70,6 +101,19 @@ async function main(argv: string[]): Promise<number> {
 
 function parseArgs(argv: string[]): CliArgs | null {
   const [command, platformArg, eventFlag, eventArg] = argv;
+  if (command === "replay" && (platformArg === "claude" || platformArg === "codex")) {
+    if (argv.length === 2) return { command: "replay", platform: platformArg };
+    if (
+      argv.length === 4
+      && argv[2] === "--working-dir"
+      && argv[3] !== undefined
+      && argv[3].trim() !== ""
+      && !argv[3].startsWith("--")
+    ) {
+      return { command: "replay", platform: platformArg, workingDirectory: argv[3] };
+    }
+    return null;
+  }
   if (command === "workspaces" && platformArg === "configure") {
     const platform = argv[2];
     const scope = flagValue(argv, "--scope");
@@ -184,6 +228,7 @@ function writeWorkspaceConfigureResult(result: HookResult): number {
 function usage(): string {
   return [
     "Usage: nams-hooks run <gemini|claude|codex|opencode> --event <SessionStart|BeforeAgent|AfterAgent|AfterTool>",
+    "       nams-hooks replay <claude|codex> [--working-dir PATH]",
     "       nams-hooks workspaces run <gemini|claude|codex|opencode> --event <BeforeAgent|InstallConfigure|UserPromptExpansion|CommandExecuteBefore|CustomCommand>",
     "       nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope <project|user> [--workspace WORKSPACE_NAME_OR_ID]",
     "       nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope session --session-id ID [--workspace WORKSPACE_NAME_OR_ID]",
