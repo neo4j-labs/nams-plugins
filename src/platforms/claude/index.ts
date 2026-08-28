@@ -20,6 +20,11 @@ import { formatWorkspaceSelectionNotice } from "../workspace-selection.js";
 import { discoverClaudeNamsConfig } from "./config.js";
 import { parseClaudePayload } from "./payload.js";
 
+export {
+  formatClaudeReplaySummary,
+  runClaudeReplay,
+} from "./replay-runner.js";
+
 async function startSession(invocation: HookInvocation<"SessionStart">): Promise<HookResult> {
     const payloadInfo = parseClaudePayload(invocation.rawPayload, invocation.processCwd);
     return withHookSessionState(invocation, payloadInfo, async () => allowOutput());

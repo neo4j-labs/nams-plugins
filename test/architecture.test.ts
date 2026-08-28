@@ -86,9 +86,11 @@ function importedConcreteAdapterPaths(file: SourceFile): string[] {
     .filter((importedPath) => concreteAdapterPaths.has(importedPath));
 }
 
-function importsOnlyCodexEntrypoint(file: SourceFile): boolean {
-  return importedConcreteAdapterPaths(file)
-    .every((importedPath) => importedPath === "src/platforms/codex/index.ts");
+function importsOnlyReplayEntrypoints(file: SourceFile): boolean {
+  const importedPaths = importedConcreteAdapterPaths(file);
+  return importedPaths.length === 2
+    && importedPaths.includes("src/platforms/claude/index.ts")
+    && importedPaths.includes("src/platforms/codex/index.ts");
 }
 
 test("platform adapters do not import each other", async () => {
@@ -153,9 +155,9 @@ test("only the platform registry and CLI gateway import concrete adapters", asyn
       .should()
       .adhereTo(
         (file) => file.path === "src/platforms/index.ts"
-          || (file.path === "src/cli.ts" && importsOnlyCodexEntrypoint(file))
+          || (file.path === "src/cli.ts" && importsOnlyReplayEntrypoints(file))
           || !importsConcreteAdapter(file),
-        "Only the platform registry and CLI gateway's Codex entrypoint may import concrete platform adapters",
+        "Only the platform registry and CLI gateway's replay entrypoints may import concrete platform adapters",
       ),
   );
 });
@@ -224,19 +226,24 @@ test("workspace adapter registry is static", async () => {
   }
 });
 
-test("replay is Codex-only and does not use the live adapter registry", async () => {
+test("Claude and Codex replay use separate platform entrypoints without a replay registry", async () => {
   const platformIndex = await readFile("src/platforms/index.ts", "utf8");
   const claudeIndex = await readFile("src/platforms/claude/index.ts", "utf8");
   const codexIndex = await readFile("src/platforms/codex/index.ts", "utf8");
+  const claudeCollector = await readFile("src/platforms/claude/replay-collector.ts", "utf8");
+  const codexCollector = await readFile("src/platforms/codex/replay-collector.ts", "utf8");
   const cli = await readFile("src/cli.ts", "utf8");
   const interfaces = await readFile("src/interfaces.ts", "utf8");
 
-  assert.doesNotMatch(platformIndex, /ReplayPlatform|ReplayPlatformAdapter|replayAdapters|claudeReplayAdapter|codexReplayAdapter/);
-  assert.doesNotMatch(claudeIndex, /claudeReplayAdapter|\.\/replay\.js/);
+  assert.doesNotMatch(platformIndex, /ReplayPlatform|ReplayPlatformAdapter|replayAdapters/);
+  assert.match(claudeIndex, /export\s+\{\s*formatClaudeReplaySummary\s*,\s*runClaudeReplay\s*,?\s*\}\s+from\s+["']\.\/replay-runner\.js["']/);
   assert.match(codexIndex, /export\s+\{\s*formatCodexReplaySummary\s*,\s*runCodexReplay\s*,?\s*\}\s+from\s+["']\.\/replay-runner\.js["']/);
-  assert.match(cli, /import\s+\{\s*formatCodexReplaySummary\s*,\s*runCodexReplay\s*,?\s*\}\s+from\s+["']\.\/platforms\/codex\/index\.js["']/);
-  assert.doesNotMatch(cli, /\.\/platforms\/codex\/replay-runner\.js/);
+  assert.match(cli, /from\s+["']\.\/platforms\/claude\/index\.js["']/);
+  assert.match(cli, /from\s+["']\.\/platforms\/codex\/index\.js["']/);
+  assert.doesNotMatch(cli, /getReplayPlatformAdapter|runReplay\(/);
   assert.doesNotMatch(interfaces, /ReplayPlatform|ReplayPlatformAdapter|ReplayTranscript|ReplayRecord/);
+  assert.doesNotMatch(claudeCollector, /platforms\/codex|codex\/replay|CodexReplay/);
+  assert.doesNotMatch(codexCollector, /platforms\/claude|claude\/replay|ClaudeReplay/);
 });
 
 test("workspace resolution runtime does not format platform hook output", async () => {

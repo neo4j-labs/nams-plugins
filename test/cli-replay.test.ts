@@ -227,11 +227,10 @@ test("replay defaults the import root to the child cwd", async () => {
   });
 });
 
-test("replay rejects Claude and malformed arguments", async () => {
+test("replay rejects unsupported platforms and malformed Codex arguments", async () => {
   const fixture = await mkdtemp(path.join(tmpdir(), "nams-cli-replay-"));
   try {
     for (const args of [
-      ["replay", "claude"],
       ["replay", "gemini"],
       ["replay", "codex", "--working-dir"],
       ["replay", "codex", "--working-dir", ""],
@@ -240,7 +239,7 @@ test("replay rejects Claude and malformed arguments", async () => {
     ]) {
       const result = await runCli(args, fixture, {});
       assert.equal(result.code, 1);
-      assert.match(result.stderr, /nams-hooks replay codex \[--working-dir PATH\]/);
+      assert.match(result.stderr, /nams-hooks replay <claude\|codex> \[--working-dir PATH\]/);
     }
   } finally {
     await rm(fixture, { recursive: true, force: true });
