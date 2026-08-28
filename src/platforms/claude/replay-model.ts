@@ -65,3 +65,46 @@ export interface CollectClaudeReplayInput {
   env?: NodeJS.ProcessEnv;
   onFileProcessed?: (event: ClaudeReplayFileProgress) => void;
 }
+
+export type ClaudeReplayOutboxRecord =
+  | {
+      kind: "conversation.create";
+      localConversationId: string;
+      sourceSessionId: string;
+      projectDirectory: string;
+      sourceStartedAt?: string;
+    }
+  | {
+      kind: "message.add";
+      localConversationId: string;
+      role: "user" | "assistant";
+      content: string;
+    }
+  | {
+      kind: "reasoningStep.create";
+      localConversationId: string;
+      localStepId: string;
+      reasoning: string;
+      actionTaken: string;
+      result?: string;
+    }
+  | {
+      kind: "toolCall.create";
+      localStepId: string;
+      toolName: string;
+      input: unknown;
+      output?: string;
+      status?: ClaudeReplayStatus;
+      durationMs?: number;
+    };
+
+export interface ClaudeReplayOutbox {
+  directory: string;
+  path: string;
+  recordCount: number;
+}
+
+export interface CreateClaudeReplayOutboxInput {
+  sessions: ClaudeReplaySession[];
+  temporaryRoot?: string;
+}
