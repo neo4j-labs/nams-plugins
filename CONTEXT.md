@@ -289,3 +289,49 @@ _Avoid_: Exactly-once delivery, resumable replay
 **Source Session Provenance**:
 The Codex harness, source `session_id`, rollout working directory, and optional source start time stored on an imported conversation. NAMS insertion timestamps are not treated as historical source timestamps.
 _Avoid_: Import timestamp as session time, inferred source time
+
+### Claude Session History Import
+
+**Claude Session History Import**:
+A one-off, offline ingestion of matching Claude transcript files into NAMS through the Claude-specific collector and temporary outbox.
+_Avoid_: Codex replay adapter, shared replay pipeline
+
+**Imported Claude Conversation**:
+One NAMS conversation representing an active Claude root transcript and its linked sidechain streams with the same `sessionId` during one import run.
+_Avoid_: Per-file conversation, flattened subagent dialogue
+
+**Claude Transcript Stream**:
+One root or `agent:<agentId>` JSONL stream. It contributes active assistant response groups and tools but only the root contributes canonical user/assistant messages.
+_Avoid_: Independent conversation, source turn
+
+**Active Claude Spine**:
+The UUID ancestry obtained by starting at a stream's last UUID-bearing record and following `parentUuid`. It selects the retained conversation branch without discarding explicitly paired parallel tool results.
+_Avoid_: Every append-only row, output adjacency
+
+**Claude Authored Message**:
+An active root user record with `origin.kind:"human"`, or active root assistant text grouped by `message.id`. Slash-command input is normalized from its command name and arguments.
+_Avoid_: Every `type:"user"` record, sidechain message
+
+**Claude Source Agent Step**:
+One active assistant `message.id`, scoped by source session and stream, that contains at least one `tool_use`. Visible text may summarize it; thinking and signatures are never memory.
+_Avoid_: Thinking block, one-call step
+
+**Claude Direct Tool Output**:
+Every visible item from `tool_result.content`, paired to `tool_use.id` by `tool_use_id` within one stream and concatenated in source order.
+_Avoid_: Adjacent user message, first output item only
+
+**Claude Asynchronous Tool Output**:
+The later task-notification result and final status associated with an `Agent` or `SendMessage` call through embedded `tool-use-id`.
+_Avoid_: Human message, duplicated subagent final response
+
+**Claude Persisted Tool Output**:
+A complete large-output companion validated beneath the selected session's local `tool-results/` directory and used instead of the transcript preview.
+_Avoid_: Logged absolute path, preview plus full-output duplication
+
+**Claude Temporary Replay Outbox**:
+A complete private Claude JSONL operation projection in a unique OS temporary directory, separate from the Codex outbox and removed after handled completion.
+_Avoid_: Shared replay queue, live session state
+
+**Claude Best-Effort Replay Delivery**:
+Sequential fail-fast Claude delivery with no retry, checkpoint, persistent mapping, or deduplication. Restarting rebuilds and resends the whole Claude outbox.
+_Avoid_: Exactly-once delivery, resumable import

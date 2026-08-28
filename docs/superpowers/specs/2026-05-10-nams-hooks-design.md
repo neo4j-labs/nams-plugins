@@ -554,7 +554,7 @@ OpenCode:
 
 ### Codex Session History Import
 
-`nams-hooks replay codex [--working-dir PATH]` performs one offline best-effort import. Replay is Codex-only; Claude replay is not supported, while Claude live hooks and distribution remain unchanged.
+`nams-hooks replay codex [--working-dir PATH]` performs one offline best-effort Codex import. This subsection and its implementation are Codex-specific. Claude replay is defined separately below and does not change or generalize the Codex collector, outbox, sender, or runner. Live hooks and distribution for both harnesses remain unchanged.
 
 The importer discovers regular JSONL files beneath `CODEX_HOME/sessions` and `CODEX_HOME/archived_sessions`, or the corresponding `~/.codex` directories. It filters each rollout stream by the first usable absolute `session_meta.payload.cwd` and includes the stream when that directory equals the import root or is below it. Every matching root and subagent stream with the same `session_meta.payload.session_id` contributes to one NAMS conversation during that run. `payload.id` is only the session fallback when `session_id` is absent and is otherwise available as a thread identity. Conflicting project directories in one grouped session stop collection.
 
@@ -571,6 +571,28 @@ Replay progress on stderr includes one full-path classification for every succes
 The sender validates the whole outbox, resolves NAMS configuration and one destination workspace, and sends records sequentially. It performs no retry and stops on the first configuration, validation, transport, HTTP, or response error. Remote conversation and step IDs exist only in process memory. A `finally` cleanup removes the temporary outbox after handled success or failure; an abrupt termination may leave it for OS cleanup.
 
 Restarting rediscovers the corpus, recreates the outbox, creates new NAMS conversations, and starts from the beginning. Duplicate writes and partial or orphaned conversations from a prior failed run are acceptable. This is best-effort, at-least-once delivery when the operator restarts after failure, not exactly-once or resumable delivery.
+
+### Claude Session History Import
+
+`nams-hooks replay claude [--working-dir PATH]` performs one offline best-effort Claude import through platform-local modules under `src/platforms/claude/`. It does not use or generalize the Codex replay model, collector, outbox, sender, runner, fixtures, or test environment. The CLI dispatches directly to the concrete Claude runner.
+
+The importer discovers regular transcript JSONL beneath `CLAUDE_CONFIG_DIR/projects` or `~/.claude/projects`. It excludes subagent metadata, tool-result companions, and memory files from transcript discovery. It reads the selected corpus into memory, groups files by transcript `sessionId`, identifies the root and `agent:<agentId>` streams, and uses adjacent subagent metadata `toolUseId` only to link a sidechain to its parent `Agent` call. A session is eligible when the root stream's first usable absolute cwd equals the import root or is below it; later cwd values may move into descendants and need not equal the root cwd.
+
+For each stream, the importer follows `parentUuid` from the final UUID-bearing record to select the active spine. Only active root `user` records with `origin.kind:"human"` become user messages. Authored slash commands are normalized from their command name and arguments. Command expansion, local controls, task notifications, tool results, interruption notices, and sidechain prompts are excluded. Active root assistant text grouped by assistant `message.id` becomes the assistant message stream; sidechain assistant text is not flattened.
+
+An active assistant `message.id`, scoped by source session and stream, creates one Agent Step when the grouped response contains at least one `tool_use`. All calls in the response attach to that step. Visible text from the same response is the safe step summary; otherwise the importer uses a fixed operational fallback. Thinking, redacted thinking, signatures, and inferred chain-of-thought are never stored.
+
+Calls and direct results pair by `tool_use.id` and `tool_result.tool_use_id` within a session and stream, regardless of adjacency or graph branching. Every output record and every visible content item is appended in source order, including stable serialization of non-text items. Root task notifications attach their result and final status to the uniquely matching call through embedded `tool-use-id`; they never become user messages. Parent delegation calls and child-internal calls are both retained, while sidechain final responses are not duplicated as conversation or tool output.
+
+For a result with `toolUseResult.persistedOutputPath`, the importer resolves only its basename inside the selected session's local `tool-results/` directory, requires a non-symlink regular file and matching persisted size, and uses its complete contents instead of the preview. It never follows the original absolute path outside the selected corpus. Missing or invalid companions fall back to exposed result content and increment the unsupported count.
+
+Before the first NAMS request, Claude replay writes all logical operations to `outbox.jsonl` inside a unique `nams-hooks-claude-replay-*` directory under the OS temporary directory. The directory uses mode `0700` and the file uses `0600`. Claude replay never reads or writes live `SessionState`, `.nams/state/`, or `.nams/logs/`, and it persists no checkpoint, cursor, sent marker, deduplication key, conversation mapping, or Agent Step mapping.
+
+The Claude sender validates the entire outbox and all local references before configuration or network access, loads normal configuration plus Claude plugin configuration discovery, resolves one workspace, sends records sequentially, performs no retry, and stops on the first failure. Remote conversation and Agent Step IDs remain in process memory. A `finally` cleanup removes the temporary outbox after handled success or failure; abrupt termination may leave it for OS cleanup.
+
+Restarting rediscovers the Claude corpus, recreates the outbox, creates new NAMS conversations, and starts from the beginning. Duplicate writes and partial prior conversations are acceptable. Delivery is best-effort with at-least-once behavior when the operator restarts after failure.
+
+Claude progress on stderr emits `Claude replay file imported: <absolute path>`, `Claude replay file skipped: <absolute path>`, and `Claude replay outbox: <absolute path>`. The success summary remains on stdout. No transcript contents, outbox contents, tool inputs/outputs, or credentials are printed.
 
 ## Duplicate Suppression
 

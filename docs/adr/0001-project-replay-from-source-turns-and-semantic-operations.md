@@ -5,7 +5,7 @@ superseded-by: 0002-codex-session-outbox-replay.md
 
 # Project replay from source turns and semantic operations
 
-> Superseded by [ADR 0002](0002-codex-session-outbox-replay.md). Replay is now Codex-only, groups rollout files by `session_id`, records response-level call wrappers under explicit reasoning boundaries, and delivers through a temporary fail-fast outbox.
+> Superseded by [ADR 0002](0002-codex-session-outbox-replay.md) for Codex and [ADR 0003](0003-claude-session-outbox-replay.md) for Claude. Each harness now owns a separate temporary-outbox replay pipeline derived from its observed transcript identities and boundaries.
 
 Session replay records one NAMS Agent Step for an explicit harness step boundary and attaches every semantic tool operation in that boundary to the same step. Codex uses `turn_id` as its source-turn identity, retains an explicit incoming `agent_message` (or otherwise the user message) as source-message provenance, and projects nested semantic items such as command executions and file changes instead of duplicating the outer Code Mode `exec` container. Claude uses `prompt_id` as source-turn identity when present, the prompt's user-message UUID as source-message provenance, one assistant message UUID as the Agent Step identity, and the message's `tool_use` blocks as its semantic tool operations.
 
