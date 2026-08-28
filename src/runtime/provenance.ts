@@ -38,6 +38,13 @@ export function namsReplayProvenanceHeaders(): Record<string, string> {
   };
 }
 
+export function namsClaudeReplayProvenanceHeaders(): Record<string, string> {
+  return {
+    ...baseProvenanceHeaders("claude"),
+    "X-NAMS-Hooks-Command": "replay",
+  };
+}
+
 function baseProvenanceHeaders(harness: string): Record<string, string> {
   return {
     "X-NAMS-Hooks-Harness": harness,
