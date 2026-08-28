@@ -122,3 +122,14 @@ test("cleanup namespace covers npm distribution branches", async () => {
   );
   assert.match(cleanupWorkflow, /refs\/remotes\/origin\/dist\//);
 });
+
+test("npm release workflow does not execute workflow_run code with write access", async () => {
+  const workflow = await readFile(".github/workflows/release-npm.yml", "utf8");
+
+  assert.doesNotMatch(workflow, /^\s+workflow_run:/m);
+  assert.doesNotMatch(workflow, /github\.event\.workflow_run/);
+  assert.match(
+    workflow,
+    /^  push:\n    branches-ignore:\n      - latest\n      - "dist\/\*\*"$/m,
+  );
+});
