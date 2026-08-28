@@ -184,11 +184,184 @@ test("discovers root and subagent JSONL only beneath the Claude projects directo
     await writeFile(path.join(projects, "session-1", "subagents", "agent-1.meta.json"), "{}\n", "utf8");
     await mkdir(path.join(projects, "session-1", "tool-results"), { recursive: true });
     await writeFile(path.join(projects, "session-1", "tool-results", "large.txt"), "not-jsonl", "utf8");
+    await mkdir(path.join(projects, "memory"), { recursive: true });
+    await writeFile(path.join(projects, "memory", "history.jsonl"), "{}\n", "utf8");
 
     assert.deepEqual(await discoverClaudeTranscriptPaths({ CLAUDE_CONFIG_DIR: fixture }), [
       rootPath,
       childPath,
     ]);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("does not read a persisted companion outside the transcript corpus", async () => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "nams-claude-persisted-adversarial-"));
+  try {
+    const project = path.join(fixture, "project");
+    const projectDir = path.join(fixture, "projects", "encoded");
+    const rootPath = path.join(projectDir, "session-1.jsonl");
+    const externalOutput = path.join(fixture, "projects", "external", "tool-results", "large.txt");
+    await mkdir(projectDir, { recursive: true });
+    await mkdir(path.dirname(externalOutput), { recursive: true });
+    await mkdir(project, { recursive: true });
+    await writeFile(externalOutput, "external secret", "utf8");
+    await writeFile(rootPath, jsonl([
+      humanMessage({ sessionId: "../external", cwd: project, uuid: "user", parentUuid: "root", content: "Run it." }),
+      assistantBlock({
+        sessionId: "../external", cwd: project, uuid: "call", parentUuid: "user", messageId: "message-1",
+        block: { type: "tool_use", id: "call-1", name: "Bash", input: { command: "run" } },
+      }),
+      toolResult({
+        sessionId: "../external", cwd: project, uuid: "result", parentUuid: "call", toolUseId: "call-1",
+        content: "safe preview",
+        toolUseResult: {
+          persistedOutputPath: "/untrusted/original/large.txt",
+          persistedOutputSize: Buffer.byteLength("external secret"),
+        },
+      }),
+    ]), "utf8");
+
+    const collection = await collectClaudeReplaySessions({ importRoot: project, transcriptPaths: [rootPath] });
+    assert.equal(collection.sessions[0].steps[0].toolCalls[0].output, "safe preview");
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("preserves direct result order and appends root notification output", async () => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "nams-claude-output-order-"));
+  try {
+    const project = path.join(fixture, "project");
+    const rootPath = path.join(fixture, "projects", "encoded", "session-1.jsonl");
+    await mkdir(path.dirname(rootPath), { recursive: true });
+    await mkdir(project, { recursive: true });
+    await writeFile(rootPath, jsonl([
+      humanMessage({ sessionId: "session-1", cwd: project, uuid: "user", parentUuid: "root", content: "Run it." }),
+      assistantBlock({
+        sessionId: "session-1", cwd: project, uuid: "call", parentUuid: "user", messageId: "message-1",
+        block: { type: "tool_use", id: "call-1", name: "Bash", input: { command: "run" } },
+        timestamp: "2026-08-26T12:00:03.000Z",
+      }),
+      toolResult({
+        sessionId: "session-1", cwd: project, uuid: "result", parentUuid: "call", toolUseId: "call-1",
+        content: [{ type: "text", text: "first" }, { type: "text", text: "second" }],
+        timestamp: "2026-08-26T12:00:04.000Z",
+      }),
+      taskNotification({
+        sessionId: "session-1", cwd: project, uuid: "notification", parentUuid: "result",
+        toolUseId: "call-1", status: "completed", result: "late completion",
+        timestamp: "2026-08-26T12:00:01.000Z",
+      }),
+    ]), "utf8");
+
+    const collection = await collectClaudeReplaySessions({ importRoot: project, transcriptPaths: [rootPath] });
+    assert.equal(
+      collection.sessions[0].steps[0].toolCalls[0].output,
+      "first\n\nsecond\n\nlate completion",
+    );
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("uses only root notifications when a linked sidechain reuses a call id", async () => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "nams-claude-root-notification-"));
+  try {
+    const project = path.join(fixture, "project");
+    const projectDir = path.join(fixture, "projects", "encoded");
+    const rootPath = path.join(projectDir, "session-1.jsonl");
+    const childPath = path.join(projectDir, "session-1", "subagents", "agent-1.jsonl");
+    await mkdir(path.dirname(childPath), { recursive: true });
+    await mkdir(project, { recursive: true });
+    await writeFile(rootPath, jsonl([
+      humanMessage({ sessionId: "session-1", cwd: project, uuid: "user", parentUuid: "root", content: "Run it." }),
+      assistantBlock({
+        sessionId: "session-1", cwd: project, uuid: "root-call", parentUuid: "user", messageId: "root-message",
+        block: { type: "tool_use", id: "same-call", name: "Agent", input: {} },
+      }),
+      toolResult({
+        sessionId: "session-1", cwd: project, uuid: "root-result", parentUuid: "root-call", toolUseId: "same-call",
+        content: "root immediate",
+      }),
+      taskNotification({
+        sessionId: "session-1", cwd: project, uuid: "root-notification", parentUuid: "root-result",
+        toolUseId: "same-call", status: "completed", result: "root completion",
+      }),
+    ]), "utf8");
+    await writeFile(childPath, jsonl([
+      claudeRecord({
+        type: "user", uuid: "child-root", parentUuid: null, sessionId: "session-1", cwd: project,
+        isSidechain: true, agentId: "agent-1", message: { role: "user", content: "assignment" },
+      }),
+      assistantBlock({
+        sessionId: "session-1", cwd: project, uuid: "child-call", parentUuid: "child-root", messageId: "child-message",
+        isSidechain: true, agentId: "agent-1",
+        block: { type: "tool_use", id: "same-call", name: "Bash", input: {} },
+      }),
+      toolResult({
+        sessionId: "session-1", cwd: project, uuid: "child-result", parentUuid: "child-call", toolUseId: "same-call",
+        content: "child immediate", isSidechain: true, agentId: "agent-1",
+      }),
+      claudeRecord({
+        type: "user", uuid: "child-notification", parentUuid: "child-result", sessionId: "session-1", cwd: project,
+        isSidechain: true, agentId: "agent-1", origin: { kind: "task-notification" },
+        message: { role: "user", content: "<task-notification>\n<tool-use-id>same-call</tool-use-id>\n<status>completed</status>\n<result>sidechain completion</result>\n</task-notification>" },
+      }),
+    ]), "utf8");
+    await writeFile(path.join(path.dirname(childPath), "agent-1.meta.json"), JSON.stringify({ toolUseId: "same-call" }), "utf8");
+
+    const collection = await collectClaudeReplaySessions({ importRoot: project, transcriptPaths: [rootPath, childPath] });
+    const rootStep = collection.sessions[0].steps.find((step) => step.streamId === "root");
+    assert.ok(rootStep);
+    assert.equal(rootStep.toolCalls[0].output, "root immediate\n\nroot completion");
+    assert.equal(rootStep.toolCalls[0].status, "success");
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("skips transcript records when no active UUID spine is available", async () => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "nams-claude-no-active-spine-"));
+  try {
+    const project = path.join(fixture, "project");
+    const rootPath = path.join(fixture, "projects", "encoded", "session-1.jsonl");
+    await mkdir(path.dirname(rootPath), { recursive: true });
+    await mkdir(project, { recursive: true });
+    await writeFile(rootPath, `${[
+      { type: "user", sessionId: "session-1", cwd: project, isSidechain: false, origin: { kind: "human" }, message: { role: "user", content: "uuid-less user" } },
+      { type: "assistant", sessionId: "session-1", cwd: project, isSidechain: false, message: { id: "message-1", role: "assistant", content: [{ type: "text", text: "uuid-less assistant" }] } },
+    ].map((record) => JSON.stringify(record)).join("\n")}\n`, "utf8");
+
+    const collection = await collectClaudeReplaySessions({ importRoot: project, transcriptPaths: [rootPath] });
+    assert.equal(collection.sessions.length, 0);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("does not normalize human-origin metadata as a root user message", async () => {
+  const fixture = await mkdtemp(path.join(tmpdir(), "nams-claude-meta-user-"));
+  try {
+    const project = path.join(fixture, "project");
+    const rootPath = path.join(fixture, "projects", "encoded", "session-1.jsonl");
+    await mkdir(path.dirname(rootPath), { recursive: true });
+    await mkdir(project, { recursive: true });
+    await writeFile(rootPath, jsonl([
+      claudeRecord({
+        type: "user", uuid: "meta", parentUuid: "root", sessionId: "session-1", cwd: project,
+        isSidechain: false, isMeta: true, origin: { kind: "human" },
+        message: { role: "user", content: "must not persist" },
+      }),
+      assistantBlock({
+        sessionId: "session-1", cwd: project, uuid: "assistant", parentUuid: "meta", messageId: "message-1",
+        block: { type: "text", text: "visible assistant" },
+      }),
+    ]), "utf8");
+
+    const collection = await collectClaudeReplaySessions({ importRoot: project, transcriptPaths: [rootPath] });
+    assert.deepEqual(collection.sessions[0].messages.map((message) => message.content), ["visible assistant"]);
   } finally {
     await rm(fixture, { recursive: true, force: true });
   }

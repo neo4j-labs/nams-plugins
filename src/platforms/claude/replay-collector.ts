@@ -78,7 +78,9 @@ export async function discoverClaudeTranscriptPaths(
   const home = homeDirectory(env);
   if (configured === undefined && home === undefined) return [];
   const claudeRoot = path.resolve(configured ?? path.join(home as string, ".claude"));
-  return discoverRegularJsonlFiles([path.join(claudeRoot, "projects")]);
+  const projectsDirectory = path.join(claudeRoot, "projects");
+  const candidates = await discoverRegularJsonlFiles([projectsDirectory]);
+  return candidates.filter((candidate) => !isClaudeMemoryTranscript(projectsDirectory, candidate));
 }
 
 export async function collectClaudeReplaySessions(
@@ -231,7 +233,6 @@ async function normalizeSession(
   const groups = assistantGroups(eligibleFiles, activeByPath);
   const steps: StepBuilder[] = [];
   const callsByScopedId = new Map<string, CallBuilder>();
-  const callsBySourceId = new Map<string, CallBuilder[]>();
   let unsupportedRecords = 0;
 
   for (const group of groups) {
@@ -272,9 +273,6 @@ async function normalizeSession(
       const scoped = callKey(group.streamId, sourceCallId);
       if (callsByScopedId.has(scoped)) unsupportedRecords += 1;
       else callsByScopedId.set(scoped, call);
-      const sameId = callsBySourceId.get(sourceCallId) ?? [];
-      sameId.push(call);
-      callsBySourceId.set(sourceCallId, sameId);
     }
     if (step.toolCalls.length > 0) steps.push(step);
   }
@@ -305,7 +303,13 @@ async function normalizeSession(
             unsupportedRecords += 1;
             continue;
           }
-          const normalized = await directResultParts(record, block, file, sessionId);
+          const normalized = await directResultParts(
+            record,
+            block,
+            file,
+            sessionId,
+            path.dirname(root.path),
+          );
           unsupportedRecords += normalized.unsupportedRecords;
           call.outputParts.push(...normalized.parts);
           call.lastOutputTimestampMs = timestampMs(firstString(record.value.timestamp))
@@ -318,12 +322,12 @@ async function normalizeSession(
 
       const notification = taskNotificationResult(record.value);
       if (notification === undefined) continue;
-      const matching = callsBySourceId.get(notification.sourceCallId) ?? [];
-      if (matching.length !== 1) {
+      if (!file.isRoot || file.streamId !== "root") continue;
+      const call = callsByScopedId.get(callKey("root", notification.sourceCallId));
+      if (call === undefined) {
         unsupportedRecords += 1;
         continue;
       }
-      const [call] = matching;
       if (notification.result !== "") {
         call.outputParts.push({
           value: notification.result,
@@ -343,7 +347,6 @@ async function normalizeSession(
   for (const step of includedSteps) {
     step.toolCalls.sort(compareTimeline);
     for (const call of step.toolCalls) {
-      call.outputParts.sort(compareOutputPart);
       const values = call.outputParts.map((part) => part.value).filter((value) => value !== "");
       if (values.length > 0) call.output = values.join("\n\n");
       call.status = call.finalStatus ?? call.status;
@@ -423,7 +426,7 @@ function assistantGroups(
       if (record.value.type !== "assistant" || !isPlainObject(record.value.message)) continue;
       const messageId = firstString(record.value.message.id);
       const uuid = firstString(record.value.uuid);
-      if (messageId === undefined || (active.size > 0 && (uuid === undefined || !active.has(uuid)))) continue;
+      if (messageId === undefined || uuid === undefined || !active.has(uuid)) continue;
       let group = groups.get(messageId);
       if (group === undefined) {
         group = {
@@ -458,8 +461,8 @@ function rootMessages(root: ParsedTranscript, active: Set<string>): ClaudeReplay
   const groups = assistantGroups([root], new Map([[root.path, active]]));
   for (const record of root.records) {
     const uuid = firstString(record.value.uuid);
-    if (active.size > 0 && (uuid === undefined || !active.has(uuid))) continue;
-    if (record.value.type !== "user" || record.value.isSidechain === true) continue;
+    if (uuid === undefined || !active.has(uuid)) continue;
+    if (record.value.type !== "user" || record.value.isSidechain === true || record.value.isMeta === true) continue;
     if (!isPlainObject(record.value.origin) || record.value.origin.kind !== "human") continue;
     const content = authoredUserContent(messageContent(record.value));
     if (content === undefined) continue;
@@ -532,6 +535,7 @@ async function directResultParts(
   block: Record<string, unknown>,
   file: ParsedTranscript,
   sessionId: string,
+  corpusDirectory: string,
 ): Promise<{ parts: OutputPart[]; unsupportedRecords: number }> {
   const timestamp = firstString(record.value.timestamp) ?? "";
   const toolUseResult = isPlainObject(record.value.toolUseResult)
@@ -541,7 +545,13 @@ async function directResultParts(
     ? undefined
     : firstString(toolUseResult.persistedOutputPath);
   if (persisted !== undefined && toolUseResult !== undefined) {
-    const complete = await readPersistedOutput(file.path, sessionId, persisted, toolUseResult);
+    const complete = await readPersistedOutput(
+      file.path,
+      sessionId,
+      persisted,
+      toolUseResult,
+      corpusDirectory,
+    );
     if (complete !== undefined) {
       return {
         parts: [{ value: complete, timestamp, ordinal: record.ordinal * 1000, transcriptPath: file.path }],
@@ -565,11 +575,12 @@ async function readPersistedOutput(
   sessionId: string,
   recordedPath: string,
   toolUseResult: Record<string, unknown>,
+  corpusDirectory: string,
 ): Promise<string | undefined> {
   const basename = path.basename(recordedPath);
   if (basename === "" || basename === "." || basename === "..") return undefined;
-  const sessionDirectory = findSessionDirectory(transcriptPath, sessionId)
-    ?? path.join(path.dirname(transcriptPath), sessionId);
+  const sessionDirectory = sessionDirectoryForTranscript(transcriptPath, sessionId);
+  if (sessionDirectory === undefined) return undefined;
   const candidate = path.join(sessionDirectory, "tool-results", basename);
   try {
     const metadata = await lstat(candidate);
@@ -582,9 +593,13 @@ async function readPersistedOutput(
     ) {
       return undefined;
     }
+    const resolvedCorpus = await realpath(corpusDirectory);
     const resolvedSession = await realpath(sessionDirectory);
     const resolvedCandidate = await realpath(candidate);
-    if (!isDirectoryWithinImportRoot(resolvedSession, path.dirname(resolvedCandidate))) {
+    if (
+      !isDirectoryWithinImportRoot(resolvedCorpus, resolvedSession)
+      || !isDirectoryWithinImportRoot(resolvedSession, path.dirname(resolvedCandidate))
+    ) {
       return undefined;
     }
     const stdout = (await readFile(resolvedCandidate)).toString("utf8");
@@ -595,13 +610,27 @@ async function readPersistedOutput(
   }
 }
 
-function findSessionDirectory(transcriptPath: string, sessionId: string): string | undefined {
-  let current = path.dirname(transcriptPath);
-  while (path.dirname(current) !== current) {
-    if (path.basename(current) === sessionId) return current;
-    current = path.dirname(current);
+function sessionDirectoryForTranscript(transcriptPath: string, sessionId: string): string | undefined {
+  if (!isSafePathSegment(sessionId)) return undefined;
+  const filename = path.basename(transcriptPath, ".jsonl");
+  if (filename === path.basename(transcriptPath)) return undefined;
+  const transcriptDirectory = path.dirname(transcriptPath);
+  if (filename === sessionId) return path.join(transcriptDirectory, sessionId);
+  if (
+    path.basename(transcriptDirectory) === "subagents"
+    && path.basename(path.dirname(transcriptDirectory)) === sessionId
+  ) {
+    return path.dirname(transcriptDirectory);
   }
   return undefined;
+}
+
+function isSafePathSegment(value: string): boolean {
+  return value !== "."
+    && value !== ".."
+    && value === path.basename(value)
+    && !value.includes("/")
+    && !value.includes("\\");
 }
 
 function outputValues(value: unknown): string[] {
@@ -714,8 +743,6 @@ function compareTimeline(
     || left.ordinal - right.ordinal;
 }
 
-function compareOutputPart(left: OutputPart, right: OutputPart): number {
-  return left.timestamp.localeCompare(right.timestamp)
-    || left.transcriptPath.localeCompare(right.transcriptPath)
-    || left.ordinal - right.ordinal;
+function isClaudeMemoryTranscript(projectsDirectory: string, candidate: string): boolean {
+  return path.relative(projectsDirectory, candidate).split(path.sep).includes("memory");
 }
