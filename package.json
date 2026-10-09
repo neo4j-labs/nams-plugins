@@ -1,0 +1,13 @@
+{
+  "name": "@neo4j-labs/nams-plugins",
+  "version": "0.1.0",
+  "description": "Neo4j Agent Memory Service hooks for agent harnesses.",
+  "type": "module",
+  "bin": {
+    "nams-hooks": "./bin/cli.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "Apache-2.0"
+}
