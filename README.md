@@ -1,5 +1,7 @@
 # nams-hooks
 
+> This is an experimental Neo4j Labs project and not part of Neo4j's supported product lineup. See the [Neo4j Labs disclaimer](./LABS_DISCLAIMER.txt).
+
 `nams-hooks` is a lightweight-at-runtime Node.js integration layer that connects local AI agent harness hooks to the **Neo4j Agent Memory Service (NAMS)**.
 
 It ensures deterministic memory persistence and context recall across different agent platforms without requiring the agents themselves to manage the memory logic.
