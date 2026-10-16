@@ -580,7 +580,7 @@ test("workspaces rejects unsupported workspace events with usage", async () => {
     assert.match(result.stderr, /Usage:/);
     assert.match(
       result.stderr,
-      /workspaces run <gemini\|claude\|codex\|opencode> --event <BeforeAgent\|InstallConfigure\|UserPromptExpansion\|CommandExecuteBefore\|CustomCommand>/,
+      /workspaces run <gemini\|claude\|codex\|opencode\|antigravity> --event <BeforeAgent\|InstallConfigure\|UserPromptExpansion\|CommandExecuteBefore\|CustomCommand>/,
     );
   } finally {
     await rm(projectDir, { recursive: true, force: true });

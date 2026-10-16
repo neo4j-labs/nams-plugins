@@ -183,10 +183,10 @@ function writeWorkspaceConfigureResult(result: HookResult): number {
 
 function usage(): string {
   return [
-    "Usage: nams-hooks run <gemini|claude|codex|opencode> --event <SessionStart|BeforeAgent|AfterAgent|AfterTool>",
-    "       nams-hooks workspaces run <gemini|claude|codex|opencode> --event <BeforeAgent|InstallConfigure|UserPromptExpansion|CommandExecuteBefore|CustomCommand>",
-    "       nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope <project|user> [--workspace WORKSPACE_NAME_OR_ID]",
-    "       nams-hooks workspaces configure <gemini|claude|codex|opencode> --scope session --session-id ID [--workspace WORKSPACE_NAME_OR_ID]",
+    "Usage: nams-hooks run <gemini|claude|codex|opencode|antigravity> --event <SessionStart|BeforeAgent|AfterAgent|AfterTool>",
+    "       nams-hooks workspaces run <gemini|claude|codex|opencode|antigravity> --event <BeforeAgent|InstallConfigure|UserPromptExpansion|CommandExecuteBefore|CustomCommand>",
+    "       nams-hooks workspaces configure <gemini|claude|codex|opencode|antigravity> --scope <project|user> [--workspace WORKSPACE_NAME_OR_ID]",
+    "       nams-hooks workspaces configure <gemini|claude|codex|opencode|antigravity> --scope session --session-id ID [--workspace WORKSPACE_NAME_OR_ID]",
     "",
   ].join("\n");
 }

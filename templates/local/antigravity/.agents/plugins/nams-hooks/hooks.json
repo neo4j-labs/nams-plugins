@@ -1,0 +1,34 @@
+{
+  "nams-memory-before-invocation": {
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "nams-hooks run antigravity --event BeforeAgent",
+        "timeout": 30
+      }
+    ]
+  },
+  "nams-memory-after-invocation": {
+    "PostInvocation": [
+      {
+        "type": "command",
+        "command": "nams-hooks run antigravity --event AfterAgent",
+        "timeout": 30
+      }
+    ]
+  },
+  "nams-memory-after-tool": {
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "nams-hooks run antigravity --event AfterTool",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

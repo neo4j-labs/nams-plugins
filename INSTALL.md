@@ -13,6 +13,7 @@ For local development and generated artifact testing, see [DEVELOPMENT.md](DEVEL
 - A NAMS base URL, for example `https://memory.neo4jlabs.com`
 - A NAMS workspace ID, unless your harness path supports auto-resolution
 - The agent platform CLI you want to use:
+  - Antigravity
   - Claude Code
   - Codex
   - Gemini CLI
@@ -96,9 +97,12 @@ $nams:workspace use <workspace-id-or-name>
 
 These command surfaces wrap the explicit shell command. OpenCode currently uses
 the explicit shell command because OpenCode markdown commands are prompt
-templates and do not expose a Claude-style model-invocation disable flag. Keep
-using the shell command for scripts, troubleshooting, OpenCode sessions, and any
-session where the platform command cannot resolve the current session:
+templates and do not expose a Claude-style model-invocation disable flag.
+Antigravity v1 also uses the explicit shell command because no native
+`nams:workspace` command template is documented or generated yet. Keep using
+the shell command for scripts, troubleshooting, OpenCode and Antigravity
+sessions, and any session where the platform command cannot resolve the current
+session:
 
 ```bash
 nams-hooks workspaces configure <platform> --scope session --session-id <session-id> --workspace <workspace-id-or-name>
@@ -108,6 +112,12 @@ For OpenCode, the same session selection can be run explicitly as:
 
 ```bash
 nams-hooks workspaces configure opencode --scope session --session-id session-1 --workspace Engineering
+```
+
+For Antigravity, run the same command with the Antigravity platform id:
+
+```bash
+nams-hooks workspaces configure antigravity --scope session --session-id <session-id> --workspace Engineering
 ```
 
 For every scope, `--workspace` accepts either an exact workspace ID or an exact
@@ -120,9 +130,9 @@ To configure a durable project workspace for Codex, run:
 nams-hooks workspaces configure codex --scope project --workspace Engineering
 ```
 
-Replace `codex` with `gemini`, `opencode`, or `claude` to configure a different
-platform path. Use `--scope user` to write `~/.nams/config.json` instead of the
-project `.nams/config.json`.
+Replace `codex` with `gemini`, `opencode`, `antigravity`, or `claude` to
+configure a different platform path. Use `--scope user` to write
+`~/.nams/config.json` instead of the project `.nams/config.json`.
 
 If you omit `--workspace`, the configure command writes the workspace
 automatically only when NAMS returns a single valid workspace. This is the
@@ -263,6 +273,82 @@ is missing or ambiguous, use the explicit shell command from the hook notice:
 
 ```bash
 nams-hooks workspaces configure gemini --scope session --session-id <session-id> --workspace <workspace-id-or-name>
+```
+
+## Antigravity
+
+Antigravity support follows the repo's v1 macOS scope. `agy` 1.0.8 manual
+validation confirmed plugin validation and install path resolution with a
+disposable HOME; live hook memory behavior is still pending validation.
+
+Antigravity project-local configuration is generated under:
+
+```text
+dist-local/antigravity/.agents/plugins/nams-hooks/
+```
+
+That plugin calls an installed `nams-hooks` executable from hook commands. The
+self-contained Antigravity CLI plugin is generated under:
+
+```text
+dist-marketplace/antigravity/plugins/nams-hooks/
+```
+
+For a project-local staging install from a checkout, build the npm package,
+install it, generate local artifacts, and copy the generated plugin into the
+target project:
+
+```bash
+npm run dist:npm
+npm install -g ./dist
+npm run dist:local
+mkdir -p /path/to/project/.agents/plugins
+cp -R dist-local/antigravity/.agents/plugins/nams-hooks /path/to/project/.agents/plugins/
+```
+
+For Antigravity CLI plugin staging from a checkout, build marketplace artifacts
+and install the self-contained plugin with `agy`:
+
+```bash
+npm run dist:marketplace
+agy plugin validate dist-marketplace/antigravity/plugins/nams-hooks
+agy plugin install dist-marketplace/antigravity/plugins/nams-hooks
+```
+
+It bundles `bin/cli.js`; hook commands use:
+
+```bash
+node "$HOME/.gemini/config/plugins/nams-hooks/bin/cli.js" run antigravity --event <event>
+```
+
+Generated Antigravity hooks map native events to NAMS lifecycle events as:
+
+- `PreInvocation` to `BeforeAgent`
+- `PostInvocation` to `AfterAgent`
+- `PostToolUse` with matcher `*` to `AfterTool`
+
+Generated Antigravity templates do not emit `SessionStart`, because Antigravity
+does not document a startup or resume hook, and they do not emit `Stop` by
+default. State initializes lazily on the first memory hook.
+
+Antigravity templates do not declare native NAMS credential prompts. Configure
+NAMS through `~/.nams/config.json`, project `.nams/config.json`, or
+`NAMS_API_KEY`, `NAMS_WORKSPACE_ID`, and `NAMS_BASE_URL` environment variables.
+`apiKey` and `baseUrl` are required. `workspaceId` may be omitted only when the
+runtime can auto-select exactly one valid workspace before memory writes.
+
+`BeforeAgent` reads the latest user prompt from `transcriptPath`, stores it once,
+recalls memory, and injects context through `injectSteps[].ephemeralMessage`.
+`AfterAgent` stores assistant text best-effort from transcript content when it
+is cleanly exposed, with duplicate suppression. `AfterTool` stores tool name,
+sanitized input, optional step id, status, and exposed output only when the
+transcript exposes those details cleanly; it no-ops when details are unavailable
+or configuration is missing, and thought-shaped fields are filtered.
+
+Workspace selection currently uses the explicit shell command:
+
+```bash
+nams-hooks workspaces configure antigravity --scope session --session-id <session-id> --workspace <workspace-id-or-name>
 ```
 
 ## OpenCode

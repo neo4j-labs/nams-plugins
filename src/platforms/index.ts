@@ -7,12 +7,15 @@ import { geminiMemoryAdapter } from "./gemini/index.js";
 import { geminiWorkspaceAdapter } from "./gemini/workspaces.js";
 import { opencodeMemoryAdapter } from "./opencode/index.js";
 import { opencodeWorkspaceAdapter } from "./opencode/workspaces.js";
+import { antigravityMemoryAdapter } from "./antigravity/index.js";
+import { antigravityWorkspaceAdapter } from "./antigravity/workspaces.js";
 
 const memoryAdapters: Record<Platform, MemoryPlatformAdapter> = {
   gemini: geminiMemoryAdapter,
   claude: claudeMemoryAdapter,
   codex: codexMemoryAdapter,
   opencode: opencodeMemoryAdapter,
+  antigravity: antigravityMemoryAdapter,
 };
 
 export function getMemoryPlatformAdapter(platform: Platform): MemoryPlatformAdapter {
@@ -24,6 +27,7 @@ const workspaceAdapters: Record<Platform, WorkspacePlatformAdapter> = {
   claude: claudeWorkspaceAdapter,
   codex: codexWorkspaceAdapter,
   opencode: opencodeWorkspaceAdapter,
+  antigravity: antigravityWorkspaceAdapter,
 };
 
 export function getWorkspacePlatformAdapter(platform: Platform): WorkspacePlatformAdapter {

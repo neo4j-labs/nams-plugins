@@ -92,7 +92,7 @@ async function fileMode(filePath: string): Promise<number> {
   return (await stat(filePath)).mode & 0o777;
 }
 
-for (const harness of ["gemini", "claude", "codex", "opencode"] as const) {
+for (const harness of ["gemini", "claude", "codex", "opencode", "antigravity"] as const) {
   test(`logs ${harness} session-start JSON payload`, async () => {
     const projectDir = await mkdtemp(path.join(tmpdir(), "nams-hooks-"));
     try {
@@ -106,10 +106,15 @@ for (const harness of ["gemini", "claude", "codex", "opencode"] as const) {
       const result = await runCli(harness, payload, projectDir);
 
       assert.equal(result.code, 0, result.stderr);
-      assert.deepEqual(JSON.parse(result.stdout), {
-        continue: true,
-        suppressOutput: true,
-      });
+      assert.deepEqual(
+        JSON.parse(result.stdout),
+        harness === "antigravity"
+          ? {}
+          : {
+              continue: true,
+              suppressOutput: true,
+            },
+      );
 
       const homeDir = testHome(projectDir);
       const logPath = await singleSessionLogPath(homeDir, harness);
@@ -218,6 +223,35 @@ for (const event of ["BeforeAgent", "AfterAgent", "AfterTool"]) {
 
       assert.equal(result.code, 0, result.stderr);
       assert.equal(JSON.parse(result.stdout).continue, true);
+    } finally {
+      await rm(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  test(`routes antigravity ${event} hook event`, async () => {
+    const projectDir = await mkdtemp(path.join(tmpdir(), "nams-hooks-"));
+    try {
+      const payload = {
+        conversationId: `antigravity-${event}`,
+        event: "WrongEventNameMustNotMatter",
+        hook_event_name: "AnotherWrongEventNameMustNotMatter",
+        hookEventName: "YetAnotherWrongEventNameMustNotMatter",
+        workspacePaths: [projectDir],
+        transcriptPath: path.join(projectDir, "transcript.jsonl"),
+        artifactDirectoryPath: projectDir,
+      };
+
+      const result = await runCliWithEvent("antigravity", event, payload, projectDir);
+
+      assert.equal(result.code, 0, result.stderr);
+      assert.deepEqual(JSON.parse(result.stdout), {});
+
+      const logPath = await singleSessionLogPath(testHome(projectDir), "antigravity");
+      const entry = (await readJsonl(logPath)).find((record) => record.kind === "hook.event");
+      assert.ok(entry);
+      assert.equal(entry.harness, "antigravity");
+      assert.equal(entry.event, event);
+      assert.deepEqual(entry.payload, payload);
     } finally {
       await rm(projectDir, { recursive: true, force: true });
     }

@@ -13,6 +13,8 @@ interface SourceFile {
   content: string;
 }
 
+const platformNames = ["gemini", "claude", "codex", "opencode", "antigravity"] as const;
+
 async function readProjectFiles(folders: string[]): Promise<SourceFile[]> {
   const files: SourceFile[] = [];
   for (const folder of folders) {
@@ -72,18 +74,20 @@ function importsConcreteAdapter(file: SourceFile): boolean {
     "src/platforms/claude/index.ts",
     "src/platforms/codex/index.ts",
     "src/platforms/opencode/index.ts",
+    "src/platforms/antigravity/index.ts",
     "src/platforms/gemini/workspaces.ts",
     "src/platforms/claude/workspaces.ts",
     "src/platforms/codex/workspaces.ts",
     "src/platforms/opencode/workspaces.ts",
+    "src/platforms/antigravity/workspaces.ts",
   ]);
 
   return importedSourcePaths(file.path, file.content).some((importedPath) => concreteAdapters.has(importedPath));
 }
 
 test("platform adapters do not import each other", async () => {
-  for (const platform of ["gemini", "claude", "codex", "opencode"]) {
-    const otherPlatforms = ["gemini", "claude", "codex", "opencode"].filter((candidate) => candidate !== platform);
+  for (const platform of platformNames) {
+    const otherPlatforms = platformNames.filter((candidate) => candidate !== platform);
     for (const otherPlatform of otherPlatforms) {
       await assertNoViolations(
         projectFiles()
@@ -149,21 +153,44 @@ test("only the platform registry imports all concrete adapters", async () => {
 });
 
 test("platform adapters do not call fetch directly", async () => {
-  for (const platform of ["gemini", "claude", "codex", "opencode"]) {
+  for (const platform of platformNames) {
     const filePath = `src/platforms/${platform}/index.ts`;
     const platformContent = await readFile(filePath, "utf8");
 
-    assert.equal(
-      /\bfetch\b/.test(platformContent),
-      false,
-      `${filePath} must route NAMS traffic through runtime/memory-service.ts`,
+    assert.equal(/\bfetch\b/.test(platformContent), false, `${filePath} must route NAMS traffic through runtime/memory-service.ts`);
+  }
+});
+
+test("memory platform adapters use shared memory-turn runtime", async () => {
+  for (const platform of platformNames) {
+    const filePath = `src/platforms/${platform}/index.ts`;
+    const content = await readFile(filePath, "utf8");
+
+    assert.match(content, /from "\.\.\/\.\.\/runtime\/memory-turn\.js"/, `${filePath} should import shared memory-turn helpers`);
+    assert.match(content, /\bwithHookSessionState\b/, `${filePath} should use the shared load-run-save state bracket`);
+    assert.match(content, /\bensureConversation\b/, `${filePath} should use shared conversation creation`);
+    assert.match(content, /\brecallMemoryContextOnce\b/, `${filePath} should use shared recall-once behavior`);
+    assert.match(content, /\bstoreAssistantMessageOnce\b/, `${filePath} should use shared assistant message persistence`);
+    assert.match(content, /\brecordToolCallOnce\b/, `${filePath} should use shared tool-call persistence`);
+    assert.doesNotMatch(
+      content,
+      /\bcreateInitialSessionState\b|\bloadSessionState\b|\bsaveSessionState\b|\bappendRawPlatformLog\b/,
+      `${filePath} should not duplicate shared hook session lifecycle handling`,
     );
+  }
+
+  for (const platform of ["gemini", "claude", "codex", "antigravity"] as const) {
+    const filePath = `src/platforms/${platform}/index.ts`;
+    const content = await readFile(filePath, "utf8");
+
+    assert.match(content, /\bstoreUserPromptOnce\b/, `${filePath} should use shared user prompt persistence`);
   }
 });
 
 test("workspace adapter registry is static", async () => {
   const content = await readFile("src/platforms/index.ts", "utf8");
-  const platforms = ["gemini", "claude", "codex", "opencode"] as const;
+  const platforms = platformNames;
+  const platformPattern = platforms.join("|");
   const importedWorkspaceAdapterNames = new Map<string, Set<string>>();
 
   assert.equal(/\bimport\s*\(|\breaddir(?:Sync)?\b|\bdynamic\b/.test(content), false);
@@ -190,7 +217,7 @@ test("workspace adapter registry is static", async () => {
   assert.ok(registryMatch, "src/platforms/index.ts must declare a static workspace adapter registry");
 
   const registryEntryMatches = [
-    ...registryMatch[1].matchAll(/\b(gemini|claude|codex|opencode)\s*:\s*([A-Za-z_$][\w$]*)\s*,?/g),
+    ...registryMatch[1].matchAll(new RegExp(String.raw`\b(${platformPattern})\s*:\s*([A-Za-z_$][\w$]*)\s*,?`, "g")),
   ];
   assert.equal(registryEntryMatches.length, platforms.length);
 
@@ -216,7 +243,7 @@ test("workspace resolution runtime does not format platform hook output", async 
   const content = await readFile("src/runtime/workspace-resolution.ts", "utf8");
 
   assert.doesNotMatch(content, /\bdecision\b|\bhookSpecificOutput\b|\bsystemMessage\b|\bnamsWorkspaceSelectionRequired\b/);
-  assert.doesNotMatch(content, /\bgemini\b|\bclaude\b|\bcodex\b|\bopencode\b/);
+  assert.doesNotMatch(content, /\bgemini\b|\bclaude\b|\bcodex\b|\bopencode\b|\bantigravity\b/);
 });
 
 test("workspace selection notice formatter does not branch by platform", async () => {
@@ -241,7 +268,7 @@ test("runtime environment home lookup stays in paths module", async () => {
 });
 
 test("platform adapters use shared logging wrappers", async () => {
-  for (const platform of ["gemini", "claude", "codex", "opencode"]) {
+  for (const platform of platformNames) {
     const filePath = `src/platforms/${platform}/index.ts`;
     const content = await readFile(filePath, "utf8");
 
