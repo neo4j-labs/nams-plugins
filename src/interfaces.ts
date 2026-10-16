@@ -45,4 +45,3 @@ export interface WorkspacePlatformAdapter {
   commandExecuteBefore?(invocation: WorkspaceHookInvocation<"CommandExecuteBefore">): Promise<HookResult>;
   customCommand?(invocation: WorkspaceHookInvocation<"CustomCommand">): Promise<HookResult>;
 }
-

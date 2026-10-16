@@ -55,15 +55,25 @@ The runtime must not fetch OpenAPI specs, inspect schemas, or discover endpoints
 
 ## Build And Distribution
 
-- `devel` is the source branch.
-- `master` is the future generated release branch.
-- `dist/` is generated and ignored on `devel`.
-- `npm run build` compiles TypeScript into `.build/tsc` for local verification.
-- `npm run dist` creates a Gemini-linkable extension tree under `dist/`.
-- In the generated extension, compiled runtime files live under `dist/bin/`.
-- Gemini root files are produced from `templates/gemini/`.
-- Do not hand-edit generated `dist/` output as a source change.
-- GitHub Actions `Build` runs on pull requests, pushes to `devel`, and manual dispatch. It runs the default verification target, `npm run check`, which performs OpenAPI freshness checks, TypeScript build, and the full test suite.
+- devel is the main source branch.
+- devel publishes validated dist-marketplace/ plugin artifacts to the generated latest branch.
+- Every other source branch <branch> publishes validated dist-marketplace/ plugin artifacts to the generated dist/<branch> branch.
+- Every source branch <branch>, including devel, publishes validated dist/ npm artifacts to the generated dist/bin/<branch> branch.
+- The dist/bin/** namespace is reserved for npm distribution artifacts; do not use bin or bin/** as source branch names.
+- Generated latest and dist/** branches do not trigger another build or release.
+- GitHub Actions runs a daily cleanup that deletes generated dist/** branches, including dist/bin/**, whose tip commit is older than 30 days; it never targets latest or source branches.
+- dist/, dist-marketplace/, and dist-local/ are generated and ignored on source branches.
+- npm run build compiles TypeScript into .build/tsc for local verification.
+- npm run dist creates npm, marketplace, and local projections under dist/, dist-marketplace/, and dist-local/.
+- In generated artifacts, compiled runtime files live under the target's bin/ tree.
+- Marketplace and local root files are produced from templates/marketplace/ and templates/local/.
+- Do not hand-edit generated distribution output as a source change.
+- GitHub Actions Build runs on pull requests, pushes to all source branches, and manual dispatch. It excludes generated latest and dist/** branches and runs npm run check.
+- GitHub Actions Release publishes plugin marketplace artifacts only after successful push-triggered Builds or explicit source-branch dispatches.
+- GitHub Actions Release npm distribution publishes dist/ only after successful push-triggered Builds or explicit source-branch dispatches.
+- Pull-request Builds never publish artifacts.
+- Only devel plugin publishing updates the latest tag and GitHub Release; plugin previews and npm distribution publishing update branches only.
+- workflow_run-based publishers must be present on the default devel branch before they can trigger automatically.
 
 ## Testing Rules
 

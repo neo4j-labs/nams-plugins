@@ -19,6 +19,7 @@ export interface NamsFetchMock {
   createConversation(response?: RouteResponse, status?: number): NamsFetchMock;
   context(response?: RouteResponse, status?: number, conversationId?: string): NamsFetchMock;
   message(response?: RouteResponse, status?: number, conversationId?: string): NamsFetchMock;
+  bulkMessages(response?: RouteResponse, status?: number, conversationId?: string): NamsFetchMock;
   workspaces(response?: RouteResponse, status?: number): NamsFetchMock;
   searchEntities(response?: RouteResponse, status?: number): NamsFetchMock;
   reasoningStep(response?: RouteResponse, status?: number): NamsFetchMock;
@@ -58,6 +59,9 @@ export function createNamsFetchMock(baseUrl = namsBaseUrl): NamsFetchMock {
     },
     message(response = { id: "message-1" }, status = 201, conversationId = "conversation-1") {
       return api.post(`/v1/conversations/${conversationId}/messages`, response, status, "addMessage");
+    },
+    bulkMessages(response = { messages: [] }, status = 201, conversationId = "conversation-1") {
+      return api.post(`/v1/conversations/${conversationId}/messages/bulk`, response, status, "addMessagesBulk");
     },
     workspaces(response = { workspaces: [] }, status = 200) {
       return api.get("/v1/users/me/workspaces", response, status, "listMyWorkspaces");
