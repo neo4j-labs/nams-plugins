@@ -74,6 +74,10 @@ describe("marketplace dist", () => {
     await verifyOpenCodeMarketplaceFiles();
   });
 
+  it("renders OAuth-first MCP artifacts for every platform", async () => {
+    await verifyMcpMarketplaceFiles();
+  });
+
   it("renders package metadata for every marketplace plugin", async () => {
     await verifyMarketplacePluginPackageMetadata();
   });
@@ -102,6 +106,10 @@ describe("local dist", () => {
 
   it("renders OpenCode installed-command plugin configuration", async () => {
     await verifyLocalOpenCodeDist();
+  });
+
+  it("renders OAuth-first local MCP artifacts for every platform", async () => {
+    await verifyLocalMcpFiles();
   });
 
   it("omits runtime, marketplace roots, and unresolved template placeholders", async () => {
@@ -349,6 +357,191 @@ async function verifyOpenCodeMarketplaceFiles() {
   }
   if (!/command\.execute\.before/.test(source) || !/workspaces",\s*"run",\s*"opencode"/.test(source)) {
     throw new Error("OpenCode marketplace plugin must intercept nams:workspace and call workspaces run opencode.");
+  }
+}
+
+async function verifyMcpMarketplaceFiles() {
+  await verifyClaudeMcpMarketplaceFiles();
+  await verifyCodexMcpMarketplaceFiles();
+  await verifyGeminiMcpMarketplaceFiles();
+  await verifyOpenCodeMcpMarketplaceFiles();
+}
+
+async function verifyClaudeMcpMarketplaceFiles() {
+  const marketplacePath = path.join(marketplaceDistDir, ".claude-plugin", "marketplace.json");
+  const manifestPath = path.join(marketplaceDistDir, "plugins", "claude-nams-mcp", ".claude-plugin", "plugin.json");
+
+  await access(manifestPath);
+
+  const packageJson = JSON.parse(await readFile(rootPackagePath, "utf8"));
+  const marketplace = JSON.parse(await readFile(marketplacePath, "utf8"));
+  const plugin = JSON.parse(await readFile(manifestPath, "utf8"));
+  const marketplacePlugin = marketplace.plugins?.find((entry) => entry?.name === "mcp");
+
+  if (marketplacePlugin?.source !== "./plugins/claude-nams-mcp") {
+    throw new Error("Claude marketplace must expose mcp from ./plugins/claude-nams-mcp.");
+  }
+  if (marketplacePlugin.version !== packageJson.version || marketplacePlugin.license !== packageJson.license) {
+    throw new Error("Claude MCP marketplace plugin version and license must match package.json.");
+  }
+  if (plugin.name !== "mcp" || plugin.version !== packageJson.version) {
+    throw new Error("Claude MCP plugin manifest must name mcp and match package.json version.");
+  }
+  assertOAuthFirstMcpServer(plugin.mcpServers?.nams, "Claude MCP");
+  await assertNoMcpRuntime(path.join(marketplaceDistDir, "plugins", "claude-nams-mcp"), "Claude MCP");
+  assertNoStaticMcpSecrets(plugin, "Claude MCP");
+  if (Object.hasOwn(plugin, "hooks") || Object.hasOwn(plugin, "userConfig") || Object.hasOwn(plugin, "authentication")) {
+    throw new Error("Claude MCP plugin must not define hooks, userConfig, or authentication.");
+  }
+}
+
+async function verifyCodexMcpMarketplaceFiles() {
+  const marketplacePath = path.join(marketplaceDistDir, ".agents", "plugins", "marketplace.json");
+  const manifestPath = path.join(marketplaceDistDir, "plugins", "codex-nams-mcp", ".codex-plugin", "plugin.json");
+
+  await access(manifestPath);
+
+  const packageJson = JSON.parse(await readFile(rootPackagePath, "utf8"));
+  const marketplace = JSON.parse(await readFile(marketplacePath, "utf8"));
+  const plugin = JSON.parse(await readFile(manifestPath, "utf8"));
+  const marketplacePlugin = marketplace.plugins?.find((entry) => entry?.name === "mcp");
+
+  if (marketplacePlugin?.source?.source !== "local" || marketplacePlugin.source?.path !== "./plugins/codex-nams-mcp") {
+    throw new Error("Codex marketplace must expose mcp from ./plugins/codex-nams-mcp.");
+  }
+  if (marketplacePlugin.policy?.installation !== "AVAILABLE" || marketplacePlugin.policy?.authentication !== "ON_USE") {
+    throw new Error("Codex MCP marketplace plugin must be available with authentication ON_USE.");
+  }
+  if (marketplacePlugin.version !== packageJson.version || marketplacePlugin.license !== packageJson.license) {
+    throw new Error("Codex MCP marketplace plugin version and license must match package.json.");
+  }
+  if (plugin.name !== "mcp" || plugin.version !== packageJson.version) {
+    throw new Error("Codex MCP plugin manifest must name mcp and match package.json version.");
+  }
+  assertOAuthFirstMcpServer(plugin.mcpServers?.nams, "Codex MCP");
+  await assertNoMcpRuntime(path.join(marketplaceDistDir, "plugins", "codex-nams-mcp"), "Codex MCP");
+  assertNoStaticMcpSecrets(plugin, "Codex MCP");
+  if (Object.hasOwn(plugin, "hooks") || Object.hasOwn(plugin, "skills") || Object.hasOwn(plugin, "userConfig") || Object.hasOwn(plugin, "authentication")) {
+    throw new Error("Codex MCP plugin must not define hooks, skills, userConfig, or authentication.");
+  }
+}
+
+async function verifyGeminiMcpMarketplaceFiles() {
+  const extensionPath = path.join(marketplaceDistDir, "gemini-mcp", "gemini-extension.json");
+  const settingsPath = path.join(marketplaceDistDir, "gemini-mcp", "settings.json");
+
+  await access(extensionPath);
+  await access(settingsPath);
+
+  const packageJson = JSON.parse(await readFile(rootPackagePath, "utf8"));
+  const extension = JSON.parse(await readFile(extensionPath, "utf8"));
+  const settings = JSON.parse(await readFile(settingsPath, "utf8"));
+
+  if (extension.name !== "nams-mcp" || extension.version !== packageJson.version) {
+    throw new Error("Gemini MCP extension must name nams-mcp and match package.json version.");
+  }
+  assertGeminiOAuthFirstMcpServer(settings.mcpServers?.nams, "Gemini MCP");
+  await assertNoMcpRuntime(path.join(marketplaceDistDir, "gemini-mcp"), "Gemini MCP");
+  assertNoStaticMcpSecrets(settings, "Gemini MCP");
+  if (Object.hasOwn(settings, "hooks") || Object.hasOwn(settings, "commands")) {
+    throw new Error("Gemini MCP settings must not define hooks or commands.");
+  }
+}
+
+async function verifyOpenCodeMcpMarketplaceFiles() {
+  const configPath = path.join(marketplaceDistDir, "opencode-mcp", "opencode.json");
+
+  await access(configPath);
+
+  const config = JSON.parse(await readFile(configPath, "utf8"));
+  assertOpenCodeOAuthFirstMcpServer(config.mcp?.nams, "OpenCode MCP");
+  await assertNoMcpRuntime(path.join(marketplaceDistDir, "opencode-mcp"), "OpenCode MCP");
+  assertNoStaticMcpSecrets(config, "OpenCode MCP");
+}
+
+async function verifyLocalMcpFiles() {
+  const claudeManifestPath = path.join(localDistDir, "claude-mcp", ".claude-plugin", "plugin.json");
+  const codexManifestPath = path.join(localDistDir, "codex-mcp", ".codex-plugin", "plugin.json");
+  const geminiSettingsPath = path.join(localDistDir, "gemini-mcp", ".gemini", "settings.json");
+  const opencodeConfigPath = path.join(localDistDir, "opencode-mcp", "opencode.json");
+
+  await access(claudeManifestPath);
+  await access(codexManifestPath);
+  await access(geminiSettingsPath);
+  await access(opencodeConfigPath);
+
+  const packageJson = JSON.parse(await readFile(rootPackagePath, "utf8"));
+  const claudeManifest = JSON.parse(await readFile(claudeManifestPath, "utf8"));
+  const codexManifest = JSON.parse(await readFile(codexManifestPath, "utf8"));
+  const geminiSettings = JSON.parse(await readFile(geminiSettingsPath, "utf8"));
+  const opencodeConfig = JSON.parse(await readFile(opencodeConfigPath, "utf8"));
+
+  if (claudeManifest.name !== "mcp" || claudeManifest.version !== packageJson.version || claudeManifest.license !== packageJson.license) {
+    throw new Error("local Claude MCP plugin manifest must name mcp and match package.json metadata.");
+  }
+  if (codexManifest.name !== "mcp" || codexManifest.version !== packageJson.version || codexManifest.license !== packageJson.license) {
+    throw new Error("local Codex MCP plugin manifest must name mcp and match package.json metadata.");
+  }
+  assertOAuthFirstMcpServer(claudeManifest.mcpServers?.nams, "local Claude MCP");
+  assertOAuthFirstMcpServer(codexManifest.mcpServers?.nams, "local Codex MCP");
+  assertGeminiOAuthFirstMcpServer(geminiSettings.mcpServers?.nams, "local Gemini MCP");
+  assertOpenCodeOAuthFirstMcpServer(opencodeConfig.mcp?.nams, "local OpenCode MCP");
+  assertNoStaticMcpSecrets(claudeManifest, "local Claude MCP");
+  assertNoStaticMcpSecrets(codexManifest, "local Codex MCP");
+  assertNoStaticMcpSecrets(geminiSettings, "local Gemini MCP");
+  assertNoStaticMcpSecrets(opencodeConfig, "local OpenCode MCP");
+  if (Object.hasOwn(claudeManifest, "hooks") || Object.hasOwn(claudeManifest, "userConfig") || Object.hasOwn(claudeManifest, "authentication")) {
+    throw new Error("local Claude MCP plugin must not define hooks, userConfig, or authentication.");
+  }
+  if (Object.hasOwn(codexManifest, "hooks") || Object.hasOwn(codexManifest, "skills") || Object.hasOwn(codexManifest, "userConfig") || Object.hasOwn(codexManifest, "authentication")) {
+    throw new Error("local Codex MCP plugin must not define hooks, skills, userConfig, or authentication.");
+  }
+  await assertNoMcpRuntime(path.join(localDistDir, "claude-mcp"), "local Claude MCP");
+  await assertNoMcpRuntime(path.join(localDistDir, "codex-mcp"), "local Codex MCP");
+  await assertNoMcpRuntime(path.join(localDistDir, "gemini-mcp"), "local Gemini MCP");
+  await assertNoMcpRuntime(path.join(localDistDir, "opencode-mcp"), "local OpenCode MCP");
+}
+
+function assertOAuthFirstMcpServer(server, label) {
+  if (server?.url !== "https://memory.neo4jlabs.com/mcp") {
+    throw new Error(`${label} must point at https://memory.neo4jlabs.com/mcp.`);
+  }
+  if (server.type !== undefined && server.type !== "http") {
+    throw new Error(`${label} must use http type when a type is declared.`);
+  }
+  if (Object.hasOwn(server, "headers") || Object.hasOwn(server, "http_headers") || Object.hasOwn(server, "bearer_token_env_var")) {
+    throw new Error(`${label} must not configure static MCP authorization headers.`);
+  }
+}
+
+function assertGeminiOAuthFirstMcpServer(server, label) {
+  if (server?.httpUrl !== "https://memory.neo4jlabs.com/mcp") {
+    throw new Error(`${label} must point at https://memory.neo4jlabs.com/mcp.`);
+  }
+  if (Object.hasOwn(server, "headers") || Object.hasOwn(server, "httpHeaders") || Object.hasOwn(server, "oauth")) {
+    throw new Error(`${label} must not configure static MCP authorization headers.`);
+  }
+}
+
+function assertOpenCodeOAuthFirstMcpServer(server, label) {
+  if (server?.type !== "remote" || server.url !== "https://memory.neo4jlabs.com/mcp" || server.enabled !== true) {
+    throw new Error(`${label} must declare enabled remote MCP at https://memory.neo4jlabs.com/mcp.`);
+  }
+  if (Object.hasOwn(server, "headers") || Object.hasOwn(server, "authorization") || Object.hasOwn(server, "bearerToken")) {
+    throw new Error(`${label} must not configure static MCP authorization headers.`);
+  }
+}
+
+async function assertNoMcpRuntime(rootPath, label) {
+  const files = await listFiles(rootPath);
+  if (files.some((file) => /^bin\//.test(file) || /^package\.json$/.test(file))) {
+    throw new Error(`${label} must not include copied runtime or package metadata.`);
+  }
+}
+
+function assertNoStaticMcpSecrets(value, label) {
+  if (/NAMS_API_KEY|authorization|bearer/i.test(JSON.stringify(value))) {
+    throw new Error(`${label} must not include static credential configuration.`);
   }
 }
 

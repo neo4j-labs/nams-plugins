@@ -31,6 +31,28 @@
         "context",
         "persistence"
       ]
+    },
+    {
+      "name": "mcp",
+      "source": "./plugins/claude-nams-mcp",
+      "description": "OAuth-first Neo4j Agent Memory Service MCP tools for Claude Code.",
+      "version": "__PACKAGE_VERSION__",
+      "author": {
+        "name": "Neo4j Labs"
+      },
+      "repository": "https://github.com/neo4j-labs/nams-plugins",
+      "license": "__PACKAGE_LICENSE__",
+      "keywords": [
+        "memory",
+        "mcp",
+        "neo4j",
+        "nams"
+      ],
+      "category": "memory",
+      "tags": [
+        "memory",
+        "mcp"
+      ]
     }
   ]
 }

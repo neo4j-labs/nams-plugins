@@ -5,6 +5,8 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const marketplaceMcpConfigPath = path.join(repoRoot, "templates", "marketplace", "opencode-mcp", "opencode.json");
+const localMcpConfigPath = path.join(repoRoot, "templates", "local", "opencode-mcp", "opencode.json");
 
 test("opencode plugin template routes session-created events through the typed hook gateway", async () => {
   const source = await readFile(path.join(repoRoot, "templates", "opencode", ".opencode", "plugins", "nams-hooks.js"), "utf8");
@@ -29,4 +31,36 @@ test("opencode template does not package workspace command markdown prompt", asy
     ),
     /ENOENT/,
   );
+});
+
+test("opencode MCP marketplace template is a remote OAuth config fragment", async () => {
+  const config = JSON.parse(await readFile(marketplaceMcpConfigPath, "utf8"));
+
+  assert.deepEqual(config, {
+    $schema: "https://opencode.ai/config.json",
+    mcp: {
+      nams: {
+        type: "remote",
+        url: "https://memory.neo4jlabs.com/mcp",
+        enabled: true,
+      },
+    },
+  });
+  assert.doesNotMatch(JSON.stringify(config), /NAMS_API_KEY|Authorization|Bearer|nams-hooks|nams-hooks\.js/);
+});
+
+test("opencode MCP local template is a remote OAuth config fragment", async () => {
+  const config = JSON.parse(await readFile(localMcpConfigPath, "utf8"));
+
+  assert.deepEqual(config, {
+    $schema: "https://opencode.ai/config.json",
+    mcp: {
+      nams: {
+        type: "remote",
+        url: "https://memory.neo4jlabs.com/mcp",
+        enabled: true,
+      },
+    },
+  });
+  assert.doesNotMatch(JSON.stringify(config), /NAMS_API_KEY|Authorization|Bearer|nams-hooks|nams-hooks\.js/);
 });
